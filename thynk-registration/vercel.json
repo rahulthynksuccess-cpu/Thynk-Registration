@@ -5,6 +5,18 @@
   "installCommand": "npm install",
   "regions": ["bom1"],
   "env": {
-    "NEXT_PUBLIC_APP_URL": "https://www.thynksuccess.com"
-  }
+    "NEXT_PUBLIC_BACKEND_URL": "https://thynk-registration.vercel.app",
+    "NEXT_PUBLIC_FRONTEND_URL": "https://www.thynksuccess.com",
+    "NEXT_PUBLIC_APP_URL": "https://thynk-registration.vercel.app"
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://www.thynksuccess.com" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PATCH,DELETE,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+      ]
+    }
+  ]
 }
