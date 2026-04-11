@@ -96,7 +96,8 @@ export async function POST(req: NextRequest) {
   }
 
   const gc = (school?.gateway_config as any) ?? {};
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
+  // Payment gateway callbacks must point to the backend (Vercel), not the frontend
+  const appUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://thynk-registration.vercel.app';
 
   try {
     // ── Razorpay ──────────────────────────────────────────────────
