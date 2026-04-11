@@ -121,3 +121,34 @@ export interface RegistrationFormData {
   contactPhone: string;
   contactEmail: string;
 }
+
+// ── Trigger / Email types ─────────────────────────────────────────
+export type TriggerEvent =
+  | 'registration.created'
+  | 'payment.paid'
+  | 'payment.failed'
+  | 'payment.cancelled'
+  | 'discount.applied';
+
+export interface TemplateVars {
+  studentName?: string;
+  parentName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  schoolName?: string;
+  programName?: string;
+  city?: string;
+  classGrade?: string;
+  gender?: string;
+  baseAmount?: number;
+  discountAmount?: number;
+  finalAmount?: number;
+  discountCode?: string;
+  gateway?: string;
+  gatewayTxnId?: string;
+  schoolCode?: string;
+  registrationId?: string;
+  paymentId?: string;
+  redirectUrl?: string;
+  [key: string]: any;
+}
