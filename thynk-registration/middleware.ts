@@ -14,7 +14,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── Admin route protection ─────────────────────────────────────
-  if (pathname.startsWith('/admin')) {
+  if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
     let response = NextResponse.next({ request });
 
     const supabase = createServerClient(
