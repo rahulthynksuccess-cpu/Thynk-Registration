@@ -3,12 +3,15 @@ import { useState, useEffect, useRef } from 'react';
 import type { SchoolWithPricing, Pricing, GatewayKey } from '@/lib/types';
 import { formatAmount } from '@/lib/utils';
 
+// REPLACE with:
 interface Props {
   school: SchoolWithPricing & { public_gateway_config: any };
   pricing: Pricing;
   projectSlug?: string;
   paymentError?: boolean;
 }
+
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
 
 // All API calls go to the Vercel backend, not the current origin
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
