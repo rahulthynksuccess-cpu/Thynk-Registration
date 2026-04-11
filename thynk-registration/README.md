@@ -1,27 +1,19 @@
-# Thynk SaaS v2 — Multi-Project School Admission Platform
+# Thynk Success — Multi-Tenant School Admission Platform
 
-A fully dynamic, multi-tenant SaaS platform for school admission funnels.
-Zero hardcoding. Everything controlled via Admin Panel.
+A reusable, multi-tenant school admission and payment platform built with Next.js, Supabase, and Vercel.
+Live registration always at **www.thynksuccess.com**.
 
 ## Stack
-- **Frontend + API**: Next.js 14 (App Router) on Vercel
-- **Database + Auth**: Supabase (Postgres + RLS)
-- **Payments**: Razorpay, Cashfree, Easebuzz, PayPal (priority-routed from DB)
-- **Notifications**: Email (SMTP/SendGrid/SES) + WhatsApp (Cloud API/Twilio)
-- **Styling**: Tailwind CSS
 
-## What's New in v2
-- **Projects layer** — group multiple schools under a project
-- **Integration configs** — all gateway/email/WA keys managed in DB (no hardcoding)
-- **Trigger engine** — auto-send email/WA on registration + payment events
-- **Template system** — create reusable message templates with `{{variables}}`
-- **Activity log** — full admin audit trail
-- **% discounts** — discount codes now support fixed or percentage types
-- **PayPal** — international payment support
+- **Frontend + API**: Next.js 14 (App Router) on Vercel
+- **Database + Auth**: Supabase (Postgres + Row Level Security)
+- **Payments**: Razorpay, Cashfree, Easebuzz (all three, school-configurable)
+- **Styling**: Tailwind CSS
 
 ## Quick Start
 
 ### 1. Clone & install
+
 ```bash
 git clone https://github.com/your-org/thynk-saas
 cd thynk-saas
@@ -29,89 +21,78 @@ npm install
 ```
 
 ### 2. Set up Supabase
-1. Create project at [supabase.com](https://supabase.com)
-2. Run migrations in order:
-   - `supabase/migrations/001_init.sql`
-   - `supabase/migrations/002_saas_upgrade.sql`
-3. Run seed: `supabase/seed.sql`
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run the migration: **Supabase Dashboard → SQL Editor → paste `supabase/migrations/001_init.sql`**
+3. Run the seed: paste `supabase/seed.sql` (creates Thynk Success school at `/thynk`)
 
 ### 3. Configure environment
+
 ```bash
 cp .env.example .env.local
-# Fill in Supabase keys, payment gateway keys, email/WA credentials
+# Set NEXT_PUBLIC_APP_URL=https://www.thynksuccess.com for production
+# Fill in all Supabase and payment gateway keys
 ```
 
 ### 4. Run locally
+
 ```bash
 npm run dev
 # Registration: http://localhost:3000/thynk
 # Admin:        http://localhost:3000/admin
 ```
 
-## Admin Panel Modules
+### 5. Deploy to Vercel
 
-| Module | Role | Purpose |
-|--------|------|---------|
-| Overview | All | Revenue, stats, charts |
-| Students | All | Full registration table with filters |
-| Trends | All | 30-day trend charts |
-| Analytics | All | Demographics, cities, schools |
-| Follow-Up | All | Pending payments tracker |
-| City Heatmap | All | Geographic distribution |
-| Projects | Super Admin | Create/manage top-level projects |
-| Schools | Super Admin | Create/manage schools under projects |
-| Pricing | Admin+ | Set program fees per school |
-| Discounts | Admin+ | Fixed + % discount codes |
-| Admin Users | Super Admin | Invite school admins |
-| **Integrations** | Admin+ | Manage gateway/email/WA configs + test |
-| **Triggers** | Admin+ | Auto-fire notifications on events |
-| **Templates** | Admin+ | Email + WhatsApp message templates |
-| **Activity Log** | Super Admin | Full audit trail |
+```bash
+npx vercel --prod
+# Set NEXT_PUBLIC_APP_URL=https://www.thynksuccess.com in Vercel environment variables
+```
+
+## Live URLs (Production)
+
+| Page | URL |
+|------|-----|
+| Registration | https://www.thynksuccess.com/thynk |
+| Admin Dashboard | https://www.thynksuccess.com/admin |
 
 ## Project Structure
 
 ```
 thynk-saas/
 ├── app/
-│   ├── [schoolCode]/              # Public registration page
+│   ├── [schoolCode]/          # Dynamic registration — e.g. /thynk
+│   │   ├── page.tsx
+│   │   └── success/page.tsx
 │   ├── admin/
-│   │   ├── page.tsx               # Full admin dashboard (all modules)
-│   │   └── login/
+│   │   ├── layout.tsx
+│   │   ├── login/page.tsx
+│   │   └── page.tsx
 │   └── api/
-│       ├── admin/
-│       │   ├── projects/          # NEW: project CRUD
-│       │   ├── schools/           # Updated: project_id support
-│       │   ├── integrations/      # NEW: gateway/email/WA config
-│       │   │   └── test/          # NEW: test integration endpoint
-│       │   ├── triggers/          # NEW: notification triggers
-│       │   ├── templates/         # NEW: message templates
-│       │   ├── activity-logs/     # NEW: audit log
-│       │   ├── pricing/
-│       │   ├── discounts/         # Updated: % discounts
-│       │   ├── registrations/
-│       │   └── users/
-│       ├── register/              # Updated: trigger engine + gateway router
+│       ├── school/[code]/route.ts
+│       ├── register/route.ts
+│       ├── discount/route.ts
 │       └── payment/
-│           ├── verify/            # Updated: fires triggers on payment
-│           └── webhook/
+│           ├── verify/route.ts
+│           └── webhook/route.ts
+├── components/
+│   └── registration/RegistrationCard.tsx
 ├── lib/
-│   ├── payment/
-│   │   ├── router.ts              # NEW: priority-based gateway resolver
-│   │   ├── razorpay.ts
-│   │   ├── cashfree.ts
-│   │   └── easebuzz.ts
-│   ├── triggers/
-│   │   └── fire.ts                # NEW: trigger + notification engine
-│   ├── activity.ts                # NEW: activity log helper
-│   └── types.ts                   # Updated: all new types
+│   ├── supabase/
+│   └── payment/
+├── middleware.ts
 └── supabase/
-    ├── migrations/
-    │   ├── 001_init.sql
-    │   └── 002_saas_upgrade.sql   # NEW: projects, integrations, triggers
+    ├── migrations/001_init.sql
     └── seed.sql
 ```
 
+## Adding a New Program
+
+1. Log in to `/admin` as super admin
+2. Click "Add School"
+3. Fill in school code, program name, base amount, gateways, branding
+4. Share: `www.thynksuccess.com/{schoolCode}`
+
 ## Environment Variables
-See `.env.example` for all required variables.
-Gateway/email/WA secrets can be set either in `.env` (global fallback) OR
-in the Admin → Integrations panel per school (overrides .env).
+
+See `.env.example` for all required variables. Payment keys are stored server-side only — never exposed to the browser.
