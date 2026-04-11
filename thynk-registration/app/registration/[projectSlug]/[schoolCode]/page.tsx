@@ -1,52 +1,58 @@
-import { notFound } from 'next/navigation';
-import type { Metadata } from 'next';
-import RegistrationCard from '@/components/registration/RegistrationCard';
+'use client';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
-interface Props {
-  params: { projectSlug: string; schoolCode: string };
-  searchParams: { payment?: string };
-}
+function SuccessContent() {
+  const searchParams = useSearchParams();
+  const paymentId = searchParams.get('paymentId');
+  const [count, setCount] = useState(5);
 
-async function fetchSchool(projectSlug: string, schoolCode: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
-  const res = await fetch(
-    `${baseUrl}/api/school/${schoolCode}?project=${projectSlug}`,
-    { next: { revalidate: 300 } }
-  );
-  if (!res.ok) return null;
-  return res.json();
-}
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const school = await fetchSchool(params.projectSlug, params.schoolCode);
-  if (!school) return { title: 'Registration' };
-  return {
-    title: `Register — ${school.name}`,
-    description: school.branding?.programDescription ?? `Register for ${school.name}`,
-  };
-}
-
-export default async function RegistrationPage({ params, searchParams }: Props) {
-  const school = await fetchSchool(params.projectSlug, params.schoolCode);
-  if (!school) notFound();
-
-  const pricing = school.pricing?.[0];
-  if (!pricing) notFound();
+  useEffect(() => {
+    const t = setInterval(() => {
+      setCount(c => {
+        if (c <= 1) {
+          clearInterval(t);
+          window.location.href = 'https://www.thynksuccess.com';
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   return (
-    <main
-      className="reg-page"
-      style={{
-        '--brand-primary': school.branding?.primaryColor ?? '#4f46e5',
-        '--brand-accent':  school.branding?.accentColor  ?? '#8b5cf6',
-      } as React.CSSProperties}
-    >
-      <RegistrationCard
-        school={school}
-        pricing={pricing}
-        projectSlug={params.projectSlug}
-        paymentError={searchParams.payment === 'failed' || searchParams.payment === 'error'}
-      />
+    <div className="card-body" style={{ textAlign: 'center', padding: '40px 32px' }}>
+      <div className="success-icon" style={{ display: 'flex' }}>✅</div>
+      <h2 style={{ fontFamily: 'Sora', fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
+        Payment Successful!
+      </h2>
+      <p style={{ color: 'var(--m)', fontSize: 14, marginBottom: 24 }}>
+        Your registration has been confirmed. You will receive a confirmation email shortly.
+      </p>
+      {paymentId && (
+        <p style={{ fontSize: 11, color: 'var(--m2)', marginBottom: 24 }}>
+          Payment ID: {paymentId}
+        </p>
+      )}
+      <p style={{ fontSize: 13, color: 'var(--m)' }}>
+        Redirecting to <strong>www.thynksuccess.com</strong> in <strong>{count}</strong> seconds…
+      </p>
+    </div>
+  );
+}
+
+export default function SuccessPage() {
+  return (
+    <main className="reg-page">
+      <div className="atg-card">
+        <div className="card-header">
+          <h1>Registration Complete</h1>
+          <p>Your seat has been confirmed</p>
+        </div>
+        <Suspense fallback={<div style={{ padding: 40, textAlign: 'center' }}>Loading…</div>}>
+          <SuccessContent />
+        </Suspense>
+      </div>
     </main>
   );
 }
