@@ -38,7 +38,7 @@ export async function fireTriggers(
       channel: trigger.channel,
       provider: '',
       recipient: trigger.channel === 'email' ? vars.contact_email : vars.contact_phone,
-      status: 'pending' as const,
+      status: 'pending' | 'sent' | 'failed' as const,
     };
 
     try {
