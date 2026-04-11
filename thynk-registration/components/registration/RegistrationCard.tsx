@@ -6,8 +6,12 @@ import { formatAmount } from '@/lib/utils';
 interface Props {
   school: SchoolWithPricing & { public_gateway_config: any };
   pricing: Pricing;
+  projectSlug?: string;
   paymentError?: boolean;
 }
+
+// All API calls go to the Vercel backend, not the current origin
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
 
 // ── Gateway config ─────────────────────────────────────────────────
 type AllGatewayKey = GatewayKey | 'paypal';
@@ -120,7 +124,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
     if (!code.trim()) { setDiscMsg({ text: 'Please enter a code.', type: 'err' }); return; }
     showLoader('Validating discount code…');
     try {
-      const res  = await fetch(`/api/discount?code=${encodeURIComponent(code)}&schoolId=${school.id}`);
+      const res  = await fetch(`${BACKEND}/api/discount?code=${encodeURIComponent(code)}&schoolId=${school.id}`);
       const data = await res.json();
       hideLoader();
       if (data.valid) {
@@ -145,7 +149,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
 
     showLoader('Preparing payment…');
     try {
-      const res = await fetch('/api/register', {
+      const res = await fetch(`${BACKEND}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -197,7 +201,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
       theme: { color: school.branding?.primaryColor ?? '#2563eb' },
       handler: async (response: any) => {
         showLoader('Confirming payment…');
-        await fetch('/api/payment/verify', {
+        await fetch(`${BACKEND}/api/payment/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -213,7 +217,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
       },
       modal: {
         ondismiss: async () => {
-          await fetch('/api/payment/verify', {
+          await fetch(`${BACKEND}/api/payment/verify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paymentId: data.payment_id, gateway: 'razorpay', status: 'cancelled' }),
@@ -281,7 +285,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
         const order = await actions.order.capture();
         // Save registration then show success
         try {
-          await fetch('/api/register', {
+          await fetch(`${BACKEND}/api/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
