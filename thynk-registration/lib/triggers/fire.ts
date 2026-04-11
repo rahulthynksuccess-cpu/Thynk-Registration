@@ -31,28 +31,36 @@ export async function fireTriggers(
     const template = trigger.notification_templates;
     if (!template?.is_active) continue;
 
-    const logEntry = {
+    const logEntry: {
+      registration_id: string;
+      school_id: string;
+      trigger_id: string;
+      channel: string;
+      provider: string;
+      recipient: string;
+      status: 'pending' | 'sent' | 'failed';
+    } = {
       registration_id: registrationId,
       school_id: schoolId,
       trigger_id: trigger.id,
       channel: trigger.channel,
       provider: '',
       recipient: trigger.channel === 'email' ? vars.contact_email : vars.contact_phone,
-      status: 'pending' as const,
+      status: 'pending',
     };
 
     try {
       if (trigger.channel === 'email') {
         const provider = await sendEmail(template, vars, schoolId);
         logEntry.provider = provider;
-        logEntry.status = 'sent' as const;
+        logEntry.status = 'sent';
       } else if (trigger.channel === 'whatsapp') {
         const provider = await sendWhatsApp(template, vars, schoolId);
         logEntry.provider = provider;
-        logEntry.status = 'sent' as const;
+        logEntry.status = 'sent';
       }
     } catch (err: any) {
-      logEntry.status = 'failed' as const;
+      logEntry.status = 'failed';
       console.error(`[trigger] Failed to send ${trigger.channel} for event ${event}:`, err?.message);
     }
 
@@ -100,7 +108,7 @@ async function buildTemplateVars(
     txn_id:        payment?.gateway_txn_id ?? undefined,
     gateway:       payment?.gateway ?? undefined,
     paid_at:       payment?.paid_at ? new Date(payment.paid_at).toLocaleDateString('en-IN') : undefined,
-    retry_link:    event === 'payment_failed' ? `${appUrl}/${reg.school_id}` : undefined,
+    retry_link:    event === 'payment.failed' ? `${appUrl}/${reg.school_id}` : undefined,
   };
 }
 
