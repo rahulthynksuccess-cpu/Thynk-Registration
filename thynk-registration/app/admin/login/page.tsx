@@ -1,16 +1,16 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function AdminLoginPage() {
+function LoginForm() {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
-  const router      = useRouter();
+  const router       = useRouter();
   const searchParams = useSearchParams();
-  const redirect    = searchParams.get('redirect') ?? '/admin';
+  const redirect     = searchParams.get('redirect') ?? '/admin';
 
   async function doLogin() {
     setError(''); setLoading(true);
@@ -23,27 +23,35 @@ export default function AdminLoginPage() {
   }
 
   return (
+    <div className="login-card">
+      <h2>Admin Login</h2>
+      <p>Thynk SaaS · Dashboard</p>
+      <input
+        type="email" placeholder="Email address"
+        value={email} onChange={e => setEmail(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && doLogin()}
+      />
+      <input
+        type="password" placeholder="Password"
+        value={password} onChange={e => setPassword(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && doLogin()}
+      />
+      <button onClick={doLogin} disabled={loading}>
+        {loading ? 'Signing in…' : 'Sign In →'}
+      </button>
+      {error && <div className="lerr" style={{ display: 'block' }}>{error}</div>}
+    </div>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
     <div id="loginScreen">
       <div className="login-wrap">
         <div className="login-logo">📊</div>
-        <div className="login-card">
-          <h2>Admin Login</h2>
-          <p>Thynk SaaS · Dashboard</p>
-          <input
-            type="email" placeholder="Email address"
-            value={email} onChange={e => setEmail(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && doLogin()}
-          />
-          <input
-            type="password" placeholder="Password"
-            value={password} onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && doLogin()}
-          />
-          <button onClick={doLogin} disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In →'}
-          </button>
-          {error && <div className="lerr" style={{ display: 'block' }}>{error}</div>}
-        </div>
+        <Suspense fallback={<div className="login-card"><p>Loading…</p></div>}>
+          <LoginForm />
+        </Suspense>
       </div>
     </div>
   );
