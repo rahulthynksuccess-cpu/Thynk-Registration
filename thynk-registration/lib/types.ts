@@ -1,4 +1,4 @@
-export type GatewayKey = 'razorpay' | 'cashfree' | 'easebuzz';
+export type GatewayKey = 'razorpay' | 'cashfree' | 'easebuzz' | 'paypal';
 export type PaymentStatus = 'pending' | 'initiated' | 'paid' | 'failed' | 'cancelled';
 export type RegistrationStatus = 'pending' | 'initiated' | 'paid' | 'failed' | 'cancelled';
 
