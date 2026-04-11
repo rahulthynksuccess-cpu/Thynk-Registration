@@ -14,7 +14,7 @@ interface Props {
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
 
 // All API calls go to the Vercel backend, not the current origin
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
+
 
 // ── Gateway config ─────────────────────────────────────────────────
 type AllGatewayKey = GatewayKey | 'paypal';
