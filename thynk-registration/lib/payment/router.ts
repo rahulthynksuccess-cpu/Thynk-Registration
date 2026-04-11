@@ -47,7 +47,7 @@ export async function resolveGateways(
   // Filter by currency
   return configs.filter(c => {
     if (currency !== 'INR') return ['paypal', 'razorpay'].includes(c.provider);
-    return c.provider !== 'paypal';
+   return c.provider !== ('paypal' as string);
   });
 }
 
