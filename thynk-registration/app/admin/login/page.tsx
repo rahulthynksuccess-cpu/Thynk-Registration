@@ -13,13 +13,19 @@ function LoginForm() {
   const redirect     = searchParams.get('redirect') ?? '/admin';
 
   async function doLogin() {
-    setError(''); setLoading(true);
+    setError('');
+    setLoading(true);
     const supabase = createClient();
-    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (authErr) { setError('Incorrect email or password. Try again.'); return; }
-    router.push(redirect);
-    router.refresh();
+    const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
+    if (authErr || !data.session) {
+      setLoading(false);
+      setError('Incorrect email or password. Try again.');
+      return;
+    }
+    // Small delay to ensure session cookie is set before navigating
+    setTimeout(() => {
+      window.location.href = redirect;
+    }, 500);
   }
 
   return (
