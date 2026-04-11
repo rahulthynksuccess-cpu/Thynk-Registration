@@ -6,8 +6,19 @@ async function requireSuperAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const service = createServiceClient();
-  const { data } = await service.from('admin_roles').select('role').eq('user_id', user.id).eq('role', 'super_admin').is('school_id', null).single();
+  const { data } = await service
+    .from('admin_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('role', 'super_admin')
+    .is('school_id', null)
+    .single();
   return data ? user : null;
+}
+
+/** Returns 'INR' for India, 'USD' for all other countries */
+function currencyForCountry(country: string): string {
+  return (country || '').toLowerCase() === 'india' ? 'INR' : 'USD';
 }
 
 export async function GET() {
@@ -17,7 +28,7 @@ export async function GET() {
   const { data: schools } = await service
     .from('schools')
     .select(`id, school_code, name, org_name, logo_url, branding, gateway_config, is_active,
-             city, state, country, project_id, project_slug, created_at,
+             city, state, country, project_id, project_slug, discount_code, created_at,
              pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)`)
     .order('created_at', { ascending: false });
   return NextResponse.json({ schools: schools ?? [] });
@@ -28,28 +39,43 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
-  const { school_code, name, org_name, city, state, country,
-          project_id, school_price, currency,
-          primary_color, accent_color, is_active } = body;
+  const {
+    school_code, name, org_name,
+    city, state, country,
+    project_id, school_price, currency: bodyCurrency,
+    discount_code,
+    primary_color, accent_color, is_active,
+  } = body;
 
   if (!school_code || !name || !org_name || !project_id || !school_price)
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-  // Get program details for redirect URL and project_slug
-  const { data: program } = await service.from('projects').select('slug, name').eq('id', project_id).single();
+  // Resolve currency: use body override or derive from country
+  const resolvedCountry  = country || 'India';
+  const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
+
+  // Get program for redirect URL and slug
+  const { data: program } = await service
+    .from('projects')
+    .select('slug, name')
+    .eq('id', project_id)
+    .single();
   if (!program) return NextResponse.json({ error: 'Program not found' }, { status: 400 });
 
-  const code = school_code.toLowerCase().replace(/\s+/g, '-');
+  const code        = school_code.toLowerCase().replace(/\s+/g, '-');
   const redirectURL = `https://www.thynksuccess.com/registration/${program.slug}/${code}`;
+  const discCode    = (discount_code || code).toUpperCase();
 
   const { data: school, error } = await service.from('schools').insert({
-    school_code: code,
-    name, org_name,
-    city: city || null,
-    state: state || null,
-    country: country || 'India',
+    school_code:   code,
+    name,
+    org_name,
+    city:          city    || null,
+    state:         state   || null,
+    country:       resolvedCountry,
     project_id,
-    project_slug: program.slug,
+    project_slug:  program.slug,
+    discount_code: discCode,
     branding: {
       primaryColor: primary_color || '#4f46e5',
       accentColor:  accent_color  || '#8b5cf6',
@@ -59,26 +85,37 @@ export async function POST(req: NextRequest) {
     is_active: is_active !== false,
   }).select().single();
 
-  if (error) return NextResponse.json({ error: error.code === '23505' ? 'School code already exists' : error.message }, { status: 400 });
+  if (error)
+    return NextResponse.json(
+      { error: error.code === '23505' ? 'School code already exists' : error.message },
+      { status: 400 }
+    );
 
-  // Create pricing
+  // Create pricing row
   await service.from('pricing').insert({
-    school_id: school.id,
-    program_name: program.name,
-    base_amount: Math.round(Number(school_price)),
-    currency: currency || 'INR',
-    gateway_sequence: ['cashfree', 'razorpay', 'easebuzz'],
+    school_id:        school.id,
+    program_name:     program.name,
+    base_amount:      Math.round(Number(school_price)),
+    currency:         resolvedCurrency,
+    gateway_sequence: resolvedCurrency === 'INR'
+      ? ['cashfree', 'razorpay', 'easebuzz']
+      : ['paypal', 'razorpay'],
     is_active: true,
   });
 
   // Auto-create default discount code from school code
-  await service.from('discount_codes').insert({
-    school_id: school.id,
-    code: code.toUpperCase(),
-    discount_amount: 0,  // 0 discount by default — admin can edit
-    is_active: true,
-    max_uses: null,
+  // discount_amount = 0 by default — admin can edit in Discount Codes tab
+  const { error: dcErr } = await service.from('discount_codes').insert({
+    school_id:       school.id,
+    code:            discCode,
+    discount_amount: 0,
+    is_active:       true,
+    max_uses:        null,
   });
+  // Ignore duplicate error — code may already exist if re-creating
+  if (dcErr && dcErr.code !== '23505') {
+    console.warn('discount_codes insert warning:', dcErr.message);
+  }
 
   return NextResponse.json({ school }, { status: 201 });
 }
@@ -87,28 +124,89 @@ export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
-  const body = await req.json();
-  const { id, school_price, currency, primary_color, accent_color, project_id, ...rest } = body;
+  const {
+    id,
+    school_price,
+    currency: bodyCurrency,
+    primary_color, accent_color,
+    project_id,
+    country,
+    discount_code,
+    ...rest
+  } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-  // Build branding update
-  const { data: existing } = await service.from('schools').select('branding, project_slug').eq('id', id).single();
+  const { data: existing } = await service
+    .from('schools')
+    .select('branding, project_slug, country, discount_code')
+    .eq('id', id)
+    .single();
+
   let branding = existing?.branding ?? {};
   if (primary_color) branding = { ...branding, primaryColor: primary_color };
-  if (accent_color)  branding = { ...branding, accentColor: accent_color };
+  if (accent_color)  branding = { ...branding, accentColor:  accent_color  };
 
-  let updatePayload: Record<string, any> = { ...rest, branding };
+  const resolvedCountry = country || existing?.country || 'India';
+  const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
+
+  let updatePayload: Record<string, any> = {
+    ...rest,
+    branding,
+    country: resolvedCountry,
+  };
+
+  if (discount_code) updatePayload.discount_code = discount_code.toUpperCase();
+
   if (project_id) {
-    const { data: program } = await service.from('projects').select('slug').eq('id', project_id).single();
-    if (program) { updatePayload.project_id = project_id; updatePayload.project_slug = program.slug; }
+    const { data: program } = await service
+      .from('projects')
+      .select('slug')
+      .eq('id', project_id)
+      .single();
+    if (program) {
+      updatePayload.project_id   = project_id;
+      updatePayload.project_slug = program.slug;
+      // Update redirect URL in branding
+      const { data: schoolRec } = await service
+        .from('schools')
+        .select('school_code')
+        .eq('id', id)
+        .single();
+      if (schoolRec) {
+        branding.redirectURL = `https://www.thynksuccess.com/registration/${program.slug}/${schoolRec.school_code}`;
+        updatePayload.branding = branding;
+      }
+    }
   }
 
-  const { data, error } = await service.from('schools').update(updatePayload).eq('id', id).select().single();
+  const { data, error } = await service
+    .from('schools')
+    .update(updatePayload)
+    .eq('id', id)
+    .select()
+    .single();
+
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  // Update pricing if school_price provided
-  if (school_price) {
-    await service.from('pricing').update({ base_amount: Math.round(Number(school_price)), currency: currency||'INR' }).eq('school_id', id).eq('is_active', true);
+  // Update pricing
+  if (school_price !== undefined) {
+    await service
+      .from('pricing')
+      .update({
+        base_amount: Math.round(Number(school_price)),
+        currency:    resolvedCurrency,
+      })
+      .eq('school_id', id)
+      .eq('is_active', true);
+  }
+
+  // Sync discount code on discount_codes table if changed
+  if (discount_code) {
+    await service
+      .from('discount_codes')
+      .update({ code: discount_code.toUpperCase() })
+      .eq('school_id', id)
+      .eq('code', existing?.discount_code ?? '');
   }
 
   return NextResponse.json({ school: data });

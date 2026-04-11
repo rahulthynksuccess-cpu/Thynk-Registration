@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
@@ -27,6 +27,8 @@ const NAV = [
   { id:'integrations',  icon:'⚙️',  label:'Payment & Email'},
   { id:'triggers',      icon:'🔔', label:'Triggers'       },
   { id:'templates',     icon:'✉️',  label:'Message Templates'},
+  { section:'Settings' },
+  { id:'locations',     icon:'📍', label:'Location Master'  },
   { section:'Tools' },
   { id:'_export',       icon:'⬇️', label:'Export CSV', action:true },
   { id:'_refresh',      icon:'🔄', label:'Refresh',    action:true },
@@ -53,6 +55,7 @@ export default function AdminDashboard() {
   const [integrations, setIntegrations] = useState<Row[]>([]);
   const [triggers,     setTriggers]     = useState<Row[]>([]);
   const [templates,    setTemplates]    = useState<Row[]>([]);
+  const [locations,    setLocations]    = useState<Row[]>([]);
 
   // Form modals
   const [programForm,     setProgramForm]     = useState<Row|null>(null);
@@ -99,6 +102,7 @@ export default function AdminDashboard() {
   const loadIntegrations = useCallback(async () => { const d = await api('/api/admin/integrations'); setIntegrations(d.integrations??[]); }, [api]);
   const loadTriggers     = useCallback(async () => { const d = await api('/api/admin/triggers');     setTriggers(d.triggers??[]); }, [api]);
   const loadTemplates    = useCallback(async () => { const d = await api('/api/admin/templates');    setTemplates(d.templates??[]); }, [api]);
+  const loadLocations    = useCallback(async () => { const d = await api('/api/admin/location?type=all&includeInactive=true'); setLocations(d.locations??[]); }, [api]);
 
   useEffect(() => { if (!user) return; loadRegistrations(); const t = setInterval(loadRegistrations, 10*60*1000); return () => clearInterval(t); }, [user, loadRegistrations]);
   useEffect(() => {
@@ -110,6 +114,7 @@ export default function AdminDashboard() {
     if (activePage === 'integrations') loadIntegrations();
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')    loadTemplates();
+    if (activePage === 'locations')    loadLocations();
   }, [activePage, user]);
 
   function showToast(text:string, icon='') {
@@ -336,7 +341,7 @@ export default function AdminDashboard() {
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setProgramForm({})}>+ Add Program</button>}</div>
             </div>
             <div className="tbl-wrap"><table>
-              <thead><tr><th>Program Name</th><th>Slug</th><th>Base URL</th><th>Base Price (₹)</th><th>Currency</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Program Name</th><th>Slug</th><th>Base URL</th><th>Base Price INR (₹)</th><th>Base Price USD ($)</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {programs.length===0
                   ? <tr><td colSpan={7} className="table-empty">No programs yet. Create a program first, then assign schools to it.</td></tr>
@@ -345,8 +350,8 @@ export default function AdminDashboard() {
                       <td style={{fontWeight:700}}>{p.name}</td>
                       <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{p.slug}</code></td>
                       <td style={{fontSize:12,color:'var(--m)'}}>{`www.thynksuccess.com/registration/${p.slug}/[schoolcode]`}</td>
-                      <td><span className="amt">₹{fmtR(p.base_amount??0)}</span></td>
-                      <td><span className="gw-tag">{p.currency??'INR'}</span></td>
+                      <td><span className="amt">₹{fmtR(p.base_amount_inr ?? (p.currency==='INR'?p.base_amount:0) ?? 0)}</span></td>
+                      <td><span className="amt" style={{color:'#22c55e'}}>${fmtR(p.base_amount_usd ?? (p.currency==='USD'?p.base_amount:0) ?? 0)}</span></td>
                       <td><span className={`badge ${p.status==='active'?'badge-paid':'badge-cancelled'}`}>{p.status}</span></td>
                       <td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setProgramForm(p)}>Edit</button></td>
                     </tr>
@@ -570,6 +575,16 @@ export default function AdminDashboard() {
             </table></div>
           </div>
 
+          {/* ── LOCATION MASTER ──────────────────────────────────────── */}
+          <div className={`page${activePage==='locations'?' active':''}`}>
+            <LocationMasterPage
+              rows={locations}
+              BACKEND={BACKEND}
+              onReload={loadLocations}
+              showToast={showToast}
+            />
+          </div>
+
         </main>
       </div>
 
@@ -676,7 +691,14 @@ const SS:React.CSSProperties = { ...IS, appearance:'none' as any };
 
 // ── Program Form ────────────────────────────────────────────────────
 function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()=>void; onSave:(d:Row)=>void }) {
-  const [f,setF] = useState({ id:initial.id??'', name:initial.name??'', slug:initial.slug??'', base_amount:initial.base_amount?String(initial.base_amount/100):'', currency:initial.currency??'INR', status:initial.status??'active' });
+  const [f,setF] = useState({
+    id:           initial.id??'',
+    name:         initial.name??'',
+    slug:         initial.slug??'',
+    base_amount_inr: initial.base_amount_inr ? String(initial.base_amount_inr/100) : (initial.base_amount && initial.currency==='INR' ? String(initial.base_amount/100) : ''),
+    base_amount_usd: initial.base_amount_usd ? String(initial.base_amount_usd/100) : (initial.base_amount && initial.currency==='USD' ? String(initial.base_amount/100) : ''),
+    status:       initial.status??'active',
+  });
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
   const autoSlug = (name:string) => name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
   return (
@@ -685,17 +707,108 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
       <Field label="Slug * (used in URL)"><input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/></Field>
       <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>Registration URL will be: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code></p>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="Base Price (₹) *"><input style={IS} type="number" value={f.base_amount} onChange={set('base_amount')} placeholder="1200"/></Field>
-        <Field label="Currency"><select style={SS} value={f.currency} onChange={set('currency')}><option value="INR">INR (₹)</option><option value="USD">USD ($)</option></select></Field>
+        <Field label="Base Price — INR (₹) *">
+          <div style={{position:'relative'}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>₹</span>
+            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_inr} onChange={set('base_amount_inr')} placeholder="e.g. 1200"/>
+          </div>
+          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Used when school country = India</p>
+        </Field>
+        <Field label="Base Price — USD ($) *">
+          <div style={{position:'relative'}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span>
+            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50"/>
+          </div>
+          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Used for all other countries</p>
+        </Field>
         <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
+      </div>
+      <div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}>
+        <span style={{color:'var(--acc)',fontWeight:600}}>💡 Currency is auto-selected per school:</span>
+        <span style={{color:'var(--m)',marginLeft:6}}>Indian schools → INR price · International schools → USD price</span>
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({...f,base_amount:Math.round(Number(f.base_amount)*100)})}>{f.id?'Save Changes':'Create Program'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({
+          ...f,
+          base_amount_inr: Math.round(Number(f.base_amount_inr||0)*100),
+          base_amount_usd: Math.round(Number(f.base_amount_usd||0)*100),
+          // keep legacy base_amount as INR for backwards compat
+          base_amount: Math.round(Number(f.base_amount_inr||0)*100),
+          currency: 'INR',
+        })}>{f.id?'Save Changes':'Create Program'}</button>
       </div>
     </ModalShell>
   );
 }
+
+// ── Location master data ────────────────────────────────────────────
+const LOCATION_DATA: Record<string, { states: Record<string, string[]> }> = {
+  India: {
+    states: {
+      'Andhra Pradesh': ['Visakhapatnam','Vijayawada','Guntur','Nellore','Tirupati'],
+      'Arunachal Pradesh': ['Itanagar','Naharlagun','Pasighat'],
+      'Assam': ['Guwahati','Silchar','Dibrugarh','Jorhat'],
+      'Bihar': ['Patna','Gaya','Bhagalpur','Muzaffarpur','Darbhanga'],
+      'Chhattisgarh': ['Raipur','Bhilai','Bilaspur','Durg'],
+      'Delhi': ['New Delhi','Delhi'],
+      'Goa': ['Panaji','Margao','Vasco da Gama'],
+      'Gujarat': ['Ahmedabad','Surat','Vadodara','Rajkot','Gandhinagar','Bhavnagar'],
+      'Haryana': ['Gurugram','Faridabad','Chandigarh','Ambala','Hisar','Karnal'],
+      'Himachal Pradesh': ['Shimla','Dharamsala','Manali','Solan'],
+      'Jharkhand': ['Ranchi','Jamshedpur','Dhanbad','Bokaro'],
+      'Karnataka': ['Bengaluru','Mysuru','Hubli','Mangaluru','Belagavi'],
+      'Kerala': ['Thiruvananthapuram','Kochi','Kozhikode','Thrissur','Kollam'],
+      'Madhya Pradesh': ['Bhopal','Indore','Gwalior','Jabalpur','Ujjain'],
+      'Maharashtra': ['Mumbai','Pune','Nagpur','Nashik','Aurangabad','Thane','Navi Mumbai'],
+      'Manipur': ['Imphal'],
+      'Meghalaya': ['Shillong'],
+      'Mizoram': ['Aizawl'],
+      'Nagaland': ['Kohima','Dimapur'],
+      'Odisha': ['Bhubaneswar','Cuttack','Rourkela','Berhampur'],
+      'Punjab': ['Ludhiana','Amritsar','Jalandhar','Patiala','Chandigarh'],
+      'Rajasthan': ['Jaipur','Jodhpur','Udaipur','Kota','Ajmer','Bikaner'],
+      'Sikkim': ['Gangtok'],
+      'Tamil Nadu': ['Chennai','Coimbatore','Madurai','Tiruchirappalli','Salem','Tirunelveli'],
+      'Telangana': ['Hyderabad','Warangal','Nizamabad','Karimnagar'],
+      'Tripura': ['Agartala'],
+      'Uttar Pradesh': ['Lucknow','Kanpur','Agra','Varanasi','Prayagraj','Ghaziabad','Noida','Meerut','Bareilly'],
+      'Uttarakhand': ['Dehradun','Haridwar','Roorkee','Rishikesh','Nainital'],
+      'West Bengal': ['Kolkata','Howrah','Durgapur','Asansol','Siliguri'],
+      'Jammu & Kashmir': ['Srinagar','Jammu'],
+      'Ladakh': ['Leh','Kargil'],
+      'Chandigarh': ['Chandigarh'],
+      'Puducherry': ['Puducherry'],
+      'Andaman & Nicobar': ['Port Blair'],
+      'Lakshadweep': ['Kavaratti'],
+      'Dadra & Nagar Haveli': ['Silvassa'],
+      'Daman & Diu': ['Daman','Diu'],
+    },
+  },
+  // Gulf Region
+  'United Arab Emirates': { states: { 'Abu Dhabi': ['Abu Dhabi','Al Ain'], 'Dubai': ['Dubai'], 'Sharjah': ['Sharjah'], 'Ajman': ['Ajman'], 'Fujairah': ['Fujairah'], 'Ras Al Khaimah': ['Ras Al Khaimah'], 'Umm Al Quwain': ['Umm Al Quwain'] } },
+  'Saudi Arabia': { states: { 'Riyadh': ['Riyadh'], 'Makkah': ['Jeddah','Mecca','Taif'], 'Madinah': ['Medina'], 'Eastern Province': ['Dammam','Khobar','Dhahran','Jubail'], 'Asir': ['Abha'], 'Kuwait': [] } },
+  'Kuwait': { states: { 'Kuwait Governorate': ['Kuwait City'], 'Ahmadi': ['Ahmadi'], 'Hawalli': ['Hawalli'], 'Farwaniya': ['Farwaniya'] } },
+  'Qatar': { states: { 'Doha': ['Doha'], 'Al Rayyan': ['Al Rayyan'], 'Al Wakrah': ['Al Wakrah'], 'Al Khor': ['Al Khor'] } },
+  'Bahrain': { states: { 'Capital': ['Manama'], 'Muharraq': ['Muharraq'], 'Northern': ['Hamad Town'], 'Southern': ['Riffa'] } },
+  'Oman': { states: { 'Muscat': ['Muscat','Seeb'], 'Dhofar': ['Salalah'], 'Batinah': ['Sohar'], 'Sharqiyah': ['Sur'] } },
+  // South East Asia
+  'Singapore': { states: { 'Central Region': ['Singapore'] } },
+  'Malaysia': { states: { 'Kuala Lumpur': ['Kuala Lumpur'], 'Selangor': ['Shah Alam','Petaling Jaya','Klang'], 'Penang': ['George Town'], 'Johor': ['Johor Bahru'], 'Sabah': ['Kota Kinabalu'], 'Sarawak': ['Kuching'] } },
+  'Indonesia': { states: { 'DKI Jakarta': ['Jakarta'], 'West Java': ['Bandung','Bekasi','Depok'], 'East Java': ['Surabaya','Malang'], 'Bali': ['Denpasar'] } },
+  'Thailand': { states: { 'Bangkok': ['Bangkok'], 'Chiang Mai': ['Chiang Mai'], 'Phuket': ['Phuket Town'] } },
+  'Philippines': { states: { 'Metro Manila': ['Manila','Quezon City','Makati','Pasig'], 'Cebu': ['Cebu City'], 'Davao': ['Davao City'] } },
+  'Vietnam': { states: { 'Hanoi': ['Hanoi'], 'Ho Chi Minh City': ['Ho Chi Minh City'], 'Da Nang': ['Da Nang'] } },
+  'Myanmar': { states: { 'Yangon Region': ['Yangon'], 'Mandalay Region': ['Mandalay'], 'Naypyidaw': ['Naypyidaw'] } },
+  'Cambodia': { states: { 'Phnom Penh': ['Phnom Penh'], 'Siem Reap': ['Siem Reap'] } },
+  'Sri Lanka': { states: { 'Western Province': ['Colombo','Sri Jayawardenepura Kotte'], 'Central Province': ['Kandy'], 'Southern Province': ['Galle'] } },
+  'Nepal': { states: { 'Bagmati': ['Kathmandu','Lalitpur','Bhaktapur'], 'Gandaki': ['Pokhara'] } },
+  'Bangladesh': { states: { 'Dhaka Division': ['Dhaka','Narayanganj'], 'Chittagong Division': ['Chittagong'], 'Rajshahi Division': ['Rajshahi'] } },
+  'Pakistan': { states: { 'Punjab': ['Lahore','Faisalabad','Rawalpindi'], 'Sindh': ['Karachi','Hyderabad'], 'KPK': ['Peshawar'], 'Islamabad Capital Territory': ['Islamabad'] } },
+  'Other': { states: { 'Other': [] } },
+};
+const INDIA_CURRENCY = 'INR';
+const isIndianCountry = (c: string) => c === 'India';
 
 // ── School Form ─────────────────────────────────────────────────────
 function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
@@ -704,20 +817,74 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
     school_code:   initial.school_code??'',
     name:          initial.name??'',
     org_name:      initial.org_name??'',
-    city:          initial.city??'',
+    country:       initial.country||'India',
     state:         initial.state??'',
-    country:       initial.country??'India',
+    city:          initial.city??'',
     project_id:    initial.project_id??'',
     school_price:  initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '',
-    currency:      initial.pricing?.[0]?.currency??'INR',
+    currency:      initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'),
+    discount_code: initial.discount_code ?? initial.school_code?.toUpperCase() ?? '',
     primary_color: initial.branding?.primaryColor??'#4f46e5',
     accent_color:  initial.branding?.accentColor??'#8b5cf6',
     is_active:     initial.is_active!==false,
   });
-  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.type==='checkbox'?(e.target as HTMLInputElement).checked:e.target.value}));
+
+  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
+    const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
+    setF(p => {
+      const updated = {...p, [k]: val};
+      // Auto-set currency when country changes
+      if (k === 'country') {
+        updated.currency = isIndianCountry(val as string) ? 'INR' : 'USD';
+        updated.state = '';
+        updated.city = '';
+      }
+      if (k === 'state') updated.city = '';
+      // Auto-fill discount code from school code if not manually changed
+      if (k === 'school_code' && !p.id) {
+        updated.discount_code = (val as string).toUpperCase();
+      }
+      return updated;
+    });
+  };
+
   const selProgram = programs.find(p=>p.id===f.project_id);
+  const countryData = LOCATION_DATA[f.country] ?? LOCATION_DATA['Other'];
+  const stateList = Object.keys(countryData.states);
+  const cityList = f.state ? (countryData.states[f.state] ?? []) : [];
+
+  // Auto-computed values
   const regUrl = selProgram ? `www.thynksuccess.com/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}` : '';
-  const discountCode = f.school_code?.toUpperCase();
+
+  // Auto base price from program based on country
+  const autoBasePrice = (() => {
+    if (!selProgram) return '';
+    if (isIndianCountry(f.country)) {
+      const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null);
+      return inr ? String(inr/100) : '';
+    } else {
+      const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null);
+      return usd ? String(usd/100) : '';
+    }
+  })();
+  const autoBasePriceDisplay = (() => {
+    if (!selProgram) return null;
+    if (isIndianCountry(f.country)) {
+      const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null);
+      return inr ? `₹${fmtR(inr)}` : null;
+    } else {
+      const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null);
+      return usd ? `$${fmtR(usd)}` : null;
+    }
+  })();
+
+  // Auto-fill school price when program or country changes
+  const prevProjectId = useState(f.project_id)[0];
+  useEffect(() => {
+    if (autoBasePrice && !f.id) {
+      setF(p => ({...p, school_price: autoBasePrice}));
+    }
+  }, [f.project_id, f.country]);
 
   return (
     <ModalShell title={f.id?'Edit School':'Add New School'} onClose={onClose}>
@@ -725,41 +892,84 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         <Field label="School Code *"><input style={{...IS,fontFamily:'monospace'}} value={f.school_code} onChange={set('school_code')} placeholder="e.g. delhi-dps" disabled={!!f.id}/></Field>
         <Field label="School Name *"><input style={IS} value={f.name} onChange={set('name')} placeholder="Delhi Public School"/></Field>
         <Field label="Organisation Name *"><input style={IS} value={f.org_name} onChange={set('org_name')} placeholder="Thynk Success"/></Field>
-        <Field label="Country"><input style={IS} value={f.country} onChange={set('country')} placeholder="India"/></Field>
-        <Field label="City *"><input style={IS} value={f.city} onChange={set('city')} placeholder="New Delhi"/></Field>
-        <Field label="State *"><input style={IS} value={f.state} onChange={set('state')} placeholder="Delhi"/></Field>
+      </div>
+
+      {/* Location Section */}
+      <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>📍 Location</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0 12px'}}>
+          <Field label="Country *">
+            <select style={SS} value={f.country} onChange={set('country')}>
+              {Object.keys(LOCATION_DATA).map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="State / Region *">
+            <select style={SS} value={f.state} onChange={set('state')} disabled={stateList.length===0}>
+              <option value="">Select State</option>
+              {stateList.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="City *">
+            {cityList.length > 0 ? (
+              <select style={SS} value={f.city} onChange={set('city')}>
+                <option value="">Select City</option>
+                {cityList.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : (
+              <input style={IS} value={f.city} onChange={set('city')} placeholder="Enter city"/>
+            )}
+          </Field>
+        </div>
       </div>
 
       <Field label="Program *">
         <select style={SS} value={f.project_id} onChange={set('project_id')}>
           <option value="">Select a program</option>
-          {programs.filter(p=>p.status==='active').map(p=><option key={p.id} value={p.id}>{p.name} — Base ₹{(p.base_amount/100).toLocaleString('en-IN')}</option>)}
+          {programs.filter(p=>p.status==='active').map(p=>{
+            const inr = p.base_amount_inr ?? (p.currency==='INR'?p.base_amount:null);
+            const usd = p.base_amount_usd ?? (p.currency==='USD'?p.base_amount:null);
+            return <option key={p.id} value={p.id}>{p.name} — {inr?`₹${(inr/100).toLocaleString('en-IN')}`:'—'} / {usd?`$${(usd/100).toLocaleString()}`:'—'}</option>;
+          })}
         </select>
       </Field>
 
       {selProgram && (
         <div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}>
-          <div style={{color:'var(--acc)',fontWeight:600,marginBottom:4}}>📎 Registration URL</div>
+          <div style={{color:'var(--acc)',fontWeight:600,marginBottom:4}}>🔗 Registration URL (auto-generated)</div>
           <code style={{color:'var(--text)',fontSize:11}}>{regUrl}</code>
         </div>
       )}
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="School Pricing (₹) *">
-          <input style={IS} type="number" value={f.school_price} onChange={set('school_price')} placeholder={selProgram?`Base: ₹${(selProgram.base_amount/100).toLocaleString('en-IN')}`:'Enter amount'}/>
-        </Field>
-        <Field label="Currency">
-          <select style={SS} value={f.currency} onChange={set('currency')}><option value="INR">INR (₹)</option><option value="USD">USD ($)</option></select>
-        </Field>
+      {/* Pricing Section */}
+      <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>💰 Pricing</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+          <Field label={`School Pricing (${f.currency}) *`}>
+            <input style={IS} type="number" value={f.school_price} onChange={set('school_price')}
+              placeholder={autoBasePrice ? `Base: ${isIndianCountry(f.country)?'₹':'$'}${autoBasePrice}` : 'Enter amount'}/>
+            {autoBasePriceDisplay && <p style={{fontSize:10,color:'var(--acc)',marginTop:3}}>Program base: {autoBasePriceDisplay} — auto-filled</p>}
+          </Field>
+          <Field label="Currency">
+            <select style={SS} value={f.currency} onChange={set('currency')}>
+              <option value="INR">INR (₹) — India</option>
+              <option value="USD">USD ($) — International</option>
+            </select>
+            <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Auto-set from country selection</p>
+          </Field>
+        </div>
       </div>
 
-      {discountCode && (
-        <div style={{background:'var(--orange2)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}>
-          <div style={{color:'var(--orange)',fontWeight:600,marginBottom:2}}>🏷️ Default Discount Code</div>
-          <code style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>{discountCode}</code>
-          <span style={{color:'var(--m)',marginLeft:8}}>— auto-created from school code</span>
-        </div>
-      )}
+      {/* Discount Code Section */}
+      <div style={{background:'var(--orange2,rgba(245,158,11,0.08))',border:'1px solid rgba(245,158,11,0.2)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:'var(--orange,#f59e0b)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>🏷️ Discount Code</div>
+        <Field label="Discount Code (default = school code)">
+          <input style={{...IS,textTransform:'uppercase',fontFamily:'monospace',fontWeight:700}} value={f.discount_code}
+            onChange={e=>setF(p=>({...p,discount_code:e.target.value.toUpperCase()}))} placeholder="e.g. DELHI-DPS"/>
+        </Field>
+        <p style={{fontSize:11,color:'var(--m)',marginTop:-8}}>
+          When a student uses the Registration URL and enters this code, the school-specific discount fee will be applied.
+        </p>
+      </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
         <Field label="Primary Colour"><input style={{...IS,height:40}} type="color" value={f.primary_color} onChange={set('primary_color')}/></Field>
@@ -929,6 +1139,291 @@ function TemplateFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:(
         <button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Template'}</button>
       </div>
     </ModalShell>
+  );
+}
+
+// ── Location Master Page ────────────────────────────────────────────
+const COUNTRY_EMOJI: Record<string,string> = {
+  'India':'🇮🇳','United Arab Emirates':'🇦🇪','Saudi Arabia':'🇸🇦','Kuwait':'🇰🇼',
+  'Qatar':'🇶🇦','Bahrain':'🇧🇭','Oman':'🇴🇲','Singapore':'🇸🇬','Malaysia':'🇲🇾',
+  'Indonesia':'🇮🇩','Thailand':'🇹🇭','Philippines':'🇵🇭','Vietnam':'🇻🇳',
+  'Myanmar':'🇲🇲','Cambodia':'🇰🇭','Sri Lanka':'🇱🇰','Nepal':'🇳🇵',
+  'Bangladesh':'🇧🇩','Pakistan':'🇵🇰',
+};
+
+function LocationFormModal({ initial, onClose, onSave }:{
+  initial: Row; onClose:()=>void; onSave:(d:Row)=>void
+}) {
+  const [f,setF] = useState({
+    id:         initial.id??'',
+    country:    initial.country??'India',
+    state:      initial.state??'',
+    city:       initial.city??'',
+    sort_order: initial.sort_order??0,
+  });
+  const set = (k:string)=>(e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=>setF(p=>({...p,[k]:e.target.value}));
+  return (
+    <ModalShell title={f.id?'Edit Location':'Add Location'} onClose={onClose}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+        <Field label="Country *">
+          <input style={IS} value={f.country} onChange={set('country')} placeholder="India"/>
+        </Field>
+        <Field label="State / Region *">
+          <input style={IS} value={f.state} onChange={set('state')} placeholder="Delhi"/>
+        </Field>
+        <Field label="City (leave blank to add state only)">
+          <input style={IS} value={f.city} onChange={set('city')} placeholder="New Delhi"/>
+        </Field>
+        <Field label="Sort Order">
+          <input style={IS} type="number" value={f.sort_order} onChange={set('sort_order')} min={0}/>
+        </Field>
+      </div>
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
+        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Add Location'}</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
+  rows:Row[]; BACKEND:string; onReload:()=>void; showToast:(t:string,i?:string)=>void
+}) {
+  const [activeCountry, setActiveCountry] = useState('');
+  const [activeState,   setActiveState]   = useState('');
+  const [search,        setSearch]        = useState('');
+  const [countrySearch, setCountrySearch] = useState('');
+  const [modalOpen,     setModalOpen]     = useState(false);
+  const [editRow,       setEditRow]       = useState<Row|undefined>();
+  const [saving,        setSaving]        = useState(false);
+
+  // Derive country list from data
+  const countries = [...new Set(rows.map(r=>r.country))].sort((a,b)=>{
+    // India first, then alphabetical
+    if(a==='India') return -1; if(b==='India') return 1;
+    return a.localeCompare(b);
+  });
+
+  // Auto-select first country
+  React.useEffect(()=>{
+    if(!activeCountry && countries.length) setActiveCountry(countries[0]);
+  }, [countries.length]);
+
+  // Derive state list for active country
+  const statesInCountry = [...new Set(
+    rows.filter(r=>r.country===activeCountry).map(r=>r.state)
+  )].sort();
+
+  // Auto-select first state
+  React.useEffect(()=>{ setActiveState(''); },[activeCountry]);
+  React.useEffect(()=>{
+    if(!activeState && statesInCountry.length) setActiveState(statesInCountry[0]);
+  },[statesInCountry.length, activeCountry]);
+
+  // Cities (or state-level entries) for the active state
+  const citiesInState = rows.filter(r=>
+    r.country===activeCountry &&
+    r.state===activeState &&
+    (search==='' || r.city?.toLowerCase().includes(search.toLowerCase()) || r.state?.toLowerCase().includes(search.toLowerCase()))
+  ).sort((a,b)=>(a.sort_order??0)-(b.sort_order??0)||(a.city??'').localeCompare(b.city??''));
+
+  const filteredCountries = countries.filter(c=>
+    c.toLowerCase().includes(countrySearch.toLowerCase())
+  );
+
+  const activeCount  = rows.filter(r=>r.is_active).length;
+  const countryCount = countries.length;
+  const stateCount   = [...new Set(rows.map(r=>r.country+'|'+r.state))].length;
+
+  async function toggleActive(row:Row) {
+    await fetch(`${BACKEND}/api/admin/location`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:row.id,is_active:!row.is_active}),
+    });
+    onReload();
+  }
+
+  async function deleteRow(row:Row) {
+    if(!confirm(`Delete "${row.city||row.state}"?`)) return;
+    await fetch(`${BACKEND}/api/admin/location`,{
+      method:'DELETE',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:row.id}),
+    });
+    showToast('Deleted','✅'); onReload();
+  }
+
+  async function handleSave(d:Row) {
+    setSaving(true);
+    const method = d.id ? 'PATCH' : 'POST';
+    const res = await fetch(`${BACKEND}/api/admin/location`,{
+      method, headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(d),
+    });
+    const json = await res.json();
+    setSaving(false);
+    if(!res.ok){ showToast(json.error||'Failed','❌'); return; }
+    showToast(d.id?'Updated!':'Added!','✅');
+    setModalOpen(false); setEditRow(undefined);
+    onReload();
+  }
+
+  return (
+    <>
+      <div className="topbar">
+        <div className="topbar-left">
+          <h1>Location <span>Master</span></h1>
+          <p>Countries, states & cities used across all school forms and registration pages</p>
+        </div>
+        <div className="topbar-right">
+          <button className="btn btn-primary" onClick={()=>{setEditRow(undefined);setModalOpen(true);}}>+ Add Location</button>
+        </div>
+      </div>
+
+      {/* Stats bar */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18}}>
+        {[
+          {label:'Total Entries', value:rows.length,     color:'var(--acc)'},
+          {label:'Active',        value:activeCount,     color:'#4ADE80'},
+          {label:'Countries',     value:countryCount,    color:'#f59e0b'},
+          {label:'States/Regions',value:stateCount,      color:'var(--m)'},
+        ].map(s=>(
+          <div key={s.label} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+            <span style={{fontWeight:800,fontSize:22,color:s.color,fontFamily:'Sora'}}>{s.value}</span>
+            <span style={{fontSize:11,color:'var(--m)',fontWeight:500}}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Two-panel layout */}
+      <div style={{display:'grid',gridTemplateColumns:'220px 1fr',gap:12,height:'calc(100vh - 300px)',minHeight:0}}>
+
+        {/* Left — country list */}
+        <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          <div style={{padding:10,borderBottom:'1px solid var(--bd)'}}>
+            <input
+              placeholder="Search countries…"
+              value={countrySearch}
+              onChange={e=>setCountrySearch(e.target.value)}
+              style={{...IS,padding:'8px 12px',fontSize:12}}
+            />
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:6}}>
+            {filteredCountries.map(c=>{
+              const cnt = rows.filter(r=>r.country===c).length;
+              const isActive = c===activeCountry;
+              return (
+                <button key={c} onClick={()=>setActiveCountry(c)}
+                  style={{
+                    width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 10px',
+                    borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',marginBottom:2,
+                    background: isActive?'rgba(79,70,229,0.15)':'transparent',
+                    borderLeft: isActive?'3px solid var(--acc)':'3px solid transparent',
+                    transition:'all .12s',
+                  }}>
+                  <span style={{fontSize:18,flexShrink:0}}>{COUNTRY_EMOJI[c]??'🌍'}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:isActive?700:500,color:isActive?'var(--acc)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c}</div>
+                    <div style={{fontSize:10,color:'var(--m2)'}}>{cnt} entries</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right — state tabs + city rows */}
+        <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+
+          {/* Header */}
+          <div style={{padding:'14px 18px',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
+            <span style={{fontSize:28}}>{COUNTRY_EMOJI[activeCountry]??'🌍'}</span>
+            <div style={{flex:1}}>
+              <h2 style={{fontFamily:'Sora',fontSize:17,fontWeight:800,margin:0,color:'var(--text)'}}>{activeCountry||'Select a country'}</h2>
+              <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{statesInCountry.length} states · {rows.filter(r=>r.country===activeCountry).length} entries</div>
+            </div>
+            <div style={{position:'relative'}}>
+              <input
+                placeholder="Search cities…"
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+                style={{...IS,padding:'7px 12px',fontSize:12,width:180}}
+              />
+            </div>
+          </div>
+
+          {/* State tabs */}
+          <div style={{display:'flex',gap:6,padding:'10px 14px',borderBottom:'1px solid var(--bd)',overflowX:'auto',flexShrink:0,flexWrap:'nowrap'}}>
+            {statesInCountry.map(s=>(
+              <button key={s} onClick={()=>setActiveState(s)}
+                style={{
+                  padding:'5px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',
+                  fontSize:11,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,
+                  background: s===activeState?'var(--acc)':'transparent',
+                  borderColor: s===activeState?'var(--acc)':'var(--bd)',
+                  color: s===activeState?'#fff':'var(--m)',
+                  transition:'all .12s',
+                }}>
+                {s}
+                <span style={{marginLeft:5,fontSize:10,opacity:0.7}}>
+                  ({rows.filter(r=>r.country===activeCountry&&r.state===s).length})
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* City rows */}
+          <div style={{flex:1,overflowY:'auto',padding:14}}>
+            {citiesInState.length===0 ? (
+              <div style={{textAlign:'center',padding:'48px 0',color:'var(--m2)',fontSize:13}}>
+                {activeState ? `No entries for ${activeState}. Add cities above.` : 'Select a state tab above.'}
+              </div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                {citiesInState.map(row=>(
+                  <div key={row.id} style={{
+                    display:'flex',alignItems:'center',gap:12,padding:'10px 14px',
+                    borderRadius:9,border:'1px solid var(--bd)',
+                    background: row.is_active?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.01)',
+                    opacity: row.is_active?1:0.5,
+                    transition:'all .12s',
+                  }}>
+                    <span style={{fontFamily:'monospace',fontSize:11,color:'var(--m2)',width:22,textAlign:'center',flexShrink:0}}>{row.sort_order}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:14,color:'var(--text)'}}>{row.city||<em style={{color:'var(--m)',fontStyle:'normal',fontSize:12}}>(state-level entry)</em>}</div>
+                      <div style={{fontSize:11,color:'var(--m)',marginTop:1}}>{row.state}{row.country!==activeCountry?` · ${row.country}`:''}</div>
+                    </div>
+                    {/* Active toggle */}
+                    <button onClick={()=>toggleActive(row)}
+                      title={row.is_active?'Deactivate':'Activate'}
+                      style={{background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1,color:row.is_active?'#4ADE80':'rgba(255,255,255,0.2)',flexShrink:0}}>
+                      {row.is_active?'●':'○'}
+                    </button>
+                    {/* Edit */}
+                    <button onClick={()=>{setEditRow(row);setModalOpen(true);}}
+                      style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--m)',flexShrink:0}}>
+                      Edit
+                    </button>
+                    {/* Delete */}
+                    <button onClick={()=>deleteRow(row)}
+                      style={{background:'var(--red2,rgba(239,68,68,0.08))',border:'1px solid rgba(239,68,68,0.15)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--red,#ef4444)',flexShrink:0}}>
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {modalOpen&&(
+        <LocationFormModal
+          initial={editRow ?? {country: activeCountry, state: activeState}}
+          onClose={()=>{setModalOpen(false);setEditRow(undefined);}}
+          onSave={handleSave}
+        />
+      )}
+    </>
   );
 }
 
