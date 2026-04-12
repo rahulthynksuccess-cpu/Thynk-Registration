@@ -1213,9 +1213,3 @@ function ProgramFormModal({ initial, onClose, onSave }: { initial:Row; onClose:(
   );
 }
 
-// ── Location data & School/Discount/User/Integration/Trigger/Template forms ──
-// Paste the rest of your original file unchanged from here down.
-// (SchoolFormModal, SchoolsTable, DiscountFormModal, UserFormModal,
-//  IntegrationFormModal, TriggerFormModal, TemplateFormModal,
-//  LocationMasterPage, LocationFormModal, StudentsTable,
-//  FollowUpList, CityHeatmap, Timeline — all unchanged)
