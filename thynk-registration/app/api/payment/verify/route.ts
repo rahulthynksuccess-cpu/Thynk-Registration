@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   }).eq('id', payment.registration_id);
 
   if (newStatus === 'paid') {
-    await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }).catch(() => {});
+    try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
   }
 
   return NextResponse.json({ success: true, status: newStatus });
@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
       await supabase.from('registrations').update({ status: newStatus }).eq('id', payment.registration_id);
 
       if (newStatus === 'paid') {
-        await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }).catch(() => {});
+        try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
       }
 
       if (poll) return NextResponse.json({ status: newStatus, gateway: 'cashfree' });
@@ -151,7 +151,7 @@ export async function GET(req: NextRequest) {
     await supabase.from('registrations').update({ status: newStatus }).eq('id', payment.registration_id);
 
     if (newStatus === 'paid') {
-      await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }).catch(() => {});
+      try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
     }
 
     if (poll) return NextResponse.json({ status: newStatus, gateway: 'easebuzz' });
