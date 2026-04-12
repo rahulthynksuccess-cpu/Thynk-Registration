@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
         if (newStatus === 'paid') {
           await supabase.from('payments').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', paymentId);
           await supabase.from('registrations').update({ status: 'paid' }).eq('id', payment.registration_id);
-          await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }).catch(() => {});
+          try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
           return NextResponse.json({ status: 'paid', gateway: payment.gateway });
         }
       } catch { /* fall through, return current status */ }
@@ -318,10 +318,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (payment?.id && discountCode) {
-      supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }).then(
-        () => {},
-        (err: any) => console.warn('decrement_discount_usage failed:', err?.message)
-      );
+      void (async () => { try { await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }); } catch (err: any) { console.warn('decrement_discount_usage failed:', err?.message); } })();
     }
 
     return NextResponse.json({
