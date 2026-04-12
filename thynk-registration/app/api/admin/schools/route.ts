@@ -1,3 +1,6 @@
+// app/api/admin/schools/route.ts
+// Full CRUD for schools — GET supports ?status= filter for approval queue
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 
@@ -15,7 +18,6 @@ async function requireSuperAdmin(req: NextRequest) {
   return data ? user : null;
 }
 
-/** Returns 'INR' for India, 'USD' for all other countries */
 function currencyForCountry(country: string): string {
   return (country || '').toLowerCase() === 'india' ? 'INR' : 'USD';
 }
@@ -23,20 +25,34 @@ function currencyForCountry(country: string): string {
 export async function GET(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { searchParams } = new URL(req.url);
+  const statusFilter = searchParams.get('status'); // 'registered' | 'pending_approval' | 'approved' | null (= all)
+
   const service = createServiceClient();
-  const { data: schools } = await service
+  let query = service
     .from('schools')
-    .select(`id, school_code, name, org_name, logo_url, branding, gateway_config, is_active, is_registration_active,
-             city, state, country, address, pin_code, contact_persons,
-             project_id, project_slug, discount_code, created_at,
-             pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)`)
+    .select(`
+      id, school_code, name, org_name, logo_url, branding, gateway_config,
+      is_active, is_registration_active, status, approved_at, approved_by,
+      city, state, country, address, pin_code, contact_persons,
+      project_id, project_slug, discount_code, created_at,
+      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)
+    `)
     .order('created_at', { ascending: false });
+
+  if (statusFilter) {
+    query = query.eq('status', statusFilter) as any;
+  }
+
+  const { data: schools } = await query;
   return NextResponse.json({ schools: schools ?? [] });
 }
 
 export async function POST(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const service = createServiceClient();
   const body = await req.json();
   const {
@@ -45,17 +61,16 @@ export async function POST(req: NextRequest) {
     address, pin_code, contact_persons,
     project_id, school_price, currency: bodyCurrency,
     discount_code,
-    primary_color, accent_color, is_active, is_registration_active,
+    primary_color, accent_color,
+    is_active, is_registration_active,
   } = body;
 
   if (!school_code || !name || !org_name || !project_id || !school_price)
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-  // Resolve currency: use body override or derive from country
   const resolvedCountry  = country || 'India';
   const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
 
-  // Get program for redirect URL and slug
   const { data: program } = await service
     .from('projects')
     .select('slug, name, base_url')
@@ -68,28 +83,36 @@ export async function POST(req: NextRequest) {
   const redirectURL = `${baseOrigin}/registration/${program.slug}/${code}`;
   const discCode    = (discount_code || code).toUpperCase();
 
-  const { data: school, error } = await service.from('schools').insert({
-    school_code:      code,
-    name,
-    org_name,
-    city:             city    || null,
-    state:            state   || null,
-    country:          resolvedCountry,
-    address:          address || null,
-    pin_code:         pin_code || null,
-    contact_persons:  contact_persons || [],
-    project_id,
-    project_slug:     program.slug,
-    discount_code:    discCode,
-    branding: {
-      primaryColor: primary_color || '#4f46e5',
-      accentColor:  accent_color  || '#8b5cf6',
-      redirectURL,
-    },
-    gateway_config: {},
-    is_active: is_active !== false,
-    is_registration_active: is_registration_active !== false,
-  }).select().single();
+  const { data: school, error } = await service
+    .from('schools')
+    .insert({
+      school_code:            code,
+      name,
+      org_name,
+      city:                   city     || null,
+      state:                  state    || null,
+      country:                resolvedCountry,
+      address:                address  || null,
+      pin_code:               pin_code || null,
+      contact_persons:        contact_persons || [],
+      project_id,
+      project_slug:           program.slug,
+      discount_code:          discCode,
+      // Admin-created schools are approved immediately
+      status:                 'approved',
+      is_active:              is_active !== false,
+      is_registration_active: is_registration_active !== false,
+      approved_at:            new Date().toISOString(),
+      approved_by:            user.id,
+      branding: {
+        primaryColor: primary_color || '#4f46e5',
+        accentColor:  accent_color  || '#8b5cf6',
+        redirectURL,
+      },
+      gateway_config: {},
+    })
+    .select()
+    .single();
 
   if (error)
     return NextResponse.json(
@@ -97,7 +120,6 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
 
-  // Create pricing row
   await service.from('pricing').insert({
     school_id:        school.id,
     program_name:     program.name,
@@ -109,19 +131,13 @@ export async function POST(req: NextRequest) {
     is_active: true,
   });
 
-  // Auto-create default discount code from school code
-  // discount_amount = 0 by default — admin can edit in Discount Codes tab
-  const { error: dcErr } = await service.from('discount_codes').insert({
+  await service.from('discount_codes').insert({
     school_id:       school.id,
     code:            discCode,
     discount_amount: 0,
     is_active:       true,
     max_uses:        null,
-  });
-  // Ignore duplicate error — code may already exist if re-creating
-  if (dcErr && dcErr.code !== '23505') {
-    console.warn('discount_codes insert warning:', dcErr.message);
-  }
+  }).throwOnError().catch(() => null);
 
   return NextResponse.json({ school }, { status: 201 });
 }
@@ -129,6 +145,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const service = createServiceClient();
   const {
     id,
@@ -138,17 +155,16 @@ export async function PATCH(req: NextRequest) {
     project_id,
     country,
     discount_code,
-    address,
-    pin_code,
-    contact_persons,
+    address, pin_code, contact_persons,
     is_registration_active,
     ...rest
   } = await req.json();
+
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
   const { data: existing } = await service
     .from('schools')
-    .select('branding, project_slug, country, discount_code')
+    .select('branding, project_slug, country, discount_code, school_code, status')
     .eq('id', id)
     .single();
 
@@ -156,21 +172,23 @@ export async function PATCH(req: NextRequest) {
   if (primary_color) branding = { ...branding, primaryColor: primary_color };
   if (accent_color)  branding = { ...branding, accentColor:  accent_color  };
 
-  const resolvedCountry = country || existing?.country || 'India';
+  const resolvedCountry  = country || existing?.country || 'India';
   const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
 
-  let updatePayload: Record<string, any> = {
+  // Preserve existing status — do not allow PATCH to accidentally reset it
+  const updatePayload: Record<string, any> = {
     ...rest,
     branding,
     country: resolvedCountry,
   };
 
-  // Always update discount_code when provided (even empty → keep old)
-  if (discount_code !== undefined && discount_code !== null && discount_code !== '')
-    updatePayload.discount_code = discount_code.toUpperCase();
-  if (address !== undefined)               updatePayload.address               = address || null;
-  if (pin_code !== undefined)              updatePayload.pin_code              = pin_code || null;
-  if (contact_persons !== undefined)       updatePayload.contact_persons       = contact_persons ?? [];
+  // Strip status from rest if accidentally passed — PATCH must not change approval status
+  delete updatePayload.status;
+
+  if (discount_code)                        updatePayload.discount_code          = discount_code.toUpperCase();
+  if (address !== undefined)                updatePayload.address                = address || null;
+  if (pin_code !== undefined)               updatePayload.pin_code               = pin_code || null;
+  if (contact_persons !== undefined)        updatePayload.contact_persons        = contact_persons ?? [];
   if (is_registration_active !== undefined) updatePayload.is_registration_active = !!is_registration_active;
 
   if (project_id) {
@@ -182,17 +200,9 @@ export async function PATCH(req: NextRequest) {
     if (program) {
       updatePayload.project_id   = project_id;
       updatePayload.project_slug = program.slug;
-      // Update redirect URL in branding
-      const { data: schoolRec } = await service
-        .from('schools')
-        .select('school_code')
-        .eq('id', id)
-        .single();
-      if (schoolRec) {
-        const baseOrigin = program.base_url || 'https://www.thynksuccess.com';
-        branding.redirectURL = `${baseOrigin}/registration/${program.slug}/${schoolRec.school_code}`;
-        updatePayload.branding = branding;
-      }
+      const baseOrigin = program.base_url || 'https://www.thynksuccess.com';
+      branding.redirectURL = `${baseOrigin}/registration/${program.slug}/${existing?.school_code}`;
+      updatePayload.branding = branding;
     }
   }
 
@@ -205,25 +215,18 @@ export async function PATCH(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  // Update pricing
   if (school_price !== undefined) {
-    await service
-      .from('pricing')
-      .update({
-        base_amount: Math.round(Number(school_price)),
-        currency:    resolvedCurrency,
-      })
+    await service.from('pricing')
+      .update({ base_amount: Math.round(Number(school_price)), currency: resolvedCurrency })
       .eq('school_id', id)
       .eq('is_active', true);
   }
 
-  // Sync discount code on discount_codes table if changed
-  if (discount_code) {
-    await service
-      .from('discount_codes')
+  if (discount_code && existing?.discount_code) {
+    await service.from('discount_codes')
       .update({ code: discount_code.toUpperCase() })
       .eq('school_id', id)
-      .eq('code', existing?.discount_code ?? '');
+      .eq('code', existing.discount_code);
   }
 
   return NextResponse.json({ school: data });
