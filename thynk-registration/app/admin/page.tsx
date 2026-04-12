@@ -4,6 +4,7 @@ import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
 import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithApproval';
 import { SchoolLogPanel } from '@/components/admin/SchoolLogPanel';
 import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
+import { ReportingPage } from '@/components/admin/ReportingPage';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -58,7 +59,6 @@ export default function AdminDashboard() {
   const [trendDays, setTrendDays]     = useState(7);
   const accessTokenRef                = useRef<string>('');
 
-  // Management state
   const [programs,     setPrograms]     = useState<Row[]>([]);
   const [schools,      setSchools]      = useState<Row[]>([]);
   const [discounts,    setDiscounts]    = useState<Row[]>([]);
@@ -69,7 +69,6 @@ export default function AdminDashboard() {
   const [locations,    setLocations]    = useState<Row[]>([]);
   const [activityLogs, setActivityLogs] = useState<Row[]>([]);
 
-  // Logs state
   const [logSchools,         setLogSchools]         = useState<Row[]>([]);
   const [logSelectedSchool,  setLogSelectedSchool]  = useState<Row|null>(null);
   const [logAllStudents,     setLogAllStudents]      = useState<Row[]>([]);
@@ -79,7 +78,6 @@ export default function AdminDashboard() {
   const [logEmailLoading,    setLogEmailLoading]     = useState(false);
   const [logWaLoading,       setLogWaLoading]        = useState(false);
 
-  // Form modals
   const [programForm,     setProgramForm]     = useState<Row|null>(null);
   const [schoolForm,      setSchoolForm]      = useState<Row|null>(null);
   const [discountForm,    setDiscountForm]     = useState<Row|null>(null);
@@ -109,13 +107,11 @@ export default function AdminDashboard() {
     return () => subscription.unsubscribe();
   }, [router]);
 
-  // ── Auth headers helper ───────────────────────────────────────────
   const authHeaders = useCallback((): HeadersInit => ({
     'Content-Type': 'application/json',
     ...(accessTokenRef.current ? { 'Authorization': `Bearer ${accessTokenRef.current}` } : {}),
   }), []);
 
-  // ── Loaders ──────────────────────────────────────────────────────
   const api = useCallback((path: string, opts?: RequestInit) =>
     fetch(`${BACKEND}${path}`, {
       credentials: 'include',
@@ -144,11 +140,12 @@ export default function AdminDashboard() {
   const loadLocations    = useCallback(async () => { const d = await api('/api/admin/location?type=all&includeInactive=true'); setLocations(d.locations??[]); }, [api]);
 
   useEffect(() => { if (!user) return; loadRegistrations(); const t = setInterval(loadRegistrations, 10*60*1000); return () => clearInterval(t); }, [user, loadRegistrations]);
+
   useEffect(() => {
     if (!user) return;
     if (activePage === 'overview')     loadPrograms();
     if (activePage === 'reporting')  { loadPrograms(); loadSchools(); }
-    if (activePage === 'students')     loadPrograms();  // ← needed for Program filter dropdown
+    if (activePage === 'students')     loadPrograms();
     if (activePage === 'programs')     loadPrograms();
     if (activePage === 'schools')      loadSchools();
     if (activePage === 'discounts')    loadDiscounts();
@@ -158,9 +155,7 @@ export default function AdminDashboard() {
     if (activePage === 'templates')    loadTemplates();
     if (activePage === 'locations')    loadLocations();
     if (activePage === 'recent') {
-      api('/api/admin/activity-logs?limit=200')
-        .then((d: any) => setActivityLogs(d.logs ?? []))
-        .catch(() => {});
+      api('/api/admin/activity-logs?limit=200').then((d: any) => setActivityLogs(d.logs ?? [])).catch(() => {});
     }
     if (activePage === 'logs_schools' || activePage === 'logs_students' || activePage === 'logs_email' || activePage === 'logs_whatsapp') {
       loadSchools();
@@ -184,7 +179,6 @@ export default function AdminDashboard() {
 
   async function doLogout() { await createClient().auth.signOut(); router.push('/admin/login'); }
 
-  // ── Charts ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!allRows.length) return;
     if (activePage==='overview')  renderOverviewCharts();
@@ -198,7 +192,6 @@ export default function AdminDashboard() {
     if (!(window as any).Chart) return;
     const C = (window as any).Chart;
     const filtered = overviewProgram ? allRows.filter(r=>r.program_name===overviewProgram) : allRows;
-    const paid = filtered.filter(r=>r.payment_status==='paid');
     const now  = new Date();
     dc('daily');
     const labels:string[]=[],paidArr:number[]=[],totalArr:number[]=[];
@@ -316,16 +309,12 @@ export default function AdminDashboard() {
         {/* ── Main ────────────────────────────────────────────────── */}
         <main className="main-content">
 
-          {/* Overview */}
+          {/* ── OVERVIEW ────────────────────────────────────────────── */}
           <div className={`page${activePage==='overview'?' active':''}`}>
             <div className="topbar">
               <div className="topbar-left"><h1>Overview <span>Dashboard</span></h1><p>{lastUpdated}</p></div>
               <div className="topbar-right">
-                <select
-                  value={overviewProgram}
-                  onChange={e=>setOverviewProgram(e.target.value)}
-                  style={{border:'1.5px solid var(--bd)',borderRadius:10,padding:'7px 14px',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',color:'var(--text)',background:'var(--card)',cursor:'pointer',minWidth:160}}
-                >
+                <select value={overviewProgram} onChange={e=>setOverviewProgram(e.target.value)} style={{border:'1.5px solid var(--bd)',borderRadius:10,padding:'7px 14px',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',color:'var(--text)',background:'var(--card)',cursor:'pointer',minWidth:160}}>
                   <option value="">All Programs</option>
                   {programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
                 </select>
@@ -373,19 +362,18 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Reporting */}
+          {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
-           <ReportingPage allRows={allRows} programs={programs} schools={schools} />
+            <ReportingPage allRows={allRows} programs={programs} schools={schools} />
           </div>
 
-          {/* Students */}
+          {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
             <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{allRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
-            {/* ↓ programs prop added for Program filter dropdown */}
             <StudentsTable rows={allRows} programs={programs} onRowClick={setModal} />
           </div>
 
-          {/* Trends */}
+          {/* ── TRENDS ──────────────────────────────────────────────── */}
           <div className={`page${activePage==='trends'?' active':''}`}>
             <div className="topbar"><div className="topbar-left"><h1>Trends <span>Analysis</span></h1></div></div>
             <div className="charts-grid">
@@ -393,19 +381,19 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Follow-Up */}
+          {/* ── FOLLOW-UP ───────────────────────────────────────────── */}
           <div className={`page${activePage==='followup'?' active':''}`}>
             <div className="topbar"><div className="topbar-left"><h1>Follow-Up <span>Tracker</span></h1><p>{followUpCount} need follow-up</p></div></div>
             <FollowUpList rows={allRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status))} onRowClick={setModal} />
           </div>
 
-          {/* Heatmap */}
+          {/* ── HEATMAP ─────────────────────────────────────────────── */}
           <div className={`page${activePage==='heatmap'?' active':''}`}>
             <div className="topbar"><div className="topbar-left"><h1>City <span>Heatmap</span></h1></div></div>
             <CityHeatmap rows={allRows} />
           </div>
 
-          {/* Recent */}
+          {/* ── RECENT ──────────────────────────────────────────────── */}
           <div className={`page${activePage==='recent'?' active':''}`}>
             <div className="topbar">
               <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payments + school registrations</p></div>
@@ -426,7 +414,7 @@ export default function AdminDashboard() {
               <thead><tr><th>Program Name</th><th>Slug</th><th>Base Price INR (₹)</th><th>Base Price USD ($)</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {programs.length===0
-                  ? <tr><td colSpan={6} className="table-empty">No programs yet. Create a program first, then assign schools to it.</td></tr>
+                  ? <tr><td colSpan={6} className="table-empty">No programs yet.</td></tr>
                   : programs.map(p=>(
                     <tr key={p.id}>
                       <td style={{fontWeight:700}}>{p.name}</td>
@@ -493,23 +481,17 @@ export default function AdminDashboard() {
               <div className="topbar-left"><h1>Admin <span>Users</span></h1></div>
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setUserForm({})}>+ Add Admin</button>}</div>
             </div>
-            {/* School Dashboard URL info banner */}
             <div style={{background:'var(--acc3)',border:'1.5px solid rgba(79,70,229,.2)',borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
               <div style={{fontSize:22}}>🏫</div>
               <div style={{flex:1,minWidth:200}}>
                 <div style={{fontWeight:700,fontSize:13,color:'var(--acc)',marginBottom:3}}>School Admin Portal URL</div>
-                <div style={{fontSize:11,color:'var(--m)',marginBottom:6}}>Share this link with school admins so they can log in to their dashboard and view their registrations.</div>
+                <div style={{fontSize:11,color:'var(--m)',marginBottom:6}}>Share this link with school admins so they can log in to their dashboard.</div>
                 <code style={{fontFamily:'monospace',fontSize:12,color:'var(--text)',background:'var(--bg)',padding:'6px 10px',borderRadius:7,display:'inline-block',wordBreak:'break-all'}}>
                   {(BACKEND||'https://thynk-registration.vercel.app')}/school/login
                 </code>
               </div>
-              <button
-                onClick={()=>{navigator.clipboard.writeText(`${BACKEND||'https://thynk-registration.vercel.app'}/school/login`);showToast('School portal URL copied!','✅');}}
-                style={{padding:'8px 16px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0}}
-              >📋 Copy URL</button>
-              <a href="/school/login" target="_blank" rel="noreferrer"
-                style={{padding:'8px 14px',borderRadius:9,border:'1.5px solid var(--acc)',color:'var(--acc)',fontSize:12,fontWeight:700,textDecoration:'none',flexShrink:0}}
-              >↗ Open Portal</a>
+              <button onClick={()=>{navigator.clipboard.writeText(`${BACKEND||'https://thynk-registration.vercel.app'}/school/login`);showToast('School portal URL copied!','✅');}} style={{padding:'8px 16px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0}}>📋 Copy URL</button>
+              <a href="/school/login" target="_blank" rel="noreferrer" style={{padding:'8px 14px',borderRadius:9,border:'1.5px solid var(--acc)',color:'var(--acc)',fontSize:12,fontWeight:700,textDecoration:'none',flexShrink:0}}>↗ Open Portal</a>
             </div>
             <div className="tbl-wrap"><table>
               <thead><tr><th>Email</th><th>Role</th><th>School Access</th><th>Added</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
@@ -540,48 +522,21 @@ export default function AdminDashboard() {
             <div className="int-grid">
               {['razorpay','cashfree','easebuzz','paypal'].map(provider => {
                 const cfg = integrations.find(i=>i.provider===provider);
-                return (
-                  <IntCard key={provider} provider={provider} cfg={cfg}
-                    onEdit={()=>setIntegrationForm(cfg??{provider})}
-                    onToggle={async()=>{
-                      if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
-                      loadIntegrations();
-                    }}
-                  />
-                );
+                return (<IntCard key={provider} provider={provider} cfg={cfg} onEdit={()=>setIntegrationForm(cfg??{provider})} onToggle={async()=>{ if(!cfg) return; await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})}); loadIntegrations(); }} />);
               })}
             </div>
             <SectionTitle>✉️ Email Providers</SectionTitle>
             <div className="int-grid">
               {['smtp','sendgrid','aws_ses'].map(provider => {
                 const cfg = integrations.find(i=>i.provider===provider);
-                return (
-                  <IntCard key={provider} provider={provider} cfg={cfg}
-                    onEdit={()=>setIntegrationForm(cfg??{provider})}
-                    onToggle={async()=>{
-                      if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
-                      loadIntegrations();
-                    }}
-                  />
-                );
+                return (<IntCard key={provider} provider={provider} cfg={cfg} onEdit={()=>setIntegrationForm(cfg??{provider})} onToggle={async()=>{ if(!cfg) return; await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})}); loadIntegrations(); }} />);
               })}
             </div>
             <SectionTitle>💬 WhatsApp Providers</SectionTitle>
             <div className="int-grid">
               {['whatsapp_cloud','twilio'].map(provider => {
                 const cfg = integrations.find(i=>i.provider===provider);
-                return (
-                  <IntCard key={provider} provider={provider} cfg={cfg}
-                    onEdit={()=>setIntegrationForm(cfg??{provider})}
-                    onToggle={async()=>{
-                      if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
-                      loadIntegrations();
-                    }}
-                  />
-                );
+                return (<IntCard key={provider} provider={provider} cfg={cfg} onEdit={()=>setIntegrationForm(cfg??{provider})} onToggle={async()=>{ if(!cfg) return; await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})}); loadIntegrations(); }} />);
               })}
             </div>
           </div>
@@ -595,85 +550,52 @@ export default function AdminDashboard() {
             <div className="tbl-wrap"><table>
               <thead><tr><th>Event</th><th>Channel</th><th>Template</th><th>School</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
-                {triggers.length===0
-                  ? <tr><td colSpan={6} className="table-empty">No triggers yet.</td></tr>
-                  : triggers.map(t=>(
-                    <tr key={t.id}>
-                      <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{t.event_type}</code></td>
-                      <td><span className="gw-tag">{t.channel}</span></td>
-                      <td style={{fontSize:12}}>{t.notification_templates?.name??'—'}</td>
-                      <td style={{fontSize:12,color:'var(--m)'}}>{t.school_id??'All Schools'}</td>
-                      <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
-                      <td style={{display:'flex',gap:6}}>
-                        <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTriggerForm(t)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete trigger?'))return;await fetch(`${BACKEND}/api/admin/triggers`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:t.id})});loadTriggers();}}>Delete</button>
-                      </td>
-                    </tr>
-                  ))
-                }
+                {triggers.length===0 ? <tr><td colSpan={6} className="table-empty">No triggers yet.</td></tr>
+                : triggers.map(t=>(
+                  <tr key={t.id}>
+                    <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{t.event_type}</code></td>
+                    <td><span className="gw-tag">{t.channel}</span></td>
+                    <td style={{fontSize:12}}>{t.notification_templates?.name??'—'}</td>
+                    <td style={{fontSize:12,color:'var(--m)'}}>{t.school_id??'All Schools'}</td>
+                    <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
+                    <td style={{display:'flex',gap:6}}>
+                      <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTriggerForm(t)}>Edit</button>
+                      <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete trigger?'))return;await fetch(`${BACKEND}/api/admin/triggers`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:t.id})});loadTriggers();}}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table></div>
           </div>
 
           {/* ── LOGS: SCHOOLS ─────────────────────────────────────────── */}
           <div className={`page${activePage==='logs_schools'?' active':''}`}>
-            <div className="topbar">
-              <div className="topbar-left"><h1>School <span>Logs</span></h1><p>Activity, registrations, email & WhatsApp logs per school</p></div>
-            </div>
+            <div className="topbar"><div className="topbar-left"><h1>School <span>Logs</span></h1><p>Activity, registrations, email & WhatsApp logs per school</p></div></div>
             {activePage==='logs_schools' && (
               <div style={{padding:'0 0 24px'}}>
                 <div style={{marginBottom:16}}>
-                  <select
-                    style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:280}}
-                    value={logSelectedSchool?.id??''}
-                    onChange={e=>setLogSelectedSchool(schools.find(s=>s.id===e.target.value)??null)}
-                  >
+                  <select style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:280}} value={logSelectedSchool?.id??''} onChange={e=>setLogSelectedSchool(schools.find(s=>s.id===e.target.value)??null)}>
                     <option value="">— Select a school —</option>
                     {schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
                   </select>
                 </div>
-                {logSelectedSchool ? (
-                  <SchoolLogPanel
-                    schoolId={logSelectedSchool.id}
-                    schoolCode={logSelectedSchool.school_code}
-                    authHeaders={authHeaders}
-                    BACKEND={BACKEND}
-                  />
-                ) : (
-                  <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a school above to view its logs.</div>
-                )}
+                {logSelectedSchool ? <SchoolLogPanel schoolId={logSelectedSchool.id} schoolCode={logSelectedSchool.school_code} authHeaders={authHeaders} BACKEND={BACKEND} /> : <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a school above to view its logs.</div>}
               </div>
             )}
           </div>
 
           {/* ── LOGS: STUDENTS ────────────────────────────────────────── */}
           <div className={`page${activePage==='logs_students'?' active':''}`}>
-            <div className="topbar">
-              <div className="topbar-left"><h1>Student <span>Logs</span></h1><p>Email & WhatsApp notification logs per student registration</p></div>
-            </div>
+            <div className="topbar"><div className="topbar-left"><h1>Student <span>Logs</span></h1><p>Email & WhatsApp notification logs per student registration</p></div></div>
             {activePage==='logs_students' && (
               <div style={{padding:'0 0 24px'}}>
                 <div style={{marginBottom:16}}>
-                  <select
-                    style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:340}}
-                    value={logSelectedStudent?.id??''}
-                    onChange={e=>setLogSelectedStudent(logAllStudents.find(s=>s.id===e.target.value)??null)}
-                  >
+                  <select style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:340}} value={logSelectedStudent?.id??''} onChange={e=>setLogSelectedStudent(logAllStudents.find(s=>s.id===e.target.value)??null)}>
                     <option value="">— Select a student —</option>
                     {logAllStudents.map(s=><option key={s.id} value={s.id}>{s.student_name} · {s.parent_email||s.parent_phone||''} ({s.school_code||''})</option>)}
                   </select>
                 </div>
-                {logSelectedStudent ? (
-                  <StudentLogPanel
-                    registrationId={logSelectedStudent.id}
-                    studentEmail={logSelectedStudent.parent_email??''}
-                    studentPhone={logSelectedStudent.parent_phone??''}
-                    authHeaders={authHeaders}
-                    BACKEND={BACKEND}
-                  />
-                ) : (
-                  <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a student above to view notification logs.</div>
-                )}
+                {logSelectedStudent ? <StudentLogPanel registrationId={logSelectedStudent.id} studentEmail={logSelectedStudent.parent_email??''} studentPhone={logSelectedStudent.parent_phone??''} authHeaders={authHeaders} BACKEND={BACKEND} /> : <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a student above to view notification logs.</div>}
               </div>
             )}
           </div>
@@ -687,21 +609,18 @@ export default function AdminDashboard() {
             <div className="tbl-wrap"><table>
               <thead><tr><th>Time</th><th>Event</th><th>Recipient</th><th>School</th><th>Student</th><th>Status</th></tr></thead>
               <tbody>
-                {logEmailLoading
-                  ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
-                  : logEmailRows.length===0
-                    ? <tr><td colSpan={6} className="table-empty">No email logs found.</td></tr>
-                    : logEmailRows.map((r,i)=>(
-                      <tr key={r.id??i}>
-                        <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
-                        <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
-                        <td style={{fontSize:12}}>{r.recipient??r.to_email??'—'}</td>
-                        <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
-                        <td style={{fontSize:12}}>{r.student_name??'—'}</td>
-                        <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
-                      </tr>
-                    ))
-                }
+                {logEmailLoading ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
+                : logEmailRows.length===0 ? <tr><td colSpan={6} className="table-empty">No email logs found.</td></tr>
+                : logEmailRows.map((r,i)=>(
+                  <tr key={r.id??i}>
+                    <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
+                    <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
+                    <td style={{fontSize:12}}>{r.recipient??r.to_email??'—'}</td>
+                    <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
+                    <td style={{fontSize:12}}>{r.student_name??'—'}</td>
+                    <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
+                  </tr>
+                ))}
               </tbody>
             </table></div>
           </div>
@@ -715,21 +634,18 @@ export default function AdminDashboard() {
             <div className="tbl-wrap"><table>
               <thead><tr><th>Time</th><th>Event</th><th>Phone</th><th>School</th><th>Student</th><th>Status</th></tr></thead>
               <tbody>
-                {logWaLoading
-                  ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
-                  : logWaRows.length===0
-                    ? <tr><td colSpan={6} className="table-empty">No WhatsApp logs found.</td></tr>
-                    : logWaRows.map((r,i)=>(
-                      <tr key={r.id??i}>
-                        <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
-                        <td><code style={{background:'rgba(37,211,102,0.12)',color:'#25d366',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
-                        <td style={{fontSize:12}}>{r.recipient??r.to_phone??'—'}</td>
-                        <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
-                        <td style={{fontSize:12}}>{r.student_name??'—'}</td>
-                        <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
-                      </tr>
-                    ))
-                }
+                {logWaLoading ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
+                : logWaRows.length===0 ? <tr><td colSpan={6} className="table-empty">No WhatsApp logs found.</td></tr>
+                : logWaRows.map((r,i)=>(
+                  <tr key={r.id??i}>
+                    <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
+                    <td><code style={{background:'rgba(37,211,102,0.12)',color:'#25d366',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
+                    <td style={{fontSize:12}}>{r.recipient??r.to_phone??'—'}</td>
+                    <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
+                    <td style={{fontSize:12}}>{r.student_name??'—'}</td>
+                    <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
+                  </tr>
+                ))}
               </tbody>
             </table></div>
           </div>
@@ -740,28 +656,23 @@ export default function AdminDashboard() {
               <div className="topbar-left"><h1>Message <span>Templates</span></h1><p>Email & WhatsApp message drafts</p></div>
               <div className="topbar-right"><button className="btn btn-primary" onClick={()=>setTemplateForm({})}>+ New Template</button></div>
             </div>
-            <p style={{fontSize:12,color:'var(--m)',marginBottom:16,padding:'0 4px'}}>
-              💡 Use <code style={{background:'var(--acc3)',color:'var(--acc)',padding:'1px 6px',borderRadius:4}}>{'{{student_name}}'}</code> <code style={{background:'var(--acc3)',color:'var(--acc)',padding:'1px 6px',borderRadius:4}}>{'{{school_name}}'}</code> <code style={{background:'var(--acc3)',color:'var(--acc)',padding:'1px 6px',borderRadius:4}}>{'{{amount}}'}</code> <code style={{background:'var(--acc3)',color:'var(--acc)',padding:'1px 6px',borderRadius:4}}>{'{{txn_id}}'}</code> as placeholders.
-            </p>
             <div className="tbl-wrap"><table>
               <thead><tr><th>Name</th><th>Channel</th><th>Subject</th><th>Preview</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
-                {templates.length===0
-                  ? <tr><td colSpan={6} className="table-empty">No templates yet.</td></tr>
-                  : templates.map(t=>(
-                    <tr key={t.id}>
-                      <td style={{fontWeight:700}}>{t.name}</td>
-                      <td><span className="gw-tag">{t.channel}</span></td>
-                      <td style={{fontSize:12}}>{t.subject??'—'}</td>
-                      <td style={{fontSize:11,color:'var(--m)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.body?.slice(0,80)}…</td>
-                      <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
-                      <td style={{display:'flex',gap:6}}>
-                        <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTemplateForm(t)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete template?'))return;await fetch(`${BACKEND}/api/admin/templates`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:t.id})});loadTemplates();}}>Delete</button>
-                      </td>
-                    </tr>
-                  ))
-                }
+                {templates.length===0 ? <tr><td colSpan={6} className="table-empty">No templates yet.</td></tr>
+                : templates.map(t=>(
+                  <tr key={t.id}>
+                    <td style={{fontWeight:700}}>{t.name}</td>
+                    <td><span className="gw-tag">{t.channel}</span></td>
+                    <td style={{fontSize:12}}>{t.subject??'—'}</td>
+                    <td style={{fontSize:11,color:'var(--m)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.body?.slice(0,80)}…</td>
+                    <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
+                    <td style={{display:'flex',gap:6}}>
+                      <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTemplateForm(t)}>Edit</button>
+                      <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete template?'))return;await fetch(`${BACKEND}/api/admin/templates`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:t.id})});loadTemplates();}}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table></div>
           </div>
@@ -774,7 +685,7 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* Student detail modal */}
+      {/* ── Student detail modal ──────────────────────────────────── */}
       {modal&&(
         <div className="modal-overlay show" onClick={e=>{if(e.target===e.currentTarget)setModal(null);}}>
           <div className="modal">
@@ -791,7 +702,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Drill-down modal */}
+      {/* ── Drill-down modal ──────────────────────────────────────── */}
       {drillData&&(
         <div className="drill-overlay show" onClick={e=>{if(e.target===e.currentTarget)setDrillData(null);}}>
           <div className="drill-modal">
@@ -817,256 +728,6 @@ export default function AdminDashboard() {
       {triggerForm!==null&&<TriggerFormModal initial={triggerForm} schools={schools} templates={templates} onClose={()=>setTriggerForm(null)} onSave={async(data)=>{await saveForm('/api/admin/triggers',data,()=>{setTriggerForm(null);loadTriggers();},data.id?'Trigger updated!':'Trigger created!');}} />}
       {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
     </>
-  );
-}
-
-// ── Reporting Page ─────────────────────────────────────────────────
-const TIMELINE_OPTIONS = [
-  { label: 'Today',        days: 0  },
-  { label: 'Last 5 Days',  days: 5  },
-  { label: 'Last 10 Days', days: 10 },
-  { label: 'Last 15 Days', days: 15 },
-  { label: 'Last 30 Days', days: 30 },
-  { label: 'Current Year', days: -1 },
-];
-
-function filterByTimeline(rows: Row[], days: number): Row[] {
-  if (days === -1) { const y = new Date().getFullYear(); return rows.filter(r => new Date(r.created_at).getFullYear() === y); }
-  if (days === 0)  { const t = new Date().toISOString().slice(0,10); return rows.filter(r => r.created_at?.slice(0,10) === t); }
-  const cut = new Date(Date.now() - days * 86400000);
-  return rows.filter(r => new Date(r.created_at) >= cut);
-}
-
-function getSchoolName(r: Row): string {
-  return r.school_name ?? r.parent_school ?? '';
-}
-
-function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; programs: Row[]; schools: Row[] }) {
-  const [timelineDays,  setTimelineDays]  = useState(-1);
-  const [filterProgram, setFilterProgram] = useState('');
-
-  const base        = filterProgram ? allRows.filter(r => r.program_name === filterProgram) : allRows;
-  const rows        = filterByTimeline(base, timelineDays);
-  const paidRows    = rows.filter(r => r.payment_status === 'paid');
-  const fmtAmt = (p: number) => { const v = p / 100; return isNaN(v) ? '0' : v.toLocaleString('en-IN'); };
-
-  const totalSchools   = schools.length;
-  const activeSchools  = schools.filter(s => s.is_active !== false).length;
-  const countrySet     = [...new Set(schools.map(s => s.country ?? 'India').filter(Boolean))];
-  const totalCountries = countrySet.length;
-
-  const countryStats = countrySet.map(c => {
-    const cr  = paidRows.filter(r => (r.country ?? 'India') === c);
-    const sc  = [...new Set(cr.map(r => getSchoolName(r)).filter(Boolean))];
-    return { country: c, schools: sc.length, students: cr.length, rev: cr.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
-  }).filter(c => c.students > 0).sort((a, b) => b.students - a.students);
-
-  const classSet   = [...new Set(paidRows.map(r => r.class_grade).filter(Boolean))].sort();
-  const classStats = classSet.map(c => { const cr = paidRows.filter(r => r.class_grade === c); return { cls: c, total: cr.length }; });
-
-  const genderStats = ['Male', 'Female', 'Other'].map(g => ({ gender: g, total: paidRows.filter(r => r.gender === g).length })).filter(g => g.total > 0);
-  const unknownGender = paidRows.filter(r => !['Male', 'Female', 'Other'].includes(r.gender)).length;
-
-  const genderClassStats = classSet.map(c => {
-    const cr = paidRows.filter(r => r.class_grade === c);
-    const byGender: Record<string, number> = {};
-    ['Male', 'Female', 'Other'].forEach(g => { byGender[g] = cr.filter(r => r.gender === g).length; });
-    return { cls: c, total: cr.length, byGender };
-  });
-
-  const topCountries  = [...new Set(paidRows.map(r => r.country ?? 'India').filter(Boolean))];
-  const top5Countries = topCountries.map(c => ({ c, n: paidRows.filter(r => (r.country ?? 'India') === c).length })).sort((a, b) => b.n - a.n).slice(0, 5).map(x => x.c);
-
-  const classCountryMatrix = classSet.map(cls => {
-    const entry: Record<string, any> = { cls };
-    top5Countries.forEach(c => { entry[c] = paidRows.filter(r => r.class_grade === cls && (r.country ?? 'India') === c).length; });
-    entry.total = paidRows.filter(r => r.class_grade === cls).length;
-    return entry;
-  });
-
-  const inrPaid = paidRows.filter(r => (r.currency ?? 'INR') === 'INR');
-  const usdPaid = paidRows.filter(r => r.currency === 'USD');
-  const inrRev  = inrPaid.reduce((a, r) => a + (r.final_amount ?? 0), 0);
-  const usdRev  = usdPaid.reduce((a, r) => a + (r.final_amount ?? 0), 0);
-  const totalRev = paidRows.reduce((a, r) => a + (r.final_amount ?? 0), 0);
-
-  const gatewaySet   = [...new Set(rows.map(r => r.gateway).filter(Boolean))];
-  const gatewayStats = gatewaySet.map(g => {
-    const all  = rows.filter(r => r.gateway === g);
-    const paid = all.filter(r => r.payment_status === 'paid');
-    return { gw: g, attempts: all.length, paid: paid.length, rev: paid.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
-  }).sort((a, b) => b.paid - a.paid);
-
-  const allSchoolNames = [...new Set(paidRows.map(r => getSchoolName(r)).filter(Boolean))];
-  const topRevenueSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); return { name: s, students: sr.length, rev: sr.reduce((a, r) => a + (r.final_amount ?? 0), 0) }; }).sort((a, b) => b.rev - a.rev).slice(0, 10);
-  const topStudentSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); return { name: s, students: sr.length, rev: sr.reduce((a, r) => a + (r.final_amount ?? 0), 0) }; }).sort((a, b) => b.students - a.students).slice(0, 10);
-
-  const maxOf = (arr: number[]) => Math.max(...arr, 1);
-
-  const MiniBar = ({ val, max, color = 'var(--acc)' }: { val: number; max: number; color?: string }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 3, height: 6, overflow: 'hidden', minWidth: 60 }}>
-        <div style={{ width: `${Math.max(2, Math.round(val / max * 100))}%`, height: '100%', background: color, borderRadius: 3 }} />
-      </div>
-      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', minWidth: 28, textAlign: 'right' }}>{val}</span>
-    </div>
-  );
-
-  const KPI = ({ icon, label, val, sub, color = 'var(--acc)' }: { icon: string; label: string; val: any; sub?: string; color?: string }) => (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: '18px 20px', flex: 1, minWidth: 140 }}>
-      <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'Sora', color }}>{val}</div>
-      {sub && <div style={{ fontSize: 11, color: 'var(--m)', marginTop: 3 }}>{sub}</div>}
-    </div>
-  );
-
-  const Section = ({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 32 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <div style={{ width: 3, height: 16, background: 'var(--acc)', borderRadius: 2, flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{title}</span>
-        {note && <span style={{ fontSize: 10, background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 8px', borderRadius: 20, fontWeight: 600, letterSpacing: '.03em' }}>{note}</span>}
-      </div>
-      {children}
-    </div>
-  );
-
-  const COUNTRY_EMOJI: Record<string, string> = { 'India': '🇮🇳', 'United Arab Emirates': '🇦🇪', 'Saudi Arabia': '🇸🇦', 'Kuwait': '🇰🇼', 'Qatar': '🇶🇦', 'Bahrain': '🇧🇭', 'Oman': '🇴🇲', 'Singapore': '🇸🇬', 'Malaysia': '🇲🇾', 'Indonesia': '🇮🇩', 'Thailand': '🇹🇭', 'Philippines': '🇵🇭', 'Nepal': '🇳🇵', 'Bangladesh': '🇧🇩', 'Sri Lanka': '🇱🇰' };
-  const GW_COLORS: Record<string, string> = { razorpay: '#4f46e5', cashfree: '#10b981', easebuzz: '#f59e0b', paypal: '#0070ba', stripe: '#635bff' };
-  const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32', '#4f46e5', '#4f46e5', '#4f46e5', '#4f46e5', '#4f46e5', '#4f46e5', '#4f46e5'];
-
-  return (
-    <div>
-      <div className="topbar" style={{ marginBottom: 20 }}>
-        <div className="topbar-left">
-          <h1>Reporting <span>Analytics</span></h1>
-          <p>{totalSchools} schools · {paidRows.length.toLocaleString()} paid students · ₹{fmtAmt(totalRev)} collected</p>
-        </div>
-        <div className="topbar-right" style={{ gap: 10 }}>
-          <select value={filterProgram} onChange={e => setFilterProgram(e.target.value)} style={{ border: '1.5px solid var(--bd)', borderRadius: 10, padding: '7px 14px', fontSize: 13, fontFamily: 'DM Sans,sans-serif', outline: 'none', color: 'var(--text)', background: 'var(--card)', cursor: 'pointer', minWidth: 160 }}>
-            <option value="">All Programs</option>
-            {programs.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-          </select>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {TIMELINE_OPTIONS.map(opt => (
-              <button key={opt.label} onClick={() => setTimelineDays(opt.days)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid', cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', background: timelineDays === opt.days ? 'var(--acc)' : 'transparent', borderColor: timelineDays === opt.days ? 'var(--acc)' : 'var(--bd)', color: timelineDays === opt.days ? '#fff' : 'var(--m)', transition: 'all .12s' }}>{opt.label}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <Section title="Summary" note="Schools & countries from school table · rest from paid registrations">
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <KPI icon="🏫" label="Total Schools"     val={totalSchools}   color='var(--acc)'  sub={`${activeSchools} active`} />
-          <KPI icon="🌍" label="Countries Reached" val={totalCountries} color='#8b5cf6'     sub="from school records" />
-          <KPI icon="✅" label="Paid Students"      val={paidRows.length} color='#10b981'   sub={`of ${rows.length} total registrations`} />
-          <KPI icon="📚" label="Classes Covered"    val={classSet.length} color='#06b6d4'   sub="unique grades (paid)" />
-          <KPI icon="₹"  label="INR Collected"      val={`₹${fmtAmt(inrRev)}`} color='#4f46e5' sub={`${inrPaid.length} txns`} />
-          <KPI icon="$"  label="USD Collected"      val={`$${fmtAmt(usdRev)}`} color='#22c55e' sub={`${usdPaid.length} txns`} />
-        </div>
-      </Section>
-
-      <Section title="Country-wise Schools & Students" note="Paid registrations only">
-        {countryStats.length === 0
-          ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations yet</div>
-          : (
-            <div className="tbl-wrap">
-              <table>
-                <thead><tr><th>Country</th><th>Schools (paid regs)</th><th>Paid Students</th><th>Revenue (₹)</th><th>Avg per Student</th></tr></thead>
-                <tbody>
-                  {countryStats.map(c => (
-                    <tr key={c.country}>
-                      <td><span style={{ fontWeight: 700 }}>{COUNTRY_EMOJI[c.country] ?? '🌍'} {c.country}</span></td>
-                      <td><span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>{c.schools}</span></td>
-                      <td><div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 3, height: 6, overflow: 'hidden', minWidth: 60 }}><div style={{ width: `${Math.max(2, Math.round(c.students / maxOf(countryStats.map(x => x.students)) * 100))}%`, height: '100%', background: '#06b6d4', borderRadius: 3 }} /></div><span style={{ fontSize: 12, fontWeight: 700, color: '#10b981', minWidth: 28 }}>{c.students}</span></div></td>
-                      <td><span className="amt">₹{fmtAmt(c.rev)}</span></td>
-                      <td style={{ color: 'var(--m)', fontSize: 12 }}>₹{c.students ? fmtAmt(Math.round(c.rev / c.students)) : '0'}</td>
-                    </tr>
-                  ))}
-                  <tr style={{ background: 'rgba(79,70,229,0.06)', fontWeight: 800 }}>
-                    <td style={{ fontWeight: 800, color: 'var(--acc)' }}>TOTAL</td>
-                    <td><span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>{[...new Set(paidRows.map(r => getSchoolName(r)).filter(Boolean))].length}</span></td>
-                    <td><span style={{ color: '#10b981', fontWeight: 800 }}>{paidRows.length}</span></td>
-                    <td><span className="amt" style={{ fontWeight: 800 }}>₹{fmtAmt(totalRev)}</span></td>
-                    <td style={{ color: 'var(--m)', fontSize: 12 }}>₹{paidRows.length ? fmtAmt(Math.round(totalRev / paidRows.length)) : '0'}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-      </Section>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <div style={{ width: 3, height: 14, background: '#8b5cf6', borderRadius: 2 }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>📚 Class-wise Students</span>
-            <span style={{ fontSize: 10, background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 340, overflowY: 'auto' }}>
-            {classStats.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
-              : classStats.map(c => (
-                <div key={c.cls} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, flexShrink: 0, minWidth: 70, textAlign: 'center' }}>{c.cls}</span>
-                  <MiniBar val={c.total} max={maxOf(classStats.map(x => x.total))} color='#8b5cf6' />
-                </div>
-              ))}
-          </div>
-        </div>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <div style={{ width: 3, height: 14, background: '#ec4899', borderRadius: 2 }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>⚧ Gender-wise</span>
-            <span style={{ fontSize: 10, background: 'rgba(236,72,153,0.1)', color: '#ec4899', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span>
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-            {genderStats.map(g => { const color = g.gender === 'Male' ? '#2563eb' : g.gender === 'Female' ? '#db2777' : '#7c3aed'; const icon = g.gender === 'Male' ? '👦' : g.gender === 'Female' ? '👧' : '🧑'; return (<div key={g.gender} style={{ flex: 1, background: `${color}11`, border: `1.5px solid ${color}33`, borderRadius: 12, padding: '14px', textAlign: 'center' }}><div style={{ fontSize: 24 }}>{icon}</div><div style={{ fontSize: 11, fontWeight: 600, color: 'var(--m)', marginTop: 4 }}>{g.gender}</div><div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Sora', color, marginTop: 4 }}>{g.total}</div><div style={{ fontSize: 10, color: 'var(--m)', marginTop: 2 }}>{paidRows.length ? Math.round(g.total / paidRows.length * 100) : 0}%</div></div>); })}
-            {unknownGender > 0 && (<div style={{ flex: 1, background: 'rgba(148,163,184,0.08)', border: '1.5px solid rgba(148,163,184,0.2)', borderRadius: 12, padding: '14px', textAlign: 'center' }}><div style={{ fontSize: 24 }}>❓</div><div style={{ fontSize: 11, fontWeight: 600, color: 'var(--m)', marginTop: 4 }}>Unknown</div><div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Sora', color: 'var(--m)', marginTop: 4 }}>{unknownGender}</div></div>)}
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--m)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>By Class</div>
-          <div style={{ maxHeight: 160, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-              <thead><tr><th style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--m)', fontWeight: 600 }}>Class</th><th style={{ textAlign: 'center', padding: '4px 6px', color: '#2563eb', fontWeight: 700 }}>M</th><th style={{ textAlign: 'center', padding: '4px 6px', color: '#db2777', fontWeight: 700 }}>F</th><th style={{ textAlign: 'center', padding: '4px 6px', color: '#7c3aed', fontWeight: 700 }}>O</th><th style={{ textAlign: 'right', padding: '4px 6px', color: 'var(--acc)', fontWeight: 700 }}>Tot</th></tr></thead>
-              <tbody>{genderClassStats.map(c => (<tr key={c.cls} style={{ borderTop: '1px solid var(--bd)' }}><td style={{ padding: '4px 6px', fontWeight: 600, color: 'var(--acc)' }}>{c.cls}</td><td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#2563eb' }}>{c.byGender['Male'] || 0}</td><td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#db2777' }}>{c.byGender['Female'] || 0}</td><td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#7c3aed' }}>{c.byGender['Other'] || 0}</td><td style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 800, color: 'var(--text)' }}>{c.total}</td></tr>))}</tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <Section title="Classwise × Country-wise Matrix" note="Paid registrations only">
-        {classCountryMatrix.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
-          : (<div style={{ overflowX: 'auto', background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: '4px' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr><th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--m)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)', position: 'sticky', left: 0 }}>Class</th>{top5Countries.map(c => (<th key={c} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--m)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)', whiteSpace: 'nowrap' }}>{COUNTRY_EMOJI[c] ?? '🌍'} {c}</th>))}<th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--acc)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)' }}>Total</th></tr></thead><tbody>{classCountryMatrix.map((row, i) => (<tr key={row.cls} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}><td style={{ padding: '9px 16px', fontWeight: 700, color: 'var(--acc)', fontSize: 12, position: 'sticky', left: 0, background: i % 2 === 0 ? 'var(--card)' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid var(--bd)' }}><span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 10px', borderRadius: 6 }}>{row.cls}</span></td>{top5Countries.map(c => (<td key={c} style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid var(--bd)', fontWeight: row[c] > 0 ? 700 : 400, color: row[c] > 0 ? 'var(--text)' : 'var(--m2)', fontSize: 13 }}>{row[c] || '—'}</td>))}<td style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid var(--bd)', fontWeight: 800, color: 'var(--acc)', fontSize: 14 }}>{row.total}</td></tr>))}<tr style={{ background: 'rgba(79,70,229,0.06)' }}><td style={{ padding: '9px 16px', fontWeight: 800, color: 'var(--m)', fontSize: 11, position: 'sticky', left: 0, background: 'rgba(79,70,229,0.06)' }}>TOTAL</td>{top5Countries.map(c => (<td key={c} style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 800, color: 'var(--acc)', fontSize: 13 }}>{paidRows.filter(r => (r.country ?? 'India') === c).length || '—'}</td>))}<td style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 900, color: 'var(--acc)', fontSize: 15 }}>{paidRows.length}</td></tr></tbody></table></div>)}
-      </Section>
-
-      <Section title="Payment Collected" note="Paid registrations only">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-          <div style={{ background: 'var(--card)', border: '2px solid rgba(79,70,229,0.25)', borderRadius: 14, padding: '20px 24px' }}><div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', marginBottom: 6 }}>🇮🇳 INR COLLECTIONS</div><div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Sora', color: 'var(--acc)' }}>₹{fmtAmt(inrRev)}</div><div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--m)' }}><span>{inrPaid.length} transactions</span><span>Avg ₹{inrPaid.length ? fmtAmt(Math.round(inrRev / inrPaid.length)) : '0'}</span></div></div>
-          <div style={{ background: 'var(--card)', border: '2px solid rgba(34,197,94,0.25)', borderRadius: 14, padding: '20px 24px' }}><div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', marginBottom: 6 }}>🌐 USD COLLECTIONS</div><div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Sora', color: '#22c55e' }}>${fmtAmt(usdRev)}</div><div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--m)' }}><span>{usdPaid.length} transactions</span><span>Avg ${usdPaid.length ? fmtAmt(Math.round(usdRev / usdPaid.length)) : '0'}</span></div></div>
-        </div>
-      </Section>
-
-      <Section title="Payment Mode Breakdown" note="Attempts = all · Revenue = paid only">
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-          {gatewayStats.map((g, i) => { const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']; const color = GW_COLORS[g.gw] ?? COLORS[i % COLORS.length]; return (<div key={g.gw} style={{ background: 'var(--card)', border: `1.5px solid ${color}44`, borderRadius: 12, padding: '14px 18px', flex: 1, minWidth: 140 }}><span className="gw-tag" style={{ fontSize: 12 }}>{g.gw}</span><div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Sora', color, margin: '8px 0 2px' }}>{g.paid}</div><div style={{ fontSize: 11, color: 'var(--m)' }}>{g.attempts} attempts · {g.attempts ? Math.round(g.paid / g.attempts * 100) : 0}% conv</div><div style={{ fontSize: 11, color, fontWeight: 700, marginTop: 2 }}>₹{fmtAmt(g.rev)}</div></div>); })}
-          {gatewayStats.length === 0 && <div style={{ color: 'var(--m2)', fontSize: 13, padding: '20px' }}>No payment data</div>}
-        </div>
-        <div className="tbl-wrap"><table><thead><tr><th>Gateway</th><th>Attempts</th><th>Paid</th><th>Failed / Pending</th><th>Revenue (Paid only)</th><th>Conv%</th></tr></thead><tbody>{gatewayStats.length === 0 ? <tr><td colSpan={6} className="table-empty">No data</td></tr> : gatewayStats.map(g => (<tr key={g.gw}><td><span className="gw-tag">{g.gw}</span></td><td><MiniBar val={g.attempts} max={maxOf(gatewayStats.map(x => x.attempts))} /></td><td><span style={{ color: '#10b981', fontWeight: 700 }}>{g.paid}</span></td><td style={{ color: '#ef4444', fontWeight: 600 }}>{g.attempts - g.paid}</td><td><span className="amt">₹{fmtAmt(g.rev)}</span></td><td style={{ fontWeight: 700 }}>{g.attempts ? Math.round(g.paid / g.attempts * 100) : 0}%</td></tr>))}</tbody></table></div>
-      </Section>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><div style={{ width: 3, height: 14, background: '#f59e0b', borderRadius: 2 }} /><span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>🏆 Top 10 Schools — Revenue</span><span style={{ fontSize: 10, background: 'rgba(245,158,11,0.1)', color: '#f59e0b', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span></div>
-          {topRevenueSchools.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
-            : (<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{topRevenueSchools.map((s, i) => (<div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: i < 3 ? `${RANK_COLORS[i]}0d` : 'transparent', border: i < 3 ? `1px solid ${RANK_COLORS[i]}33` : '1px solid transparent' }}><span style={{ fontSize: i < 3 ? 18 : 12, width: 24, textAlign: 'center', flexShrink: 0, fontWeight: 800, color: RANK_COLORS[i] }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</span><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }} title={s.name}>{s.name}</div><div style={{ fontSize: 10, color: 'var(--m)', marginTop: 1 }}>{s.students} paid students</div></div><div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b', fontFamily: 'Sora' }}>₹{fmtAmt(s.rev)}</div></div></div>))}</div>)}
-        </div>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><div style={{ width: 3, height: 14, background: '#06b6d4', borderRadius: 2 }} /><span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>🎓 Top 10 Schools — Students</span><span style={{ fontSize: 10, background: 'rgba(6,182,212,0.1)', color: '#06b6d4', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span></div>
-          {topStudentSchools.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
-            : (<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{topStudentSchools.map((s, i) => (<div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: i < 3 ? `${RANK_COLORS[i]}0d` : 'transparent', border: i < 3 ? `1px solid ${RANK_COLORS[i]}33` : '1px solid transparent' }}><span style={{ fontSize: i < 3 ? 18 : 12, width: 24, textAlign: 'center', flexShrink: 0, fontWeight: 800, color: RANK_COLORS[i] }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</span><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }} title={s.name}>{s.name}</div><div style={{ fontSize: 10, color: 'var(--m)', marginTop: 1 }}>₹{fmtAmt(s.rev)} revenue</div></div><div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontSize: 22, fontWeight: 800, color: '#06b6d4', fontFamily: 'Sora' }}>{s.students}</div><div style={{ fontSize: 10, color: 'var(--m)' }}>students</div></div></div>))}</div>)}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1136,10 +797,9 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
     <ModalShell title={f.id?'Edit Program':'New Program'} onClose={onClose}>
       <Field label="Program Name *"><input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/></Field>
       <Field label="Slug * (used in URL)"><input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/></Field>
-      <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>Registration URL: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code></p>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="Base Price — INR (₹) *"><div style={{position:'relative'}}><span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>₹</span><input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_inr} onChange={set('base_amount_inr')} placeholder="e.g. 1200" required/></div><p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Required — used for Indian schools</p></Field>
-        <Field label="Base Price — USD ($) (optional)"><div style={{position:'relative'}}><span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span><input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50 (optional)"/></div><p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Optional — leave blank for India-only programs</p></Field>
+        <Field label="Base Price — INR (₹) *"><div style={{position:'relative'}}><span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>₹</span><input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_inr} onChange={set('base_amount_inr')} placeholder="e.g. 1200"/></div></Field>
+        <Field label="Base Price — USD ($) (optional)"><div style={{position:'relative'}}><span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span><input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50"/></div></Field>
         <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
       </div>
       <div style={{marginTop:18,marginBottom:4}}>
@@ -1151,12 +811,10 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
           </div>
         </div>
         {gradesLoading ? <div style={{padding:'14px 0',fontSize:12,color:'var(--m)'}}>Loading grades…</div>
-        : allGrades.length === 0 ? <div style={{padding:'12px 16px',borderRadius:10,border:'1.5px dashed var(--bd)',fontSize:12,color:'var(--m)',textAlign:'center'}}>No grades configured. Go to <strong>Settings → Grade Master</strong> to add grades first.</div>
-        : (<><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))',gap:8,padding:'14px 16px',border:'1.5px solid var(--bd)',borderRadius:10,background:'var(--bg)',maxHeight:220,overflowY:'auto'}}>
-            {allGrades.map(g => { const checked = f.allowed_grades.includes(g.name); return (<label key={g.id} onClick={() => toggleGrade(g.name)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:`1.5px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc3)' : 'var(--card)',cursor:'pointer',transition:'all .12s',userSelect:'none'}}><div style={{width:16,height:16,borderRadius:4,border:`2px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc)' : 'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all .12s'}}>{checked && <span style={{color:'#fff',fontSize:10,fontWeight:800,lineHeight:1}}>✓</span>}</div><span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight: checked ? 700 : 500,color: checked ? 'var(--acc)' : 'var(--text)',whiteSpace:'nowrap'}}>{g.name}</span></label>); })}
-          </div>
-          <p style={{fontSize:10,color:'var(--m)',marginTop:5}}>{f.allowed_grades.length === 0 ? '⚠️ No grades selected — registration form will show all active grades as fallback.' : `${f.allowed_grades.length} of ${allGrades.length} grades selected for this program's registration form.`}</p>
-        </>)}
+        : allGrades.length === 0 ? <div style={{padding:'12px 16px',borderRadius:10,border:'1.5px dashed var(--bd)',fontSize:12,color:'var(--m)',textAlign:'center'}}>No grades configured. Go to Settings → Grade Master first.</div>
+        : (<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))',gap:8,padding:'14px 16px',border:'1.5px solid var(--bd)',borderRadius:10,background:'var(--bg)',maxHeight:220,overflowY:'auto'}}>
+            {allGrades.map(g => { const checked = f.allowed_grades.includes(g.name); return (<label key={g.id} onClick={() => toggleGrade(g.name)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:`1.5px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc3)' : 'var(--card)',cursor:'pointer',transition:'all .12s',userSelect:'none'}}><div style={{width:16,height:16,borderRadius:4,border:`2px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc)' : 'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{checked && <span style={{color:'#fff',fontSize:10,fontWeight:800,lineHeight:1}}>✓</span>}</div><span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight: checked ? 700 : 500,color: checked ? 'var(--acc)' : 'var(--text)',whiteSpace:'nowrap'}}>{g.name}</span></label>); })}
+          </div>)}
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
@@ -1177,16 +835,6 @@ const LOCATION_DATA: Record<string, { states: Record<string, string[]> }> = {
   'Oman': { states: { 'Muscat': ['Muscat','Seeb'], 'Dhofar': ['Salalah'], 'Batinah': ['Sohar'], 'Sharqiyah': ['Sur'] } },
   'Singapore': { states: { 'Central Region': ['Singapore'] } },
   'Malaysia': { states: { 'Kuala Lumpur': ['Kuala Lumpur'], 'Selangor': ['Shah Alam','Petaling Jaya','Klang'], 'Penang': ['George Town'], 'Johor': ['Johor Bahru'], 'Sabah': ['Kota Kinabalu'], 'Sarawak': ['Kuching'] } },
-  'Indonesia': { states: { 'DKI Jakarta': ['Jakarta'], 'West Java': ['Bandung','Bekasi','Depok'], 'East Java': ['Surabaya','Malang'], 'Bali': ['Denpasar'] } },
-  'Thailand': { states: { 'Bangkok': ['Bangkok'], 'Chiang Mai': ['Chiang Mai'], 'Phuket': ['Phuket Town'] } },
-  'Philippines': { states: { 'Metro Manila': ['Manila','Quezon City','Makati','Pasig'], 'Cebu': ['Cebu City'], 'Davao': ['Davao City'] } },
-  'Vietnam': { states: { 'Hanoi': ['Hanoi'], 'Ho Chi Minh City': ['Ho Chi Minh City'], 'Da Nang': ['Da Nang'] } },
-  'Myanmar': { states: { 'Yangon Region': ['Yangon'], 'Mandalay Region': ['Mandalay'], 'Naypyidaw': ['Naypyidaw'] } },
-  'Cambodia': { states: { 'Phnom Penh': ['Phnom Penh'], 'Siem Reap': ['Siem Reap'] } },
-  'Sri Lanka': { states: { 'Western Province': ['Colombo','Sri Jayawardenepura Kotte'], 'Central Province': ['Kandy'], 'Southern Province': ['Galle'] } },
-  'Nepal': { states: { 'Bagmati': ['Kathmandu','Lalitpur','Bhaktapur'], 'Gandaki': ['Pokhara'] } },
-  'Bangladesh': { states: { 'Dhaka Division': ['Dhaka','Narayanganj'], 'Chittagong Division': ['Chittagong'], 'Rajshahi Division': ['Rajshahi'] } },
-  'Pakistan': { states: { 'Punjab': ['Lahore','Faisalabad','Rawalpindi'], 'Sindh': ['Karachi','Hyderabad'], 'KPK': ['Peshawar'], 'Islamabad Capital Territory': ['Islamabad'] } },
   'Other': { states: { 'Other': [] } },
 };
 const isIndianCountry = (c: string) => c === 'India';
@@ -1222,7 +870,7 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'0 12px'}}>
           <Field label="Pin Code *"><input style={IS} value={f.pin_code} onChange={set('pin_code')} placeholder="110001"/></Field>
           <Field label="Country *"><select style={SS} value={f.country} onChange={set('country')}>{Object.keys(LOCATION_DATA).map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
-          <Field label="State / Region *"><select style={SS} value={f.state} onChange={set('state')} disabled={stateList.length===0}><option value="">Select State</option>{stateList.map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
+          <Field label="State *"><select style={SS} value={f.state} onChange={set('state')} disabled={stateList.length===0}><option value="">Select State</option>{stateList.map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
           <Field label="City *">{cityList.length > 0 ? <select style={SS} value={f.city} onChange={set('city')}><option value="">Select City</option>{cityList.map(c=><option key={c} value={c}>{c}</option>)}</select> : <input style={IS} value={f.city} onChange={set('city')} placeholder="Enter city"/>}</Field>
         </div>
       </div>
@@ -1238,29 +886,27 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
               {contacts.length > 1 && <button onClick={()=>removeContact(idx)} style={{background:'none',border:'none',color:'var(--red,#ef4444)',cursor:'pointer',fontSize:13,lineHeight:1}}>✕</button>}
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-              <Field label="Contact Person Name *"><input style={IS} value={c.name} onChange={setContact(idx,'name')} placeholder="Full Name"/></Field>
+              <Field label="Name *"><input style={IS} value={c.name} onChange={setContact(idx,'name')} placeholder="Full Name"/></Field>
               <Field label="Designation *"><input style={IS} value={c.designation} onChange={setContact(idx,'designation')} placeholder="Principal / Coordinator"/></Field>
-              <Field label="Email ID *"><input style={IS} type="email" value={c.email} onChange={setContact(idx,'email')} placeholder="contact@school.edu"/></Field>
-              <Field label="Mobile Number *"><input style={IS} type="tel" value={c.mobile} onChange={setContact(idx,'mobile')} placeholder="+91 98765 43210"/></Field>
+              <Field label="Email *"><input style={IS} type="email" value={c.email} onChange={setContact(idx,'email')} placeholder="contact@school.edu"/></Field>
+              <Field label="Mobile *"><input style={IS} type="tel" value={c.mobile} onChange={setContact(idx,'mobile')} placeholder="+91 98765 43210"/></Field>
             </div>
           </div>
         ))}
-        <p style={{fontSize:10,color:'var(--m)',marginTop:8}}>You can add up to 4 contact persons.</p>
       </div>
       <Field label="Program *"><select style={SS} value={f.project_id} onChange={set('project_id')}><option value="">Select a program</option>{programs.filter(p=>p.status==='active').map(p=>{ const inr = p.base_amount_inr ?? (p.currency==='INR'?p.base_amount:null); const usd = p.base_amount_usd ?? (p.currency==='USD'?p.base_amount:null); return <option key={p.id} value={p.id}>{p.name} — {inr?`₹${(inr/100).toLocaleString('en-IN')}`:'—'} / {usd?`$${(usd/100).toLocaleString()}`:'—'}</option>; })}</select></Field>
-      <Field label="Registration Link (auto-generated)"><input style={{...IS,fontFamily:'monospace',fontSize:11,color:'var(--acc)',background:'var(--acc3)'}} value={regUrl || '(select a program and enter school code)'} readOnly onClick={e=>(e.target as HTMLInputElement).select()}/>{regUrl && <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Click to select · Base URL + School Code auto-combined</p>}</Field>
+      <Field label="Registration Link"><input style={{...IS,fontFamily:'monospace',fontSize:11,color:'var(--acc)',background:'var(--acc3)'}} value={regUrl || '(select a program and enter school code)'} readOnly onClick={e=>(e.target as HTMLInputElement).select()}/></Field>
       <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>💰 Pricing</div>
-        {basePriceDisplay && <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,background:'var(--acc3)',borderRadius:8,padding:'8px 12px'}}><span style={{fontSize:12,color:'var(--m)',fontWeight:600}}>Program Base Price:</span><span style={{fontSize:15,fontWeight:800,fontFamily:'Sora',color:'var(--acc)'}}>{basePriceDisplay.label}</span><span style={{fontSize:11,color:'var(--m)'}}>(auto-filled below)</span></div>}
+        {basePriceDisplay && <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,background:'var(--acc3)',borderRadius:8,padding:'8px 12px'}}><span style={{fontSize:12,color:'var(--m)',fontWeight:600}}>Program Base Price:</span><span style={{fontSize:15,fontWeight:800,fontFamily:'Sora',color:'var(--acc)'}}>{basePriceDisplay.label}</span></div>}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
           <Field label={`School Pricing (${f.currency}) *`}><input style={IS} type="number" value={f.school_price} onChange={set('school_price')} placeholder={basePriceDisplay ? `Base: ${basePriceDisplay.label}` : 'Enter amount'}/></Field>
-          <Field label="Currency"><select style={SS} value={f.currency} onChange={set('currency')}><option value="INR">INR (₹) — India</option><option value="USD">USD ($) — International</option></select><p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Auto-set from country selection</p></Field>
+          <Field label="Currency"><select style={SS} value={f.currency} onChange={set('currency')}><option value="INR">INR (₹) — India</option><option value="USD">USD ($) — International</option></select></Field>
         </div>
       </div>
       <div style={{background:'var(--orange2,rgba(245,158,11,0.08))',border:'1px solid rgba(245,158,11,0.2)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:'var(--orange,#f59e0b)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>🏷️ Discount Code</div>
-        <Field label="Discount Code (default = school code)"><input style={{...IS,textTransform:'uppercase',fontFamily:'monospace',fontWeight:700}} value={f.discount_code} onChange={e=>setF(p=>({...p,discount_code:e.target.value.toUpperCase()}))} placeholder="e.g. DELHI-DPS"/></Field>
-        <p style={{fontSize:11,color:'var(--m)',marginTop:-8}}>When a student uses the Registration URL and enters this code, the school-specific discount fee will be applied.</p>
+        <Field label="Discount Code"><input style={{...IS,textTransform:'uppercase',fontFamily:'monospace',fontWeight:700}} value={f.discount_code} onChange={e=>setF(p=>({...p,discount_code:e.target.value.toUpperCase()}))} placeholder="e.g. DELHI-DPS"/></Field>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
         <Field label="Primary Colour"><input style={{...IS,height:40}} type="color" value={f.primary_color} onChange={set('primary_color')}/></Field>
@@ -1268,45 +914,13 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:14,padding:'12px 14px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto',accentColor:'var(--acc)'}}/><label htmlFor="is_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>School is Active</label></div>
-        <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/><label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>Registration Active<span style={{fontSize:11,fontWeight:400,color:'var(--m)',marginLeft:6}}>— registration form accepts new students only when checked</span></label></div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/><label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>Registration Active</label></div>
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code, is_registration_active:f.is_registration_active})}>{f.id?'Save Changes':'Create School'}</button>
       </div>
     </ModalShell>
-  );
-}
-
-// ── Schools Table ───────────────────────────────────────────────────
-function SchoolsTable({ schools, programs, isSuperAdmin, onEdit }:{ schools:Row[]; programs:Row[]; isSuperAdmin:boolean; onEdit:(s:Row)=>void }) {
-  const [filterProgram, setFilterProgram] = useState('');
-  const [filterCountry, setFilterCountry] = useState('');
-  const [filterState,   setFilterState]   = useState('');
-  const [filterCity,    setFilterCity]    = useState('');
-  const countries = [...new Set(schools.map(s=>s.country).filter(Boolean))].sort();
-  const states    = [...new Set(schools.filter(s=>!filterCountry||s.country===filterCountry).map(s=>s.state).filter(Boolean))].sort();
-  const cities    = [...new Set(schools.filter(s=>(!filterCountry||s.country===filterCountry)&&(!filterState||s.state===filterState)).map(s=>s.city).filter(Boolean))].sort();
-  const filtered = schools.filter(s => { const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); if (filterProgram && prog?.id !== filterProgram) return false; if (filterCountry && s.country !== filterCountry) return false; if (filterState && s.state !== filterState) return false; if (filterCity && s.city !== filterCity) return false; return true; });
-  return (
-    <>
-      <div className="table-toolbar" style={{flexWrap:'wrap',gap:8,marginBottom:12}}>
-        <select style={{...SS,width:'auto',minWidth:140}} value={filterProgram} onChange={e=>{setFilterProgram(e.target.value);}}><option value="">All Programs</option>{programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
-        <select style={{...SS,width:'auto',minWidth:130}} value={filterCountry} onChange={e=>{setFilterCountry(e.target.value);setFilterState('');setFilterCity('');}}><option value="">All Countries</option>{countries.map(c=><option key={c} value={c}>{c}</option>)}</select>
-        <select style={{...SS,width:'auto',minWidth:130}} value={filterState} onChange={e=>{setFilterState(e.target.value);setFilterCity('');}}><option value="">All States</option>{states.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        <select style={{...SS,width:'auto',minWidth:120}} value={filterCity} onChange={e=>setFilterCity(e.target.value)}><option value="">All Cities</option>{cities.map(c=><option key={c} value={c}>{c}</option>)}</select>
-        <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {schools.length}</span>
-      </div>
-      <div className="tbl-wrap"><table>
-        <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Dashboard</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
-        <tbody>
-          {filtered.length===0 ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
-          : filtered.map(s=>{ const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/?school=${s.school_code}`; const basePriceFmt = (() => { if (!prog) return '—'; const isIndia = (s.country||'India').toLowerCase()==='india'; if (isIndia) { const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null); return inr ? `₹${fmtR(inr)}` : '—'; } const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null); return usd ? `$${fmtR(usd)}` : '—'; })(); const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR'; const schoolPriceFmt = schoolCurrency === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
-            return (<tr key={s.id}><td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{s.school_code}</code></td><td style={{fontWeight:700}}>{s.name}</td><td style={{fontSize:12,color:'var(--m)'}}>{s.org_name}</td><td style={{fontSize:12}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')||'—'}</td><td style={{fontSize:12}}>{prog?.name ?? s.project_slug ?? '—'}</td><td style={{fontSize:12,fontWeight:600,color:'var(--acc)'}}>{basePriceFmt}</td><td><span className="amt">{schoolPriceFmt}</span></td><td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.discount_code || s.school_code?.toUpperCase()}</code></td><td><a href={regUrl} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl.replace('https://','')}</a></td><td><a href="/school/login" target="_blank" style={{color:'#10b981',fontSize:11,fontWeight:600,textDecoration:'none',whiteSpace:'nowrap'}}>🏫 School Login</a></td><td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>{isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>onEdit(s)}>Edit</button></td>}</tr>);
-          })}
-        </tbody>
-      </table></div>
-    </>
   );
 }
 
@@ -1342,7 +956,6 @@ function UserFormModal({ schools, onClose, onSave }:{ schools:Row[]; onClose:()=
       <Field label="Password *"><input style={IS} type="password" value={f.password} onChange={set('password')} placeholder="Minimum 8 characters"/></Field>
       <Field label="Role *"><select style={SS} value={f.role} onChange={set('role')}><option value="school_admin">School Admin</option><option value="super_admin">Super Admin</option></select></Field>
       {f.role==='school_admin'&&<Field label="Assign to School *"><select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">Select school</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}</select></Field>}
-      {f.role==='school_admin'&&(<div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}><span style={{color:'var(--acc)',fontWeight:600}}>🏫 School Portal Login URL:</span><br/><code style={{color:'var(--text)',fontSize:11,wordBreak:'break-all'}}>{(BACKEND||window.location.origin)}/school/login</code><p style={{margin:'4px 0 0',color:'var(--m)',fontSize:11}}>Share this URL with the school admin so they can log in to their dashboard.</p></div>)}
       <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>Create Admin User</button></div>
     </ModalShell>
   );
@@ -1387,7 +1000,7 @@ function TriggerFormModal({ initial, schools, templates, onClose, onSave }:{ ini
     <ModalShell title={f.id?'Edit Trigger':'New Trigger'} onClose={onClose}>
       <Field label="Event *"><select style={SS} value={f.event_type} onChange={set('event_type')}><option value="registration.created">Registration Created</option><option value="payment.paid">Payment Paid</option><option value="payment.failed">Payment Failed</option><option value="payment.cancelled">Payment Cancelled</option><option value="discount.applied">Discount Applied</option></select></Field>
       <Field label="Channel *"><select style={SS} value={f.channel} onChange={set('channel')}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select></Field>
-      <Field label="Template *"><select style={SS} value={f.template_id} onChange={set('template_id')}><option value="">Select template</option>{filteredTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>{filteredTemplates.length===0&&<p style={{fontSize:11,color:'var(--orange)',marginTop:4}}>No {f.channel} templates yet. Create one in Message Templates first.</p>}</Field>
+      <Field label="Template *"><select style={SS} value={f.template_id} onChange={set('template_id')}><option value="">Select template</option>{filteredTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
       <Field label="School (blank = all schools)"><select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">All Schools</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><input type="checkbox" id="t_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto'}}/><label htmlFor="t_active" style={{fontSize:13,fontWeight:600}}>Active</label></div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Trigger'}</button></div>
@@ -1413,7 +1026,7 @@ function TemplateFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:(
   );
 }
 
-// ── Location Master Page ────────────────────────────────────────────
+// ── Location Master ─────────────────────────────────────────────────
 const COUNTRY_EMOJI: Record<string,string> = { 'India':'🇮🇳','United Arab Emirates':'🇦🇪','Saudi Arabia':'🇸🇦','Kuwait':'🇰🇼','Qatar':'🇶🇦','Bahrain':'🇧🇭','Oman':'🇴🇲','Singapore':'🇸🇬','Malaysia':'🇲🇾','Indonesia':'🇮🇩','Thailand':'🇹🇭','Philippines':'🇵🇭','Vietnam':'🇻🇳','Myanmar':'🇲🇲','Cambodia':'🇰🇭','Sri Lanka':'🇱🇰','Nepal':'🇳🇵','Bangladesh':'🇧🇩','Pakistan':'🇵🇰' };
 
 function LocationFormModal({ initial, existingCountries, existingStates, onClose, onSave }:{ initial: Row; existingCountries: string[]; existingStates: string[]; onClose:()=>void; onSave:(d:Row)=>void }) {
@@ -1430,15 +1043,14 @@ function LocationFormModal({ initial, existingCountries, existingStates, onClose
     <ModalShell title={f.id?'Edit Location':'Add Location'} onClose={onClose}>
       <Field label="Country *">
         {addingCountry ? <div style={{display:'flex',gap:6}}><input style={{...IS,flex:1}} value={newCountry} onChange={e=>setNewCountry(e.target.value)} placeholder="Enter new country name" autoFocus/><button onClick={handleAddCountry} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button><button onClick={()=>{setAddingCountry(false);setNewCountry('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button></div>
-        : <div style={{display:'flex',gap:6}}><select style={{...SS,flex:1}} value={f.country} onChange={e=>setF(p=>({...p,country:e.target.value,state:''}))}><option value="">Select Country</option>{allCountries.map(c=><option key={c} value={c}>{c}</option>)}</select><button onClick={()=>setAddingCountry(true)} title="Add new country" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button></div>}
+        : <div style={{display:'flex',gap:6}}><select style={{...SS,flex:1}} value={f.country} onChange={e=>setF(p=>({...p,country:e.target.value,state:''}))}><option value="">Select Country</option>{allCountries.map(c=><option key={c} value={c}>{c}</option>)}</select><button onClick={()=>setAddingCountry(true)} style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button></div>}
       </Field>
       <Field label="State / Region *">
         {addingState ? <div style={{display:'flex',gap:6}}><input style={{...IS,flex:1}} value={newState} onChange={e=>setNewState(e.target.value)} placeholder="Enter new state / region" autoFocus/><button onClick={handleAddState} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button><button onClick={()=>{setAddingState(false);setNewState('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button></div>
-        : <div style={{display:'flex',gap:6}}><select style={{...SS,flex:1}} value={f.state} onChange={e=>setF(p=>({...p,state:e.target.value}))}><option value="">Select State</option>{statesForCountry.map(s=><option key={s} value={s}>{s}</option>)}</select><button onClick={()=>setAddingState(true)} title="Add new state" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button></div>}
-        <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Click + to add a country/state not in the list.</p>
+        : <div style={{display:'flex',gap:6}}><select style={{...SS,flex:1}} value={f.state} onChange={e=>setF(p=>({...p,state:e.target.value}))}><option value="">Select State</option>{statesForCountry.map(s=><option key={s} value={s}>{s}</option>)}</select><button onClick={()=>setAddingState(true)} style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button></div>}
       </Field>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="City (leave blank to add state only)"><input style={IS} value={f.city} onChange={e=>setF(p=>({...p,city:e.target.value}))} placeholder="New Delhi"/></Field>
+        <Field label="City (leave blank for state-level entry)"><input style={IS} value={f.city} onChange={e=>setF(p=>({...p,city:e.target.value}))} placeholder="New Delhi"/></Field>
         <Field label="Sort Order"><input style={IS} type="number" value={f.sort_order} onChange={e=>setF(p=>({...p,sort_order:Number(e.target.value)}))} min={0}/></Field>
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Add Location'}</button></div>
@@ -1469,7 +1081,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
   async function handleSave(d:Row) { setSaving(true); const method = d.id ? 'PATCH' : 'POST'; const res = await authFetch(`${BACKEND}/api/admin/location`,{ method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }); const json = await res.json(); setSaving(false); if(!res.ok){ showToast(json.error||'Failed','❌'); return; } showToast(d.id?'Updated!':'Added!','✅'); setModalOpen(false); setEditRow(undefined); onReload(); }
   return (
     <>
-      <div className="topbar"><div className="topbar-left"><h1>Location <span>Master</span></h1><p>Countries, states & cities used across all school forms and registration pages</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={()=>{setEditRow(undefined);setModalOpen(true);}}>+ Add Location</button></div></div>
+      <div className="topbar"><div className="topbar-left"><h1>Location <span>Master</span></h1><p>Countries, states & cities used across all school forms</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={()=>{setEditRow(undefined);setModalOpen(true);}}>+ Add Location</button></div></div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18}}>
         {[{label:'Total Entries',value:rows.length,color:'var(--acc)'},{label:'Active',value:activeCount,color:'#4ADE80'},{label:'Countries',value:countryCount,color:'#f59e0b'},{label:'States/Regions',value:stateCount,color:'var(--m)'}].map(s=>(<div key={s.label} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}><span style={{fontWeight:800,fontSize:22,color:s.color,fontFamily:'Sora'}}>{s.value}</span><span style={{fontSize:11,color:'var(--m)',fontWeight:500}}>{s.label}</span></div>))}
       </div>
@@ -1477,15 +1089,15 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <div style={{padding:10,borderBottom:'1px solid var(--bd)'}}><input placeholder="Search countries…" value={countrySearch} onChange={e=>setCountrySearch(e.target.value)} style={{...IS,padding:'8px 12px',fontSize:12}}/></div>
           <div style={{flex:1,overflowY:'auto',padding:6}}>
-            {filteredCountries.map(c=>{ const cnt = rows.filter(r=>r.country===c).length; const isActive = c===activeCountry; return (<button key={c} onClick={()=>setActiveCountry(c)} style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 10px',borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',marginBottom:2,background: isActive?'rgba(79,70,229,0.15)':'transparent',borderLeft: isActive?'3px solid var(--acc)':'3px solid transparent',transition:'all .12s'}}><span style={{fontSize:18,flexShrink:0}}>{COUNTRY_EMOJI[c]??'🌍'}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:isActive?700:500,color:isActive?'var(--acc)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c}</div><div style={{fontSize:10,color:'var(--m2)'}}>{cnt} entries</div></div></button>); })}
+            {filteredCountries.map(c=>{ const cnt = rows.filter(r=>r.country===c).length; const isActive = c===activeCountry; return (<button key={c} onClick={()=>setActiveCountry(c)} style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 10px',borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',marginBottom:2,background: isActive?'rgba(79,70,229,0.15)':'transparent',borderLeft: isActive?'3px solid var(--acc)':'3px solid transparent'}}><span style={{fontSize:18,flexShrink:0}}>{COUNTRY_EMOJI[c]??'🌍'}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:isActive?700:500,color:isActive?'var(--acc)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c}</div><div style={{fontSize:10,color:'var(--m2)'}}>{cnt} entries</div></div></button>); })}
           </div>
         </div>
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <div style={{padding:'14px 18px',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:12,flexShrink:0}}><span style={{fontSize:28}}>{COUNTRY_EMOJI[activeCountry]??'🌍'}</span><div style={{flex:1}}><h2 style={{fontFamily:'Sora',fontSize:17,fontWeight:800,margin:0,color:'var(--text)'}}>{activeCountry||'Select a country'}</h2><div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{statesInCountry.length} states · {rows.filter(r=>r.country===activeCountry).length} entries</div></div><div style={{position:'relative'}}><input placeholder="Search cities…" value={search} onChange={e=>setSearch(e.target.value)} style={{...IS,padding:'7px 12px',fontSize:12,width:180}}/></div></div>
-          <div style={{display:'flex',gap:6,padding:'10px 14px',borderBottom:'1px solid var(--bd)',overflowX:'auto',flexShrink:0,flexWrap:'nowrap'}}>{statesInCountry.map(s=>(<button key={s} onClick={()=>setActiveState(s)} style={{padding:'5px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,background: s===activeState?'var(--acc)':'transparent',borderColor: s===activeState?'var(--acc)':'var(--bd)',color: s===activeState?'#fff':'var(--m)',transition:'all .12s'}}>{s}<span style={{marginLeft:5,fontSize:10,opacity:0.7}}>({rows.filter(r=>r.country===activeCountry&&r.state===s).length})</span></button>))}</div>
+          <div style={{padding:'14px 18px',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:12,flexShrink:0}}><span style={{fontSize:28}}>{COUNTRY_EMOJI[activeCountry]??'🌍'}</span><div style={{flex:1}}><h2 style={{fontFamily:'Sora',fontSize:17,fontWeight:800,margin:0}}>{activeCountry||'Select a country'}</h2><div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{statesInCountry.length} states · {rows.filter(r=>r.country===activeCountry).length} entries</div></div><input placeholder="Search cities…" value={search} onChange={e=>setSearch(e.target.value)} style={{...IS,padding:'7px 12px',fontSize:12,width:180}}/></div>
+          <div style={{display:'flex',gap:6,padding:'10px 14px',borderBottom:'1px solid var(--bd)',overflowX:'auto',flexShrink:0,flexWrap:'nowrap'}}>{statesInCountry.map(s=>(<button key={s} onClick={()=>setActiveState(s)} style={{padding:'5px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,background: s===activeState?'var(--acc)':'transparent',borderColor: s===activeState?'var(--acc)':'var(--bd)',color: s===activeState?'#fff':'var(--m)'}}>{s}<span style={{marginLeft:5,fontSize:10,opacity:0.7}}>({rows.filter(r=>r.country===activeCountry&&r.state===s).length})</span></button>))}</div>
           <div style={{flex:1,overflowY:'auto',padding:14}}>
-            {citiesInState.length===0 ? <div style={{textAlign:'center',padding:'48px 0',color:'var(--m2)',fontSize:13}}>{activeState ? `No entries for ${activeState}. Add cities above.` : 'Select a state tab above.'}</div>
-            : <div style={{display:'flex',flexDirection:'column',gap:5}}>{citiesInState.map(row=>(<div key={row.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:9,border:'1px solid var(--bd)',background: row.is_active?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.01)',opacity: row.is_active?1:0.5,transition:'all .12s'}}><span style={{fontFamily:'monospace',fontSize:11,color:'var(--m2)',width:22,textAlign:'center',flexShrink:0}}>{row.sort_order}</span><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:14,color:'var(--text)'}}>{row.city||<em style={{color:'var(--m)',fontStyle:'normal',fontSize:12}}>(state-level entry)</em>}</div><div style={{fontSize:11,color:'var(--m)',marginTop:1}}>{row.state}{row.country!==activeCountry?` · ${row.country}`:''}</div></div><button onClick={()=>toggleActive(row)} title={row.is_active?'Deactivate':'Activate'} style={{background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1,color:row.is_active?'#4ADE80':'rgba(255,255,255,0.2)',flexShrink:0}}>{row.is_active?'●':'○'}</button><button onClick={()=>{setEditRow(row);setModalOpen(true);}} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--m)',flexShrink:0}}>Edit</button><button onClick={()=>deleteRow(row)} style={{background:'var(--red2,rgba(239,68,68,0.08))',border:'1px solid rgba(239,68,68,0.15)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--red,#ef4444)',flexShrink:0}}>Delete</button></div>))}</div>}
+            {citiesInState.length===0 ? <div style={{textAlign:'center',padding:'48px 0',color:'var(--m2)',fontSize:13}}>{activeState ? `No entries for ${activeState}.` : 'Select a state tab above.'}</div>
+            : <div style={{display:'flex',flexDirection:'column',gap:5}}>{citiesInState.map(row=>(<div key={row.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:9,border:'1px solid var(--bd)',opacity: row.is_active?1:0.5}}><span style={{fontFamily:'monospace',fontSize:11,color:'var(--m2)',width:22,textAlign:'center',flexShrink:0}}>{row.sort_order}</span><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:14}}>{row.city||<em style={{color:'var(--m)',fontStyle:'normal',fontSize:12}}>(state-level entry)</em>}</div><div style={{fontSize:11,color:'var(--m)',marginTop:1}}>{row.state}</div></div><button onClick={()=>toggleActive(row)} style={{background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1,color:row.is_active?'#4ADE80':'rgba(255,255,255,0.2)',flexShrink:0}}>{row.is_active?'●':'○'}</button><button onClick={()=>{setEditRow(row);setModalOpen(true);}} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--m)',flexShrink:0}}>Edit</button><button onClick={()=>deleteRow(row)} style={{background:'var(--red2,rgba(239,68,68,0.08))',border:'1px solid rgba(239,68,68,0.15)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--red,#ef4444)',flexShrink:0}}>Delete</button></div>))}</div>}
           </div>
         </div>
       </div>
@@ -1494,8 +1106,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
   );
 }
 
-// ── Table components ────────────────────────────────────────────────
-// ── UPDATED: Added Program, Country, State, City (synced), School dropdowns + Program & Country columns ──
+// ── Students Table ──────────────────────────────────────────────────
 function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row[]; onRowClick:(r:Row)=>void }) {
   const [search,  setSearch]  = useState('');
   const [status,  setStatus]  = useState('');
@@ -1508,29 +1119,14 @@ function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row
   const [cls,     setCls]     = useState('');
   const [gender,  setGender]  = useState('');
 
-  // Derive unique option lists from data
   const statuses  = [...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
   const gateways  = [...new Set(rows.map(r=>r.gateway).filter(Boolean))];
   const countries = [...new Set(rows.map(r=>r.country).filter(Boolean))].sort();
   const classes   = [...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
+  const statesForCountry = [...new Set(rows.filter(r=>!country||r.country===country).map(r=>r.state).filter(Boolean))].sort();
+  const citiesForState   = [...new Set(rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)).map(r=>r.city).filter(Boolean))].sort();
+  const schoolsFiltered  = [...new Set(rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)&&(!city||r.city===city)).map(r=>r.school_name??r.parent_school).filter(Boolean))].sort();
 
-  // States filtered by selected country
-  const statesForCountry = [...new Set(
-    rows.filter(r=>!country||r.country===country).map(r=>r.state).filter(Boolean)
-  )].sort();
-
-  // Cities filtered by selected country + state
-  const citiesForState = [...new Set(
-    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)).map(r=>r.city).filter(Boolean)
-  )].sort();
-
-  // Schools filtered by current country + state + city selection
-  const schoolsFiltered = [...new Set(
-    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)&&(!city||r.city===city))
-      .map(r=>r.school_name??r.parent_school).filter(Boolean)
-  )].sort();
-
-  // Cascade resets when parent filter changes
   const handleCountryChange = (v:string) => { setCountry(v); setState(''); setCity(''); setSchool(''); };
   const handleStateChange   = (v:string) => { setState(v);   setCity(''); setSchool(''); };
   const handleCityChange    = (v:string) => { setCity(v);    setSchool(''); };
@@ -1555,42 +1151,15 @@ function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row
   return (<>
     <div className="table-toolbar">
       <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)}/>
-      <select value={status}  onChange={e=>setStatus(e.target.value)}>
-        <option value="">All Status</option>
-        {statuses.map(s=><option key={s}>{s}</option>)}
-      </select>
-      <select value={gateway} onChange={e=>setGateway(e.target.value)}>
-        <option value="">All Gateways</option>
-        {gateways.map(g=><option key={g}>{g}</option>)}
-      </select>
-      <select value={program} onChange={e=>setProgram(e.target.value)}>
-        <option value="">All Programs</option>
-        {programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
-      </select>
-      <select value={country} onChange={e=>handleCountryChange(e.target.value)}>
-        <option value="">All Countries</option>
-        {countries.map(c=><option key={c}>{c}</option>)}
-      </select>
-      <select value={state} onChange={e=>handleStateChange(e.target.value)}>
-        <option value="">All States</option>
-        {statesForCountry.map(s=><option key={s}>{s}</option>)}
-      </select>
-      <select value={city} onChange={e=>handleCityChange(e.target.value)}>
-        <option value="">All Cities</option>
-        {citiesForState.map(c=><option key={c}>{c}</option>)}
-      </select>
-      <select value={school} onChange={e=>setSchool(e.target.value)}>
-        <option value="">All Schools</option>
-        {schoolsFiltered.map(s=><option key={s}>{s}</option>)}
-      </select>
-      <select value={cls} onChange={e=>setCls(e.target.value)}>
-        <option value="">All Classes</option>
-        {classes.map(c=><option key={c}>{c}</option>)}
-      </select>
-      <select value={gender} onChange={e=>setGender(e.target.value)}>
-        <option value="">All Gender</option>
-        {['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}
-      </select>
+      <select value={status}  onChange={e=>setStatus(e.target.value)}><option value="">All Status</option>{statuses.map(s=><option key={s}>{s}</option>)}</select>
+      <select value={gateway} onChange={e=>setGateway(e.target.value)}><option value="">All Gateways</option>{gateways.map(g=><option key={g}>{g}</option>)}</select>
+      <select value={program} onChange={e=>setProgram(e.target.value)}><option value="">All Programs</option>{programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select>
+      <select value={country} onChange={e=>handleCountryChange(e.target.value)}><option value="">All Countries</option>{countries.map(c=><option key={c}>{c}</option>)}</select>
+      <select value={state}   onChange={e=>handleStateChange(e.target.value)}><option value="">All States</option>{statesForCountry.map(s=><option key={s}>{s}</option>)}</select>
+      <select value={city}    onChange={e=>handleCityChange(e.target.value)}><option value="">All Cities</option>{citiesForState.map(c=><option key={c}>{c}</option>)}</select>
+      <select value={school}  onChange={e=>setSchool(e.target.value)}><option value="">All Schools</option>{schoolsFiltered.map(s=><option key={s}>{s}</option>)}</select>
+      <select value={cls}     onChange={e=>setCls(e.target.value)}><option value="">All Classes</option>{classes.map(c=><option key={c}>{c}</option>)}</select>
+      <select value={gender}  onChange={e=>setGender(e.target.value)}><option value="">All Gender</option>{['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}</select>
       <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {rows.length}</span>
     </div>
     <div className="tbl-wrap"><table>
@@ -1634,64 +1203,15 @@ function CityHeatmap({ rows }:{ rows:Row[] }) {
   <div className="heatmap-grid">{sorted.map(([city,data])=>{const val=data[metric];const pct=val/mx;const ci=Math.min(Math.floor(pct*colors.length),colors.length-1);return(<div key={city} className="heatmap-cell" style={{background:colors[ci]+'22',border:`2px solid ${colors[ci]}66`}}><div className="heatmap-name">{city}</div><div className="heatmap-count" style={{color:colors[ci]}}>{metric==='revenue'?`₹${fmtR(val)}`:val}</div><div className="heatmap-rev">{data.paid} paid · {data.total} total</div></div>);})}</div></>;
 }
 
-function Timeline({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>void }) {
-  const dc:Record<string,string>={paid:'paid',failed:'failed',initiated:'initiated',cancelled:'cancelled',pending:'initiated'};
-  const de:Record<string,string>={paid:'✅',failed:'❌',initiated:'⏳',cancelled:'🚫',pending:'⏳'};
-  return <div>{rows.map(r=>{const st=r.payment_status??'pending';return(<div key={r.id} className="tl-item" onClick={()=>onRowClick(r)}><div className={`tl-dot ${dc[st]??'initiated'}`}>{de[st]??'⏳'}</div><div className="tl-info"><div className="tl-name">{r.student_name} <span style={{fontWeight:400,color:'var(--m)',fontSize:12}}>· {r.class_grade} · {r.school_name??r.parent_school}</span></div><div className="tl-meta">{r.gateway} · {r.city} · {r.contact_phone}</div></div><div style={{textAlign:'right'}}><div className="tl-amt">₹{fmtR(r.final_amount??0)}</div><div className="tl-time">{r.created_at?.slice(0,10)}</div></div></div>);})}</div>;
-}
-
-// ── Unified Timeline ───────────────────────────────────────────────
 function UnifiedTimeline({ paymentRows, activityLogs, onRowClick }:{ paymentRows:Row[]; activityLogs:Row[]; onRowClick:(r:Row)=>void }) {
   const [filter, setFilter] = React.useState<'all'|'payments'|'schools'>('all');
-
-  const payEvents = paymentRows.map(r => ({
-    id: `pay-${r.id}`,
-    type: 'payment' as const,
-    ts: r.created_at,
-    dot: r.payment_status === 'paid' ? 'paid' : r.payment_status === 'failed' ? 'failed' : 'initiated',
-    icon: r.payment_status === 'paid' ? '✅' : r.payment_status === 'failed' ? '❌' : r.payment_status === 'cancelled' ? '🚫' : '⏳',
-    title: r.student_name ?? '—',
-    sub: `${r.class_grade ?? ''} · ${r.school_name ?? r.parent_school ?? ''}`,
-    meta: `${r.gateway ?? '—'} · ${r.city ?? '—'} · ${r.contact_phone ?? ''}`,
-    badge: r.payment_status,
-    amount: r.final_amount ?? 0,
-    raw: r,
-  }));
-
-  const ACTION_MAP: Record<string,{icon:string;dot:string;label:string}> = {
-    'school.self_registered': { icon:'🏫', dot:'initiated', label:'School Registered' },
-    'school.approved':        { icon:'✅', dot:'paid',      label:'School Approved'   },
-    'school.rejected':        { icon:'❌', dot:'failed',    label:'School Rejected'   },
-    'school.registered':      { icon:'🏫', dot:'initiated', label:'School Registered' },
-  };
-  const logEvents = activityLogs
-    .filter(l => l.action?.startsWith('school.'))
-    .map(l => {
-      const am = ACTION_MAP[l.action] ?? { icon:'📋', dot:'initiated', label: l.action };
-      const m  = l.metadata ?? {};
-      return {
-        id: `log-${l.id}`,
-        type: 'school' as const,
-        ts: l.created_at,
-        dot: am.dot,
-        icon: am.icon,
-        title: m.name ?? l.schools?.name ?? '—',
-        sub: am.label,
-        meta: [m.city, m.country, m.project_name].filter(Boolean).join(' · ') || (l.schools?.school_code ? `Code: ${l.schools.school_code}` : ''),
-        badge: am.dot === 'paid' ? 'badge-paid' : am.dot === 'failed' ? 'badge-cancelled' : 'badge-initiated',
-        amount: 0,
-        raw: null,
-      };
-    });
-
-  const all = [...payEvents, ...logEvents].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
-  const filtered = filter === 'payments' ? all.filter(e => e.type === 'payment')
-                 : filter === 'schools'  ? all.filter(e => e.type === 'school')
-                 : all;
-
+  const payEvents = paymentRows.map(r => ({ id:`pay-${r.id}`, type:'payment' as const, ts:r.created_at, dot:r.payment_status==='paid'?'paid':r.payment_status==='failed'?'failed':'initiated', icon:r.payment_status==='paid'?'✅':r.payment_status==='failed'?'❌':r.payment_status==='cancelled'?'🚫':'⏳', title:r.student_name??'—', sub:`${r.class_grade??''} · ${r.school_name??r.parent_school??''}`, meta:`${r.gateway??'—'} · ${r.city??'—'} · ${r.contact_phone??''}`, badge:r.payment_status, amount:r.final_amount??0, raw:r }));
+  const ACTION_MAP: Record<string,{icon:string;dot:string;label:string}> = { 'school.self_registered':{icon:'🏫',dot:'initiated',label:'School Registered'}, 'school.approved':{icon:'✅',dot:'paid',label:'School Approved'}, 'school.rejected':{icon:'❌',dot:'failed',label:'School Rejected'}, 'school.registered':{icon:'🏫',dot:'initiated',label:'School Registered'} };
+  const logEvents = activityLogs.filter(l=>l.action?.startsWith('school.')).map(l=>{ const am=ACTION_MAP[l.action]??{icon:'📋',dot:'initiated',label:l.action}; const m=l.metadata??{}; return { id:`log-${l.id}`, type:'school' as const, ts:l.created_at, dot:am.dot, icon:am.icon, title:m.name??l.schools?.name??'—', sub:am.label, meta:[m.city,m.country,m.project_name].filter(Boolean).join(' · ')||(l.schools?.school_code?`Code: ${l.schools.school_code}`:''), badge:am.dot==='paid'?'badge-paid':am.dot==='failed'?'badge-cancelled':'badge-initiated', amount:0, raw:null }; });
+  const all = [...payEvents, ...logEvents].sort((a,b)=>new Date(b.ts).getTime()-new Date(a.ts).getTime());
+  const filtered = filter==='payments'?all.filter(e=>e.type==='payment'):filter==='schools'?all.filter(e=>e.type==='school'):all;
   const schoolCount = logEvents.length;
-  const payCount    = payEvents.filter(e => e.raw?.payment_status === 'paid').length;
-
+  const payCount    = payEvents.filter(e=>e.raw?.payment_status==='paid').length;
   return (
     <div>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
@@ -1702,40 +1222,12 @@ function UnifiedTimeline({ paymentRows, activityLogs, onRowClick }:{ paymentRows
         ))}
         <span style={{marginLeft:'auto',fontSize:11,color:'var(--m)'}}>{filtered.length} events · {payCount} paid · {schoolCount} school events</span>
       </div>
-
-      {filtered.length === 0 && (
-        <div style={{textAlign:'center',padding:'48px 0',color:'var(--m)',fontSize:14}}>
-          {filter === 'schools' ? '🏫 No school registration activity yet' : '📭 No activity yet'}
-        </div>
-      )}
-
-      <div>
-        {filtered.map(e => (
-          <div key={e.id} className="tl-item" onClick={() => e.raw && onRowClick(e.raw)} style={{cursor: e.raw ? 'pointer' : 'default'}}>
-            <div style={{position:'relative',flexShrink:0}}>
-              <div className={`tl-dot ${e.dot}`}>{e.icon}</div>
-              {e.type === 'school' && (
-                <div style={{position:'absolute',top:-2,right:-2,width:10,height:10,borderRadius:'50%',background:'#f59e0b',border:'2px solid var(--bg)',fontSize:7,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800}}>S</div>
-              )}
-            </div>
-            <div className="tl-info">
-              <div className="tl-name">
-                {e.title}
-                {e.type === 'school' && <span style={{marginLeft:6,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:20,background:'rgba(245,158,11,0.12)',color:'#d97706'}}>School</span>}
-                {e.type === 'payment' && e.raw && <span className={`badge badge-${e.raw.payment_status}`} style={{marginLeft:6,fontSize:10}}>{e.raw.payment_status}</span>}
-              </div>
-              <div className="tl-meta">{e.sub}</div>
-              {e.meta && <div className="tl-meta" style={{fontSize:10,marginTop:1,opacity:.7}}>{e.meta}</div>}
-            </div>
-            <div style={{textAlign:'right',flexShrink:0}}>
-              {e.amount > 0 && <div className="tl-amt">₹{fmtR(e.amount)}</div>}
-              {e.type === 'school' && <div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>Registration</div>}
-              <div className="tl-time">{new Date(e.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
-              <div style={{fontSize:10,color:'var(--m2)'}}>{new Date(e.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      {filtered.length===0&&<div style={{textAlign:'center',padding:'48px 0',color:'var(--m)',fontSize:14}}>{filter==='schools'?'🏫 No school registration activity yet':'📭 No activity yet'}</div>}
+      <div>{filtered.map(e=>(<div key={e.id} className="tl-item" onClick={()=>e.raw&&onRowClick(e.raw)} style={{cursor:e.raw?'pointer':'default'}}>
+        <div style={{position:'relative',flexShrink:0}}><div className={`tl-dot ${e.dot}`}>{e.icon}</div>{e.type==='school'&&<div style={{position:'absolute',top:-2,right:-2,width:10,height:10,borderRadius:'50%',background:'#f59e0b',border:'2px solid var(--bg)',fontSize:7,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800}}>S</div>}</div>
+        <div className="tl-info"><div className="tl-name">{e.title}{e.type==='school'&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:20,background:'rgba(245,158,11,0.12)',color:'#d97706'}}>School</span>}{e.type==='payment'&&e.raw&&<span className={`badge badge-${e.raw.payment_status}`} style={{marginLeft:6,fontSize:10}}>{e.raw.payment_status}</span>}</div><div className="tl-meta">{e.sub}</div>{e.meta&&<div className="tl-meta" style={{fontSize:10,marginTop:1,opacity:.7}}>{e.meta}</div>}</div>
+        <div style={{textAlign:'right',flexShrink:0}}>{e.amount>0&&<div className="tl-amt">₹{fmtR(e.amount)}</div>}{e.type==='school'&&<div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>Registration</div>}<div className="tl-time">{new Date(e.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div><div style={{fontSize:10,color:'var(--m2)'}}>{new Date(e.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div></div>
+      </div>))}</div>
     </div>
   );
 }
