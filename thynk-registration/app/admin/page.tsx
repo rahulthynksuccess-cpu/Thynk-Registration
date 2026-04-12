@@ -361,39 +361,12 @@ export default function AdminDashboard() {
             </table></div>
           </div>
 
-          {/* ── SCHOOLS ─────────────────────────────────────────────── */}
-          <div className={`page${activePage==='schools'?' active':''}`}>
+          {/* ── SCHOOLS ─────────────────────────────────────────────── */}          <div className={`page${activePage==='schools'?' active':''}`}>
             <div className="topbar">
               <div className="topbar-left"><h1>Schools <span>Management</span></h1><p>{schools.length} schools configured</p></div>
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>{loadPrograms();setSchoolForm({});}}>+ Add School</button>}</div>
             </div>
-            <div className="tbl-wrap"><table>
-              <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
-              <tbody>
-                {schools.length===0
-                  ? <tr><td colSpan={11} className="table-empty">No schools yet. Click "Add School" to create one.</td></tr>
-                  : schools.map(s=>{
-                    const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug);
-                    const regUrl = `www.thynksuccess.com/registration/${s.project_slug??''}/${s.school_code}`;
-                    return (
-                      <tr key={s.id}>
-                        <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{s.school_code}</code></td>
-                        <td style={{fontWeight:700}}>{s.name}</td>
-                        <td style={{fontSize:12,color:'var(--m)'}}>{s.org_name}</td>
-                        <td style={{fontSize:12}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')||'—'}</td>
-                        <td style={{fontSize:12}}>{prog?.name ?? s.project_slug ?? '—'}</td>
-                        <td style={{fontSize:12,color:'var(--m)'}}>{prog ? `₹${fmtR(prog.base_amount??0)}` : '—'}</td>
-                        <td><span className="amt">₹{fmtR(s.pricing?.[0]?.base_amount??0)}</span></td>
-                        <td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.school_code?.toUpperCase()}</code></td>
-                        <td><a href={`https://${regUrl}`} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl}</a></td>
-                        <td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>
-                        {isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>{loadPrograms();setSchoolForm(s);}}>Edit</button></td>}
-                      </tr>
-                    );
-                  })
-                }
-              </tbody>
-            </table></div>
+            <SchoolsTable schools={schools} programs={programs} isSuperAdmin={isSuperAdmin} onEdit={s=>{loadPrograms();setSchoolForm(s);}} />
           </div>
 
           {/* ── DISCOUNT CODES ───────────────────────────────────────── */}
@@ -811,12 +784,22 @@ const INDIA_CURRENCY = 'INR';
 const isIndianCountry = (c: string) => c === 'India';
 
 // ── School Form ─────────────────────────────────────────────────────
+const EMPTY_CONTACT = { name:'', designation:'', email:'', mobile:'' };
+
 function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
+  const initContacts = (() => {
+    if (Array.isArray(initial.contact_persons) && initial.contact_persons.length) return initial.contact_persons;
+    return [{ ...EMPTY_CONTACT }];
+  })();
+
   const [f,setF] = useState({
     id:            initial.id??'',
     school_code:   initial.school_code??'',
     name:          initial.name??'',
     org_name:      initial.org_name??'',
+    // Address fields
+    address:       initial.address??'',
+    pin_code:      initial.pin_code??'',
     country:       initial.country||'India',
     state:         initial.state??'',
     city:          initial.city??'',
@@ -828,19 +811,18 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
     accent_color:  initial.branding?.accentColor??'#8b5cf6',
     is_active:     initial.is_active!==false,
   });
+  const [contacts, setContacts] = useState<{name:string;designation:string;email:string;mobile:string}[]>(initContacts);
 
-  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
+  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => {
     const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
     setF(p => {
       const updated = {...p, [k]: val};
-      // Auto-set currency when country changes
       if (k === 'country') {
         updated.currency = isIndianCountry(val as string) ? 'INR' : 'USD';
         updated.state = '';
         updated.city = '';
       }
       if (k === 'state') updated.city = '';
-      // Auto-fill discount code from school code if not manually changed
       if (k === 'school_code' && !p.id) {
         updated.discount_code = (val as string).toUpperCase();
       }
@@ -848,56 +830,57 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
     });
   };
 
+  const setContact = (idx:number, field:string) => (e:React.ChangeEvent<HTMLInputElement>) => {
+    setContacts(prev => prev.map((c,i) => i===idx ? {...c,[field]:e.target.value} : c));
+  };
+  const addContact = () => { if (contacts.length < 4) setContacts(p=>[...p,{...EMPTY_CONTACT}]); };
+  const removeContact = (idx:number) => { if (contacts.length > 1) setContacts(p=>p.filter((_,i)=>i!==idx)); };
+
   const selProgram = programs.find(p=>p.id===f.project_id);
   const countryData = LOCATION_DATA[f.country] ?? LOCATION_DATA['Other'];
   const stateList = Object.keys(countryData.states);
   const cityList = f.state ? (countryData.states[f.state] ?? []) : [];
 
-  // Auto-computed values
-  const regUrl = selProgram ? `www.thynksuccess.com/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}` : '';
+  // Auto-computed registration URL — always shown once program selected
+  const regUrl = selProgram
+    ? `https://www.thynksuccess.com/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}`
+    : '';
 
-  // Auto base price from program based on country
-  const autoBasePrice = (() => {
-    if (!selProgram) return '';
-    if (isIndianCountry(f.country)) {
-      const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null);
-      return inr ? String(inr/100) : '';
-    } else {
-      const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null);
-      return usd ? String(usd/100) : '';
-    }
-  })();
-  const autoBasePriceDisplay = (() => {
+  // Base price from program
+  const basePriceDisplay = (() => {
     if (!selProgram) return null;
     if (isIndianCountry(f.country)) {
       const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null);
-      return inr ? `₹${fmtR(inr)}` : null;
+      return inr ? { label:`₹${fmtR(inr)}`, raw: String(inr/100) } : null;
     } else {
       const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null);
-      return usd ? `$${fmtR(usd)}` : null;
+      return usd ? { label:`$${fmtR(usd)}`, raw: String(usd/100) } : null;
     }
   })();
 
-  // Auto-fill school price when program or country changes
-  const prevProjectId = useState(f.project_id)[0];
   useEffect(() => {
-    if (autoBasePrice && !f.id) {
-      setF(p => ({...p, school_price: autoBasePrice}));
+    if (basePriceDisplay?.raw && !f.id) {
+      setF(p => ({...p, school_price: basePriceDisplay.raw}));
     }
   }, [f.project_id, f.country]);
 
   return (
     <ModalShell title={f.id?'Edit School':'Add New School'} onClose={onClose}>
+      {/* Basic Info */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
         <Field label="School Code *"><input style={{...IS,fontFamily:'monospace'}} value={f.school_code} onChange={set('school_code')} placeholder="e.g. delhi-dps" disabled={!!f.id}/></Field>
         <Field label="School Name *"><input style={IS} value={f.name} onChange={set('name')} placeholder="Delhi Public School"/></Field>
         <Field label="Organisation Name *"><input style={IS} value={f.org_name} onChange={set('org_name')} placeholder="Thynk Success"/></Field>
       </div>
 
-      {/* Location Section */}
+      {/* Address Section */}
       <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
-        <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>📍 Location</div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0 12px'}}>
+        <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>🏠 Address</div>
+        <Field label="Complete Address *">
+          <textarea style={{...IS,height:64,resize:'vertical'}} value={f.address} onChange={set('address')} placeholder="Enter full street address…"/>
+        </Field>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'0 12px'}}>
+          <Field label="Pin Code *"><input style={IS} value={f.pin_code} onChange={set('pin_code')} placeholder="110001"/></Field>
           <Field label="Country *">
             <select style={SS} value={f.country} onChange={set('country')}>
               {Object.keys(LOCATION_DATA).map(c=><option key={c} value={c}>{c}</option>)}
@@ -922,6 +905,32 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         </div>
       </div>
 
+      {/* Contact Persons */}
+      <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase'}}>👤 Contact Persons</div>
+          {contacts.length < 4 && (
+            <button onClick={addContact} style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:6,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer'}}>+ Add Contact</button>
+          )}
+        </div>
+        {contacts.map((c,idx)=>(
+          <div key={idx} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:8,padding:'10px 12px',marginBottom:idx<contacts.length-1?10:0}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <span style={{fontSize:11,fontWeight:700,color:'var(--m)'}}>Contact {idx+1}</span>
+              {contacts.length > 1 && <button onClick={()=>removeContact(idx)} style={{background:'none',border:'none',color:'var(--red,#ef4444)',cursor:'pointer',fontSize:13,lineHeight:1}}>✕</button>}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
+              <Field label="Contact Person Name *"><input style={IS} value={c.name} onChange={setContact(idx,'name')} placeholder="Full Name"/></Field>
+              <Field label="Designation *"><input style={IS} value={c.designation} onChange={setContact(idx,'designation')} placeholder="Principal / Coordinator"/></Field>
+              <Field label="Email ID *"><input style={IS} type="email" value={c.email} onChange={setContact(idx,'email')} placeholder="contact@school.edu"/></Field>
+              <Field label="Mobile Number *"><input style={IS} type="tel" value={c.mobile} onChange={setContact(idx,'mobile')} placeholder="+91 98765 43210"/></Field>
+            </div>
+          </div>
+        ))}
+        <p style={{fontSize:10,color:'var(--m)',marginTop:8}}>You can add up to 4 contact persons. All fields are required for each contact.</p>
+      </div>
+
+      {/* Program & Registration URL */}
       <Field label="Program *">
         <select style={SS} value={f.project_id} onChange={set('project_id')}>
           <option value="">Select a program</option>
@@ -933,21 +942,31 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         </select>
       </Field>
 
-      {selProgram && (
-        <div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}>
-          <div style={{color:'var(--acc)',fontWeight:600,marginBottom:4}}>🔗 Registration URL (auto-generated)</div>
-          <code style={{color:'var(--text)',fontSize:11}}>{regUrl}</code>
-        </div>
-      )}
+      {/* Registration URL — always visible once program selected */}
+      <Field label="Registration Link (auto-generated)">
+        <input style={{...IS,fontFamily:'monospace',fontSize:11,color:'var(--acc)',background:'var(--acc3)'}}
+          value={regUrl || '(select a program and enter school code)'}
+          readOnly
+          onClick={e=>(e.target as HTMLInputElement).select()}
+        />
+        {regUrl && <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Click to select · Base URL + School Code auto-combined</p>}
+      </Field>
 
       {/* Pricing Section */}
       <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>💰 Pricing</div>
+        {/* Base Price Display */}
+        {basePriceDisplay && (
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,background:'var(--acc3)',borderRadius:8,padding:'8px 12px'}}>
+            <span style={{fontSize:12,color:'var(--m)',fontWeight:600}}>Program Base Price:</span>
+            <span style={{fontSize:15,fontWeight:800,fontFamily:'Sora',color:'var(--acc)'}}>{basePriceDisplay.label}</span>
+            <span style={{fontSize:11,color:'var(--m)'}}>(auto-filled below)</span>
+          </div>
+        )}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
           <Field label={`School Pricing (${f.currency}) *`}>
             <input style={IS} type="number" value={f.school_price} onChange={set('school_price')}
-              placeholder={autoBasePrice ? `Base: ${isIndianCountry(f.country)?'₹':'$'}${autoBasePrice}` : 'Enter amount'}/>
-            {autoBasePriceDisplay && <p style={{fontSize:10,color:'var(--acc)',marginTop:3}}>Program base: {autoBasePriceDisplay} — auto-filled</p>}
+              placeholder={basePriceDisplay ? `Base: ${basePriceDisplay.label}` : 'Enter amount'}/>
           </Field>
           <Field label="Currency">
             <select style={SS} value={f.currency} onChange={set('currency')}>
@@ -983,9 +1002,96 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
 
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({...f,school_price:Math.round(Number(f.school_price)*100)})}>{f.id?'Save Changes':'Create School'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code})}>{f.id?'Save Changes':'Create School'}</button>
       </div>
     </ModalShell>
+  );
+}
+
+// ── Schools Table (with filters) ────────────────────────────────────
+function SchoolsTable({ schools, programs, isSuperAdmin, onEdit }:{ schools:Row[]; programs:Row[]; isSuperAdmin:boolean; onEdit:(s:Row)=>void }) {
+  const [filterProgram, setFilterProgram] = useState('');
+  const [filterCountry, setFilterCountry] = useState('');
+  const [filterState,   setFilterState]   = useState('');
+  const [filterCity,    setFilterCity]    = useState('');
+
+  const countries = [...new Set(schools.map(s=>s.country).filter(Boolean))].sort();
+  const states    = [...new Set(schools.filter(s=>!filterCountry||s.country===filterCountry).map(s=>s.state).filter(Boolean))].sort();
+  const cities    = [...new Set(schools.filter(s=>(!filterCountry||s.country===filterCountry)&&(!filterState||s.state===filterState)).map(s=>s.city).filter(Boolean))].sort();
+
+  const filtered = schools.filter(s => {
+    const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug);
+    if (filterProgram && prog?.id !== filterProgram) return false;
+    if (filterCountry && s.country !== filterCountry) return false;
+    if (filterState   && s.state   !== filterState)   return false;
+    if (filterCity    && s.city    !== filterCity)     return false;
+    return true;
+  });
+
+  return (
+    <>
+      <div className="table-toolbar" style={{flexWrap:'wrap',gap:8,marginBottom:12}}>
+        <select style={{...SS,width:'auto',minWidth:140}} value={filterProgram} onChange={e=>{setFilterProgram(e.target.value);}}>
+          <option value="">All Programs</option>
+          {programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select style={{...SS,width:'auto',minWidth:130}} value={filterCountry} onChange={e=>{setFilterCountry(e.target.value);setFilterState('');setFilterCity('');}}>
+          <option value="">All Countries</option>
+          {countries.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <select style={{...SS,width:'auto',minWidth:130}} value={filterState} onChange={e=>{setFilterState(e.target.value);setFilterCity('');}}>
+          <option value="">All States</option>
+          {states.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select style={{...SS,width:'auto',minWidth:120}} value={filterCity} onChange={e=>setFilterCity(e.target.value)}>
+          <option value="">All Cities</option>
+          {cities.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {schools.length}</span>
+      </div>
+      <div className="tbl-wrap"><table>
+        <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
+        <tbody>
+          {filtered.length===0
+            ? <tr><td colSpan={11} className="table-empty">No schools match the selected filters.</td></tr>
+            : filtered.map(s=>{
+              const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug);
+              const regUrl = `https://www.thynksuccess.com/registration/${s.project_slug??''}/${s.school_code}`;
+              // Base price: pick INR or USD based on country
+              const basePriceFmt = (() => {
+                if (!prog) return '—';
+                const isIndia = (s.country||'India').toLowerCase()==='india';
+                if (isIndia) {
+                  const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null);
+                  return inr ? `₹${fmtR(inr)}` : '—';
+                }
+                const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null);
+                return usd ? `$${fmtR(usd)}` : '—';
+              })();
+              const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR';
+              const schoolPriceFmt = schoolCurrency === 'USD'
+                ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}`
+                : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
+              return (
+                <tr key={s.id}>
+                  <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{s.school_code}</code></td>
+                  <td style={{fontWeight:700}}>{s.name}</td>
+                  <td style={{fontSize:12,color:'var(--m)'}}>{s.org_name}</td>
+                  <td style={{fontSize:12}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')||'—'}</td>
+                  <td style={{fontSize:12}}>{prog?.name ?? s.project_slug ?? '—'}</td>
+                  <td style={{fontSize:12,fontWeight:600,color:'var(--acc)'}}>{basePriceFmt}</td>
+                  <td><span className="amt">{schoolPriceFmt}</span></td>
+                  <td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.discount_code || s.school_code?.toUpperCase()}</code></td>
+                  <td><a href={regUrl} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl.replace('https://','')}</a></td>
+                  <td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>
+                  {isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>onEdit(s)}>Edit</button></td>}
+                </tr>
+              );
+            })
+          }
+        </tbody>
+      </table></div>
+    </>
   );
 }
 
@@ -1151,8 +1257,8 @@ const COUNTRY_EMOJI: Record<string,string> = {
   'Bangladesh':'🇧🇩','Pakistan':'🇵🇰',
 };
 
-function LocationFormModal({ initial, onClose, onSave }:{
-  initial: Row; onClose:()=>void; onSave:(d:Row)=>void
+function LocationFormModal({ initial, existingCountries, existingStates, onClose, onSave }:{
+  initial: Row; existingCountries: string[]; existingStates: string[]; onClose:()=>void; onSave:(d:Row)=>void
 }) {
   const [f,setF] = useState({
     id:         initial.id??'',
@@ -1161,21 +1267,74 @@ function LocationFormModal({ initial, onClose, onSave }:{
     city:       initial.city??'',
     sort_order: initial.sort_order??0,
   });
-  const set = (k:string)=>(e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>)=>setF(p=>({...p,[k]:e.target.value}));
+  const [addingCountry, setAddingCountry] = useState(false);
+  const [newCountry,    setNewCountry]    = useState('');
+  const [addingState,   setAddingState]   = useState(false);
+  const [newState,      setNewState]      = useState('');
+
+  const allCountries = [...new Set([...existingCountries, f.country].filter(Boolean))].sort((a,b)=>{
+    if(a==='India') return -1; if(b==='India') return 1; return a.localeCompare(b);
+  });
+  const statesForCountry = [...new Set([...existingStates, f.state].filter(Boolean))].sort();
+
+  const handleAddCountry = () => {
+    if (!newCountry.trim()) return;
+    setF(p=>({...p, country: newCountry.trim(), state:''}));
+    setAddingCountry(false); setNewCountry('');
+  };
+  const handleAddState = () => {
+    if (!newState.trim()) return;
+    setF(p=>({...p, state: newState.trim()}));
+    setAddingState(false); setNewState('');
+  };
+
   return (
     <ModalShell title={f.id?'Edit Location':'Add Location'} onClose={onClose}>
+      {/* Country */}
+      <Field label="Country *">
+        {addingCountry ? (
+          <div style={{display:'flex',gap:6}}>
+            <input style={{...IS,flex:1}} value={newCountry} onChange={e=>setNewCountry(e.target.value)} placeholder="Enter new country name" autoFocus/>
+            <button onClick={handleAddCountry} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button>
+            <button onClick={()=>{setAddingCountry(false);setNewCountry('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button>
+          </div>
+        ) : (
+          <div style={{display:'flex',gap:6}}>
+            <select style={{...SS,flex:1}} value={f.country} onChange={e=>setF(p=>({...p,country:e.target.value,state:''}))}>
+              <option value="">Select Country</option>
+              {allCountries.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+            <button onClick={()=>setAddingCountry(true)} title="Add new country" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button>
+          </div>
+        )}
+      </Field>
+
+      {/* State */}
+      <Field label="State / Region *">
+        {addingState ? (
+          <div style={{display:'flex',gap:6}}>
+            <input style={{...IS,flex:1}} value={newState} onChange={e=>setNewState(e.target.value)} placeholder="Enter new state / region" autoFocus/>
+            <button onClick={handleAddState} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button>
+            <button onClick={()=>{setAddingState(false);setNewState('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button>
+          </div>
+        ) : (
+          <div style={{display:'flex',gap:6}}>
+            <select style={{...SS,flex:1}} value={f.state} onChange={e=>setF(p=>({...p,state:e.target.value}))}>
+              <option value="">Select State</option>
+              {statesForCountry.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+            <button onClick={()=>setAddingState(true)} title="Add new state" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button>
+          </div>
+        )}
+        <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Click + to add a country/state not in the list — it will appear in future dropdowns.</p>
+      </Field>
+
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="Country *">
-          <input style={IS} value={f.country} onChange={set('country')} placeholder="India"/>
-        </Field>
-        <Field label="State / Region *">
-          <input style={IS} value={f.state} onChange={set('state')} placeholder="Delhi"/>
-        </Field>
         <Field label="City (leave blank to add state only)">
-          <input style={IS} value={f.city} onChange={set('city')} placeholder="New Delhi"/>
+          <input style={IS} value={f.city} onChange={e=>setF(p=>({...p,city:e.target.value}))} placeholder="New Delhi"/>
         </Field>
         <Field label="Sort Order">
-          <input style={IS} type="number" value={f.sort_order} onChange={set('sort_order')} min={0}/>
+          <input style={IS} type="number" value={f.sort_order} onChange={e=>setF(p=>({...p,sort_order:Number(e.target.value)}))} min={0}/>
         </Field>
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
@@ -1419,6 +1578,8 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
       {modalOpen&&(
         <LocationFormModal
           initial={editRow ?? {country: activeCountry, state: activeState}}
+          existingCountries={countries}
+          existingStates={statesInCountry}
           onClose={()=>{setModalOpen(false);setEditRow(undefined);}}
           onSave={handleSave}
         />
