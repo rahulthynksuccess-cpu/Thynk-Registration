@@ -13,6 +13,7 @@ const BACKEND  = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 const NAV = [
   { section:'Analytics' },
   { id:'overview',      icon:'🏠', label:'Overview'       },
+  { id:'reporting',     icon:'📊', label:'Reporting'      },
   { id:'students',      icon:'👨‍🎓', label:'Students'       },
   { id:'trends',        icon:'📈', label:'Trends'         },
   { section:'Actions' },
@@ -66,6 +67,8 @@ export default function AdminDashboard() {
   const [integrationForm, setIntegrationForm] = useState<Row|null>(null);
   const [triggerForm,     setTriggerForm]     = useState<Row|null>(null);
   const [templateForm,    setTemplateForm]    = useState<Row|null>(null);
+
+  const [overviewProgram, setOverviewProgram] = useState('');
 
   const chartsRef  = useRef<Record<string,any>>({});
   const toastTimer = useRef<any>();
@@ -125,6 +128,8 @@ export default function AdminDashboard() {
   useEffect(() => { if (!user) return; loadRegistrations(); const t = setInterval(loadRegistrations, 10*60*1000); return () => clearInterval(t); }, [user, loadRegistrations]);
   useEffect(() => {
     if (!user) return;
+    if (activePage === 'overview')     loadPrograms();
+    if (activePage === 'reporting')    loadPrograms();
     if (activePage === 'programs')     loadPrograms();
     if (activePage === 'schools')      loadSchools();
     if (activePage === 'discounts')    loadDiscounts();
@@ -149,22 +154,23 @@ export default function AdminDashboard() {
     if (activePage==='overview')  renderOverviewCharts();
     if (activePage==='trends')    renderTrendCharts();
     if (activePage==='analytics') renderAnalyticsCharts();
-  }, [activePage, allRows, trendDays]);
+  }, [activePage, allRows, trendDays, overviewProgram]);
 
   function dc(id:string) { if(chartsRef.current[id]){chartsRef.current[id].destroy();delete chartsRef.current[id];} }
 
   function renderOverviewCharts() {
     if (!(window as any).Chart) return;
     const C = (window as any).Chart;
-    const paid = allRows.filter(r=>r.payment_status==='paid');
+    const filtered = overviewProgram ? allRows.filter(r=>r.program_name===overviewProgram||r.project_id===overviewProgram) : allRows;
+    const paid = filtered.filter(r=>r.payment_status==='paid');
     const now  = new Date();
     dc('daily');
     const labels:string[]=[],paidArr:number[]=[],totalArr:number[]=[];
-    for(let i=trendDays-1;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);const ds=d.toISOString().slice(0,10);labels.push(d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}));const day=allRows.filter(r=>r.created_at?.slice(0,10)===ds);totalArr.push(day.length);paidArr.push(day.filter(r=>r.payment_status==='paid').length);}
+    for(let i=trendDays-1;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);const ds=d.toISOString().slice(0,10);labels.push(d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}));const day=filtered.filter(r=>r.created_at?.slice(0,10)===ds);totalArr.push(day.length);paidArr.push(day.filter(r=>r.payment_status==='paid').length);}
     const ctxD=(document.getElementById('chartDaily') as HTMLCanvasElement)?.getContext('2d');
     if(ctxD) chartsRef.current.daily=new C(ctxD,{type:'bar',data:{labels,datasets:[{label:'Total',data:totalArr,backgroundColor:'rgba(79,70,229,.12)',borderColor:'#4f46e5',borderWidth:2,borderRadius:8,borderSkipped:false},{label:'Paid',data:paidArr,backgroundColor:'rgba(16,185,129,.8)',borderRadius:8,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}},x:{grid:{display:false}}}}});
     dc('status');
-    const sc:Record<string,number>={};allRows.forEach(r=>{const s=r.payment_status??'unknown';sc[s]=(sc[s]??0)+1;});
+    const sc:Record<string,number>={};filtered.forEach(r=>{const s=r.payment_status??'unknown';sc[s]=(sc[s]??0)+1;});
     const colorMap:Record<string,string>={paid:'#10b981',initiated:'#4f46e5',pending:'#f59e0b',failed:'#ef4444',cancelled:'#94a3b8'};
     const ctxS=(document.getElementById('chartStatus') as HTMLCanvasElement)?.getContext('2d');
     if(ctxS){const sl=Object.keys(sc);chartsRef.current.status=new C(ctxS,{type:'doughnut',data:{labels:sl,datasets:[{data:Object.values(sc),backgroundColor:sl.map(l=>colorMap[l]??'#94a3b8'),borderWidth:3,borderColor:'#fff',hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},cutout:'65%'}});}
@@ -210,14 +216,15 @@ export default function AdminDashboard() {
     setActivePage(id);
   }
 
-  const paid    = allRows.filter(r=>r.payment_status==='paid');
-  const pending = allRows.filter(r=>['pending','initiated'].includes(r.payment_status));
-  const failed  = allRows.filter(r=>['failed','cancelled'].includes(r.payment_status));
+  const ovRows  = overviewProgram ? allRows.filter(r=>r.program_name===overviewProgram||r.project_id===overviewProgram) : allRows;
+  const paid    = ovRows.filter(r=>r.payment_status==='paid');
+  const pending = ovRows.filter(r=>['pending','initiated'].includes(r.payment_status));
+  const failed  = ovRows.filter(r=>['failed','cancelled'].includes(r.payment_status));
   const totalRev = paid.reduce((s,r)=>s+(r.final_amount??0),0);
-  const conv = allRows.length ? Math.round(paid.length/allRows.length*100) : 0;
+  const conv = ovRows.length ? Math.round(paid.length/ovRows.length*100) : 0;
   const avg  = paid.length   ? Math.round(totalRev/paid.length)            : 0;
   const today    = new Date().toISOString().slice(0,10);
-  const thisWeek = allRows.filter(r=>new Date(r.created_at)>=new Date(Date.now()-7*24*60*60*1000)).length;
+  const thisWeek = ovRows.filter(r=>new Date(r.created_at)>=new Date(Date.now()-7*24*60*60*1000)).length;
   const followUpCount = allRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status)).length;
 
   const saveForm = async (path:string, data:Row, onDone:()=>void, successMsg:string) => {
@@ -278,6 +285,14 @@ export default function AdminDashboard() {
             <div className="topbar">
               <div className="topbar-left"><h1>Overview <span>Dashboard</span></h1><p>{lastUpdated}</p></div>
               <div className="topbar-right">
+                <select
+                  value={overviewProgram}
+                  onChange={e=>setOverviewProgram(e.target.value)}
+                  style={{border:'1.5px solid var(--bd)',borderRadius:10,padding:'7px 14px',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',color:'var(--text)',background:'var(--card)',cursor:'pointer',minWidth:160}}
+                >
+                  <option value="">All Programs</option>
+                  {programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
                 <div className="badge-live"><div className="dot"/>Live Data</div>
                 <button className="btn btn-outline" onClick={loadRegistrations}>🔄 Refresh</button>
                 <button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button>
@@ -287,21 +302,21 @@ export default function AdminDashboard() {
               <div>
                 <div className="rev-label">💰 Total Revenue Collected</div>
                 <div className="rev-val">₹{fmtR(totalRev)}</div>
-                <div className="rev-sub">From {paid.length} confirmed payments</div>
+                <div className="rev-sub">From {paid.length} confirmed payments{overviewProgram ? ` · ${programs.find(p=>p.id===overviewProgram)?.name}` : ''}</div>
               </div>
               <div className="rev-stats">
                 <div className="rev-stat"><div className="rev-stat-val">{conv}%</div><div className="rev-stat-lbl">Conversion</div></div>
                 <div className="rev-stat"><div className="rev-stat-val">₹{fmtR(avg)}</div><div className="rev-stat-lbl">Avg ticket</div></div>
-                <div className="rev-stat"><div className="rev-stat-val">{allRows.filter(r=>r.created_at?.slice(0,10)===today).length}</div><div className="rev-stat-lbl">Today</div></div>
+                <div className="rev-stat"><div className="rev-stat-val">{ovRows.filter(r=>r.created_at?.slice(0,10)===today).length}</div><div className="rev-stat-lbl">Today</div></div>
               </div>
             </div>
             <div className="stats-grid">
               {[
-                {color:'blue',  icon:'📋',label:'Total',    val:allRows.length,  sub:'All registrations'},
+                {color:'blue',  icon:'📋',label:'Total',    val:ovRows.length,  sub:'All registrations'},
                 {color:'green', icon:'✅',label:'Paid',     val:paid.length,     sub:'Confirmed'},
                 {color:'orange',icon:'⏳',label:'Pending',  val:pending.length,  sub:'Awaiting payment'},
                 {color:'red',   icon:'❌',label:'Failed',   val:failed.length,   sub:'Cancelled/failed'},
-                {color:'purple',icon:'🏷️',label:'Discounts',val:allRows.filter(r=>r.discount_code).length,sub:'Used codes'},
+                {color:'purple',icon:'🏷️',label:'Discounts',val:ovRows.filter(r=>r.discount_code).length,sub:'Used codes'},
                 {color:'blue',  icon:'📅',label:'This Week',val:thisWeek,        sub:'Last 7 days'},
               ].map(c=>(
                 <div key={c.label} className={`stat-card ${c.color}`}>
@@ -320,6 +335,11 @@ export default function AdminDashboard() {
               <div className="chart-card wide"><div className="chart-header"><div><div className="chart-title">📅 Daily Registrations</div></div></div><div className="chart-wrap"><canvas id="chartDaily"/></div></div>
               <div className="chart-card"><div className="chart-header"><div><div className="chart-title">📊 Payment Status</div></div></div><div className="chart-wrap"><canvas id="chartStatus"/></div></div>
             </div>
+          </div>
+
+          {/* Reporting */}
+          <div className={`page${activePage==='reporting'?' active':''}`}>
+            <ReportingPage allRows={allRows} programs={programs} />
           </div>
 
           {/* Students */}
@@ -636,6 +656,569 @@ export default function AdminDashboard() {
       {/* Template form */}
       {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
     </>
+  );
+}
+
+// ── Reporting Page ─────────────────────────────────────────────────
+const TIMELINE_OPTIONS = [
+  { label: 'Today',        days: 0   },
+  { label: 'Last 5 Days',  days: 5   },
+  { label: 'Last 10 Days', days: 10  },
+  { label: 'Last 15 Days', days: 15  },
+  { label: 'Last 30 Days', days: 30  },
+  { label: 'Current Year', days: -1  },
+];
+
+const REPORT_TABS = [
+  { id: 'schools_registered',    label: '🏫 Schools Registered'         },
+  { id: 'total_countries',       label: '🌍 Total Countries'             },
+  { id: 'country_schools',       label: '🗺️ Country-wise Schools'        },
+  { id: 'total_students',        label: '👨‍🎓 Total Students'              },
+  { id: 'country_students',      label: '🌐 Country-wise Students'       },
+  { id: 'class_students',        label: '📚 Class-wise Students'         },
+  { id: 'class_country',         label: '📍 Classwise Country-wise'      },
+  { id: 'gender_students',       label: '⚧ Gender-wise'                  },
+  { id: 'class_gender',          label: '🎓 Classwise Gender-wise'       },
+  { id: 'payment_collected',     label: '💰 Payment Collected'           },
+  { id: 'payment_mode',          label: '💳 Payment Mode Breakdown'      },
+];
+
+function filterByTimeline(rows: Row[], days: number): Row[] {
+  if (days === -1) {
+    const year = new Date().getFullYear();
+    return rows.filter(r => new Date(r.created_at).getFullYear() === year);
+  }
+  if (days === 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    return rows.filter(r => r.created_at?.slice(0, 10) === today);
+  }
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return rows.filter(r => new Date(r.created_at) >= cutoff);
+}
+
+function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] }) {
+  const [activeTab,    setActiveTab]    = useState('schools_registered');
+  const [timelineDays, setTimelineDays] = useState(30);
+  const [filterProgram,setFilterProgram]= useState('');
+
+  const baseRows = filterProgram
+    ? allRows.filter(r => r.program_name === filterProgram || r.project_id === filterProgram)
+    : allRows;
+  const rows = filterByTimeline(baseRows, timelineDays);
+  const paidRows = rows.filter(r => r.payment_status === 'paid');
+
+  const fmtR2 = (p: number) => { const v = p/100; return isNaN(v)?'0':v.toLocaleString('en-IN'); };
+
+  // ── Data computations ──────────────────────────────────────────
+  const schoolSet    = [...new Set(rows.map(r => r.parent_school).filter(Boolean))];
+  const countrySet   = [...new Set(rows.map(r => r.country ?? 'India').filter(Boolean))];
+  const classSet     = [...new Set(rows.map(r => r.class_grade).filter(Boolean))].sort();
+  const genderSet    = ['Male','Female','Other'];
+  const gatewaySet   = [...new Set(rows.map(r => r.gateway).filter(Boolean))];
+
+  // Schools Registered
+  const schoolStats = schoolSet.map(school => {
+    const sr = rows.filter(r => r.parent_school === school);
+    const paid = sr.filter(r => r.payment_status === 'paid');
+    return { school, total: sr.length, paid: paid.length, revenue: paid.reduce((s,r)=>s+(r.final_amount??0),0) };
+  }).sort((a,b) => b.total - a.total);
+
+  // Country-wise schools
+  const countrySchools = countrySet.map(country => {
+    const cr = rows.filter(r => (r.country??'India') === country);
+    const schools = [...new Set(cr.map(r=>r.parent_school).filter(Boolean))];
+    return { country, schools: schools.length, students: cr.length };
+  }).sort((a,b) => b.students - a.students);
+
+  // Country-wise students
+  const countryStudents = countrySet.map(country => {
+    const cr = rows.filter(r => (r.country??'India') === country);
+    const paid = cr.filter(r => r.payment_status === 'paid');
+    return { country, total: cr.length, paid: paid.length, revenue: paid.reduce((s,r)=>s+(r.final_amount??0),0) };
+  }).sort((a,b) => b.total - a.total);
+
+  // Class-wise students
+  const classStats = classSet.map(cls => {
+    const cr = rows.filter(r => r.class_grade === cls);
+    const paid = cr.filter(r => r.payment_status === 'paid');
+    return { cls, total: cr.length, paid: paid.length };
+  }).sort((a,b) => b.total - a.total);
+
+  // Class x Country matrix
+  const classCountryMatrix = classSet.map(cls => {
+    const byCountry: Record<string,number> = {};
+    countrySet.forEach(c => {
+      byCountry[c] = rows.filter(r => r.class_grade===cls && (r.country??'India')===c).length;
+    });
+    return { cls, byCountry, total: rows.filter(r=>r.class_grade===cls).length };
+  });
+
+  // Gender-wise
+  const genderStats = ['Male','Female','Other','Unknown'].map(g => {
+    const gr = g==='Unknown'
+      ? rows.filter(r => !r.gender || !['Male','Female','Other'].includes(r.gender))
+      : rows.filter(r => r.gender === g);
+    const paid = gr.filter(r => r.payment_status === 'paid');
+    return { gender: g, total: gr.length, paid: paid.length };
+  }).filter(g => g.total > 0);
+
+  // Class x Gender
+  const classGender = classSet.map(cls => {
+    const cr = rows.filter(r => r.class_grade === cls);
+    const byGender: Record<string,number> = {};
+    ['Male','Female','Other'].forEach(g => { byGender[g] = cr.filter(r=>r.gender===g).length; });
+    return { cls, byGender, total: cr.length };
+  });
+
+  // Payment collected
+  const inrPaid = paidRows.filter(r => (r.currency??'INR') === 'INR');
+  const usdPaid = paidRows.filter(r => r.currency === 'USD');
+  const inrRev  = inrPaid.reduce((s,r)=>s+(r.final_amount??0),0);
+  const usdRev  = usdPaid.reduce((s,r)=>s+(r.final_amount??0),0);
+
+  // Payment mode breakdown
+  const gatewayStats = gatewaySet.map(gw => {
+    const gr = rows.filter(r => r.gateway === gw);
+    const paid = gr.filter(r => r.payment_status === 'paid');
+    return { gateway: gw, total: gr.length, paid: paid.length, revenue: paid.reduce((s,r)=>s+(r.final_amount??0),0) };
+  }).sort((a,b) => b.total - a.total);
+
+  // ── Mini bar helper ────────────────────────────────────────────
+  const maxVal = (arr: number[]) => Math.max(...arr, 1);
+
+  const Bar = ({ val, max, color='var(--acc)' }: { val:number; max:number; color?:string }) => (
+    <div style={{display:'flex',alignItems:'center',gap:8,flex:1}}>
+      <div style={{flex:1,background:'var(--bg)',borderRadius:4,height:8,overflow:'hidden'}}>
+        <div style={{width:`${Math.round(val/max*100)}%`,height:'100%',background:color,borderRadius:4,transition:'width .3s'}}/>
+      </div>
+      <span style={{fontSize:12,fontWeight:700,color:'var(--text)',minWidth:28,textAlign:'right'}}>{val}</span>
+    </div>
+  );
+
+  const tableHead = (cols: string[]) => (
+    <thead><tr>{cols.map(c=><th key={c}>{c}</th>)}</tr></thead>
+  );
+
+  const badge = (label: string, color='var(--acc)', bg='var(--acc3)') => (
+    <span style={{padding:'2px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:bg,color}}>{label}</span>
+  );
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:0,height:'100%'}}>
+      {/* Header */}
+      <div className="topbar" style={{marginBottom:0}}>
+        <div className="topbar-left">
+          <h1>Reporting <span>Analytics</span></h1>
+          <p>{rows.length} records in view</p>
+        </div>
+        <div className="topbar-right">
+          <select
+            value={filterProgram}
+            onChange={e=>setFilterProgram(e.target.value)}
+            style={{border:'1.5px solid var(--bd)',borderRadius:10,padding:'7px 14px',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',color:'var(--text)',background:'var(--card)',cursor:'pointer',minWidth:160}}
+          >
+            <option value="">All Programs</option>
+            {programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Timeline filter */}
+      <div style={{display:'flex',gap:6,padding:'12px 0',flexWrap:'wrap'}}>
+        {TIMELINE_OPTIONS.map(opt=>(
+          <button key={opt.label}
+            onClick={()=>setTimelineDays(opt.days)}
+            style={{
+              padding:'6px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',
+              fontSize:12,fontWeight:600,
+              background: timelineDays===opt.days ? 'var(--acc)' : 'transparent',
+              borderColor: timelineDays===opt.days ? 'var(--acc)' : 'var(--bd)',
+              color: timelineDays===opt.days ? '#fff' : 'var(--m)',
+              transition:'all .12s',
+            }}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab nav */}
+      <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:8,flexWrap:'nowrap',borderBottom:'1px solid var(--bd)',marginBottom:20}}>
+        {REPORT_TABS.map(tab=>(
+          <button key={tab.id}
+            onClick={()=>setActiveTab(tab.id)}
+            style={{
+              padding:'7px 14px',borderRadius:10,border:'1.5px solid',cursor:'pointer',
+              fontSize:12,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,
+              background: activeTab===tab.id ? 'var(--card)' : 'transparent',
+              borderColor: activeTab===tab.id ? 'var(--acc)' : 'transparent',
+              color: activeTab===tab.id ? 'var(--acc)' : 'var(--m)',
+              transition:'all .12s',
+            }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB: Schools Registered ── */}
+      {activeTab==='schools_registered'&&(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:20}}>
+            {[
+              {label:'Schools Registered', val:schoolSet.length,   color:'var(--acc)'},
+              {label:'Total Students',     val:rows.length,         color:'#10b981'},
+              {label:'Paid Students',      val:paidRows.length,     color:'#f59e0b'},
+            ].map(s=>(
+              <div key={s.label} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,padding:'16px 20px'}}>
+                <div style={{fontSize:26,fontWeight:800,fontFamily:'Sora',color:s.color}}>{s.val}</div>
+                <div style={{fontSize:12,color:'var(--m)',marginTop:4}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['#','School Name','Students','Paid','Revenue (₹)','Conv%'])}
+            <tbody>
+              {schoolStats.length===0
+                ? <tr><td colSpan={6} className="table-empty">No data for this period.</td></tr>
+                : schoolStats.map((s,i)=>(
+                  <tr key={s.school}>
+                    <td style={{color:'var(--m2)',fontSize:11}}>{i+1}</td>
+                    <td style={{fontWeight:700}}>{s.school}</td>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <Bar val={s.total} max={maxVal(schoolStats.map(x=>x.total))} />
+                      </div>
+                    </td>
+                    <td>{badge(String(s.paid),'#10b981','rgba(16,185,129,.1)')}</td>
+                    <td><span className="amt">₹{fmtR2(s.revenue)}</span></td>
+                    <td>{s.total ? Math.round(s.paid/s.total*100) : 0}%</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* ── TAB: Total Countries ── */}
+      {activeTab==='total_countries'&&(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:20}}>
+            {[
+              {label:'Countries Reached',  val:countrySet.length,   color:'var(--acc)'},
+              {label:'Total Students',     val:rows.length,          color:'#10b981'},
+              {label:'Paid Students',      val:paidRows.length,      color:'#f59e0b'},
+            ].map(s=>(
+              <div key={s.label} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,padding:'16px 20px'}}>
+                <div style={{fontSize:26,fontWeight:800,fontFamily:'Sora',color:s.color}}>{s.val}</div>
+                <div style={{fontSize:12,color:'var(--m)',marginTop:4}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:12,marginBottom:16}}>
+            {countrySet.map(c=>{
+              const cnt = rows.filter(r=>(r.country??'India')===c).length;
+              return (
+                <div key={c} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,padding:'14px 18px',minWidth:140}}>
+                  <div style={{fontSize:22,marginBottom:4}}>{({India:'🇮🇳',UAE:'🇦🇪','United Arab Emirates':'🇦🇪','Saudi Arabia':'🇸🇦',Kuwait:'🇰🇼',Qatar:'🇶🇦',Singapore:'🇸🇬',Malaysia:'🇲🇾'} as any)[c]??'🌍'}</div>
+                  <div style={{fontWeight:700,fontSize:14}}>{c}</div>
+                  <div style={{fontSize:22,fontWeight:800,fontFamily:'Sora',color:'var(--acc)',marginTop:4}}>{cnt}</div>
+                  <div style={{fontSize:11,color:'var(--m)'}}>students</div>
+                </div>
+              );
+            })}
+            {countrySet.length===0&&<div className="empty-state"><div className="emoji">🌍</div><p>No data for this period.</p></div>}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: Country-wise Schools ── */}
+      {activeTab==='country_schools'&&(
+        <div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['Country','Schools','Students','Paid %'])}
+            <tbody>
+              {countrySchools.length===0
+                ? <tr><td colSpan={4} className="table-empty">No data for this period.</td></tr>
+                : countrySchools.map((c,i)=>{
+                  const paidC = rows.filter(r=>(r.country??'India')===c.country&&r.payment_status==='paid').length;
+                  return (
+                    <tr key={c.country}>
+                      <td><span style={{fontWeight:700}}>{c.country}</span></td>
+                      <td>{badge(String(c.schools))}</td>
+                      <td><Bar val={c.students} max={maxVal(countrySchools.map(x=>x.students))} color='#10b981'/></td>
+                      <td>{c.students ? Math.round(paidC/c.students*100) : 0}%</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* ── TAB: Total Students ── */}
+      {activeTab==='total_students'&&(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:20}}>
+            {[
+              {label:'Total Registrations', val:rows.length,                                                                      color:'var(--acc)'},
+              {label:'Paid',                val:paidRows.length,                                                                   color:'#10b981'},
+              {label:'Pending',             val:rows.filter(r=>['pending','initiated'].includes(r.payment_status)).length,         color:'#f59e0b'},
+              {label:'Failed / Cancelled',  val:rows.filter(r=>['failed','cancelled'].includes(r.payment_status)).length,          color:'#ef4444'},
+            ].map(s=>(
+              <div key={s.label} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,padding:'16px 20px'}}>
+                <div style={{fontSize:26,fontWeight:800,fontFamily:'Sora',color:s.color}}>{s.val}</div>
+                <div style={{fontSize:12,color:'var(--m)',marginTop:4}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,padding:'16px'}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:12,color:'var(--m)'}}>TOP SCHOOLS</div>
+              {schoolStats.slice(0,8).map(s=>(
+                <div key={s.school} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:600,minWidth:130,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.school}</div>
+                  <Bar val={s.total} max={maxVal(schoolStats.map(x=>x.total))} />
+                </div>
+              ))}
+            </div>
+            <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,padding:'16px'}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:12,color:'var(--m)'}}>TOP CLASSES</div>
+              {classStats.slice(0,8).map(s=>(
+                <div key={s.cls} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:600,minWidth:100}}>{s.cls}</div>
+                  <Bar val={s.total} max={maxVal(classStats.map(x=>x.total))} color='#8b5cf6'/>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: Country-wise Students ── */}
+      {activeTab==='country_students'&&(
+        <div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['Country','Total Students','Paid','Revenue (₹)','Conv%'])}
+            <tbody>
+              {countryStudents.length===0
+                ? <tr><td colSpan={5} className="table-empty">No data for this period.</td></tr>
+                : countryStudents.map(c=>(
+                  <tr key={c.country}>
+                    <td style={{fontWeight:700}}>{c.country}</td>
+                    <td><Bar val={c.total} max={maxVal(countryStudents.map(x=>x.total))} /></td>
+                    <td>{badge(String(c.paid),'#10b981','rgba(16,185,129,.1)')}</td>
+                    <td><span className="amt">₹{fmtR2(c.revenue)}</span></td>
+                    <td>{c.total ? Math.round(c.paid/c.total*100) : 0}%</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* ── TAB: Class-wise Students ── */}
+      {activeTab==='class_students'&&(
+        <div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['Class','Total','Paid','Pending','Share%'])}
+            <tbody>
+              {classStats.length===0
+                ? <tr><td colSpan={5} className="table-empty">No data for this period.</td></tr>
+                : classStats.map(c=>(
+                  <tr key={c.cls}>
+                    <td><span style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 10px',borderRadius:6,fontWeight:700,fontSize:12}}>{c.cls}</span></td>
+                    <td><Bar val={c.total} max={maxVal(classStats.map(x=>x.total))} /></td>
+                    <td>{badge(String(c.paid),'#10b981','rgba(16,185,129,.1)')}</td>
+                    <td style={{color:'#f59e0b',fontWeight:600}}>{c.total-c.paid}</td>
+                    <td>{rows.length ? Math.round(c.total/rows.length*100) : 0}%</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* ── TAB: Classwise Country-wise ── */}
+      {activeTab==='class_country'&&(
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead>
+              <tr>
+                <th style={{background:'var(--bg2,var(--bg))',padding:'10px 14px',textAlign:'left',fontWeight:700,fontSize:11,color:'var(--m)',borderBottom:'2px solid var(--bd)',position:'sticky',left:0,zIndex:2}}>Class</th>
+                {countrySet.map(c=>(
+                  <th key={c} style={{background:'var(--bg2,var(--bg))',padding:'10px 12px',textAlign:'center',fontWeight:700,fontSize:11,color:'var(--m)',borderBottom:'2px solid var(--bd)',whiteSpace:'nowrap'}}>{c}</th>
+                ))}
+                <th style={{background:'var(--bg2,var(--bg))',padding:'10px 14px',textAlign:'center',fontWeight:700,fontSize:11,color:'var(--acc)',borderBottom:'2px solid var(--bd)'}}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {classCountryMatrix.length===0
+                ? <tr><td colSpan={countrySet.length+2} className="table-empty">No data for this period.</td></tr>
+                : classCountryMatrix.map(row=>(
+                  <tr key={row.cls}>
+                    <td style={{padding:'9px 14px',fontWeight:700,background:'var(--card)',position:'sticky',left:0,borderBottom:'1px solid var(--bd)',color:'var(--acc)',fontSize:12}}>
+                      <span style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 10px',borderRadius:6}}>{row.cls}</span>
+                    </td>
+                    {countrySet.map(c=>(
+                      <td key={c} style={{padding:'9px 12px',textAlign:'center',borderBottom:'1px solid var(--bd)',fontWeight:row.byCountry[c]>0?700:400,color:row.byCountry[c]>0?'var(--text)':'var(--m2)'}}>
+                        {row.byCountry[c]||'—'}
+                      </td>
+                    ))}
+                    <td style={{padding:'9px 14px',textAlign:'center',borderBottom:'1px solid var(--bd)',fontWeight:800,color:'var(--acc)',fontSize:14}}>{row.total}</td>
+                  </tr>
+                ))}
+              <tr style={{background:'var(--bg)'}}>
+                <td style={{padding:'9px 14px',fontWeight:800,position:'sticky',left:0,background:'var(--bg)',fontSize:12,color:'var(--m)'}}>Total</td>
+                {countrySet.map(c=>(
+                  <td key={c} style={{padding:'9px 12px',textAlign:'center',fontWeight:700,color:'var(--acc)'}}>
+                    {rows.filter(r=>(r.country??'India')===c).length||'—'}
+                  </td>
+                ))}
+                <td style={{padding:'9px 14px',textAlign:'center',fontWeight:800,color:'var(--acc)',fontSize:14}}>{rows.length}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── TAB: Gender-wise ── */}
+      {activeTab==='gender_students'&&(
+        <div>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:20}}>
+            {genderStats.map(g=>{
+              const color = g.gender==='Male'?'#2563eb':g.gender==='Female'?'#db2777':g.gender==='Other'?'#7c3aed':'#94a3b8';
+              const bg    = g.gender==='Male'?'#eff6ff':g.gender==='Female'?'#fdf2f8':g.gender==='Other'?'rgba(124,58,237,0.08)':'rgba(148,163,184,0.1)';
+              return (
+                <div key={g.gender} style={{background:'var(--card)',border:`2px solid ${color}44`,borderRadius:14,padding:'20px 24px',minWidth:160}}>
+                  <div style={{fontSize:32,marginBottom:6}}>{g.gender==='Male'?'👦':g.gender==='Female'?'👧':g.gender==='Other'?'🧑':'❓'}</div>
+                  <div style={{fontWeight:700,fontSize:15}}>{g.gender}</div>
+                  <div style={{fontSize:28,fontWeight:800,fontFamily:'Sora',color,marginTop:6}}>{g.total}</div>
+                  <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{g.paid} paid · {g.total ? Math.round(g.paid/g.total*100) : 0}%</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['Gender','Total','Paid','Pending','Share%'])}
+            <tbody>
+              {genderStats.map(g=>(
+                <tr key={g.gender}>
+                  <td style={{fontWeight:700}}>{g.gender}</td>
+                  <td><Bar val={g.total} max={maxVal(genderStats.map(x=>x.total))} color={g.gender==='Male'?'#2563eb':g.gender==='Female'?'#db2777':'#7c3aed'}/></td>
+                  <td>{badge(String(g.paid),'#10b981','rgba(16,185,129,.1)')}</td>
+                  <td style={{color:'#f59e0b',fontWeight:600}}>{g.total-g.paid}</td>
+                  <td>{rows.length ? Math.round(g.total/rows.length*100) : 0}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* ── TAB: Classwise Gender-wise ── */}
+      {activeTab==='class_gender'&&(
+        <div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['Class','Male','Female','Other','Total'])}
+            <tbody>
+              {classGender.length===0
+                ? <tr><td colSpan={5} className="table-empty">No data for this period.</td></tr>
+                : classGender.map(c=>(
+                  <tr key={c.cls}>
+                    <td><span style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 10px',borderRadius:6,fontWeight:700,fontSize:12}}>{c.cls}</span></td>
+                    <td><span style={{fontWeight:700,color:'#2563eb'}}>{c.byGender['Male']||0}</span></td>
+                    <td><span style={{fontWeight:700,color:'#db2777'}}>{c.byGender['Female']||0}</span></td>
+                    <td><span style={{fontWeight:700,color:'#7c3aed'}}>{c.byGender['Other']||0}</span></td>
+                    <td style={{fontWeight:800,color:'var(--acc)'}}>{c.total}</td>
+                  </tr>
+                ))}
+              <tr style={{background:'var(--bg)',fontWeight:800}}>
+                <td style={{color:'var(--m)'}}>Total</td>
+                <td style={{color:'#2563eb'}}>{rows.filter(r=>r.gender==='Male').length}</td>
+                <td style={{color:'#db2777'}}>{rows.filter(r=>r.gender==='Female').length}</td>
+                <td style={{color:'#7c3aed'}}>{rows.filter(r=>r.gender==='Other').length}</td>
+                <td style={{color:'var(--acc)'}}>{rows.length}</td>
+              </tr>
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* ── TAB: Payment Collected ── */}
+      {activeTab==='payment_collected'&&(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:16,marginBottom:20}}>
+            <div style={{background:'var(--card)',border:'2px solid rgba(79,70,229,0.3)',borderRadius:16,padding:'24px 28px'}}>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--m)',marginBottom:8}}>🇮🇳 INR COLLECTIONS</div>
+              <div style={{fontSize:36,fontWeight:800,fontFamily:'Sora',color:'var(--acc)'}}>₹{fmtR2(inrRev)}</div>
+              <div style={{fontSize:12,color:'var(--m)',marginTop:6}}>{inrPaid.length} paid transactions</div>
+              <div style={{fontSize:12,color:'var(--m)'}}>Avg: ₹{inrPaid.length ? fmtR2(Math.round(inrRev/inrPaid.length)) : '0'} per student</div>
+            </div>
+            <div style={{background:'var(--card)',border:'2px solid rgba(34,197,94,0.3)',borderRadius:16,padding:'24px 28px'}}>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--m)',marginBottom:8}}>🌐 USD COLLECTIONS</div>
+              <div style={{fontSize:36,fontWeight:800,fontFamily:'Sora',color:'#22c55e'}}>${fmtR2(usdRev)}</div>
+              <div style={{fontSize:12,color:'var(--m)',marginTop:6}}>{usdPaid.length} paid transactions</div>
+              <div style={{fontSize:12,color:'var(--m)'}}>Avg: ${usdPaid.length ? fmtR2(Math.round(usdRev/usdPaid.length)) : '0'} per student</div>
+            </div>
+          </div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['#','Date','Student','School','Currency','Amount','Gateway','Txn ID'])}
+            <tbody>
+              {paidRows.length===0
+                ? <tr><td colSpan={8} className="table-empty">No paid transactions in this period.</td></tr>
+                : paidRows.slice(0,200).map((r,i)=>(
+                  <tr key={r.id}>
+                    <td style={{fontSize:11,color:'var(--m2)'}}>{i+1}</td>
+                    <td style={{fontSize:11,color:'var(--m)'}}>{r.created_at?.slice(0,10)}</td>
+                    <td style={{fontWeight:600}}>{r.student_name}</td>
+                    <td style={{fontSize:12}}>{r.parent_school}</td>
+                    <td><span style={{fontWeight:700,fontSize:11,color:(r.currency??'INR')==='INR'?'var(--acc)':'#22c55e'}}>{r.currency??'INR'}</span></td>
+                    <td><span className="amt">{(r.currency??'INR')==='INR'?'₹':'$'}{fmtR2(r.final_amount??0)}</span></td>
+                    <td><span className="gw-tag">{r.gateway??'—'}</span></td>
+                    <td style={{fontSize:10,color:'var(--m2)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis'}}>{r.gateway_txn_id??'—'}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* ── TAB: Payment Mode Breakdown ── */}
+      {activeTab==='payment_mode'&&(
+        <div>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:20}}>
+            {gatewayStats.map((g,i)=>{
+              const colors=['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4'];
+              const color=colors[i%colors.length];
+              return (
+                <div key={g.gateway} style={{background:'var(--card)',border:`2px solid ${color}33`,borderRadius:14,padding:'16px 20px',minWidth:160}}>
+                  <div style={{fontWeight:700,fontSize:14}}>{g.gateway}</div>
+                  <div style={{fontSize:28,fontWeight:800,fontFamily:'Sora',color,marginTop:6}}>{g.total}</div>
+                  <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{g.paid} paid · ₹{fmtR2(g.revenue)}</div>
+                </div>
+              );
+            })}
+            {gatewayStats.length===0&&<div className="empty-state"><div className="emoji">💳</div><p>No payment data for this period.</p></div>}
+          </div>
+          <div className="tbl-wrap"><table>
+            {tableHead(['Payment Mode','Total Attempts','Paid','Failed/Pending','Revenue (₹)','Conv%'])}
+            <tbody>
+              {gatewayStats.length===0
+                ? <tr><td colSpan={6} className="table-empty">No data for this period.</td></tr>
+                : gatewayStats.map(g=>(
+                  <tr key={g.gateway}>
+                    <td><span className="gw-tag">{g.gateway}</span></td>
+                    <td><Bar val={g.total} max={maxVal(gatewayStats.map(x=>x.total))} /></td>
+                    <td>{badge(String(g.paid),'#10b981','rgba(16,185,129,.1)')}</td>
+                    <td style={{color:'#ef4444',fontWeight:600}}>{g.total-g.paid}</td>
+                    <td><span className="amt">₹{fmtR2(g.revenue)}</span></td>
+                    <td>{g.total ? Math.round(g.paid/g.total*100) : 0}%</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+    </div>
   );
 }
 
