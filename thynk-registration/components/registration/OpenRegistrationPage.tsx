@@ -149,8 +149,10 @@ export default function OpenRegistrationPage({
   return (
     <div className="atg-card" id="atgCard">
       <div className="card-header">
-        <h1>Thynk Success</h1>
-        {programName && <p>🎯 {programName}</p>}
+        <h1>Welcome to Registration</h1>
+{programName
+  ? <p>✨ For <strong>{programName}</strong></p>
+  : <p style={{ color: 'var(--m)', fontSize: 13 }}>Loading program…</p>}
       </div>
       <div className="card-body">
         <p style={{ fontSize: 13, color: 'var(--m)', marginBottom: 24, textAlign: 'center' }}>
