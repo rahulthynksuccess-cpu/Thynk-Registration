@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
-  const { name, slug, base_amount_inr, base_amount_usd, status } = body;
+  const { name, slug, base_amount_inr, base_amount_usd, status, allowed_grades } = body;
   if (!name || !slug) return NextResponse.json({ error: 'name and slug required' }, { status: 400 });
   const inr = Math.round(Number(base_amount_inr || 0));
   const usd = base_amount_usd ? Math.round(Number(base_amount_usd)) : null;
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     base_amount_inr: inr,
     base_amount_usd: usd,
     status:          status || 'active',
+    allowed_grades:  allowed_grades ?? [],
   }).select().single();
   if (error) return NextResponse.json({ error: error.code === '23505' ? 'Slug already exists' : error.message }, { status: 400 });
   return NextResponse.json({ project: data }, { status: 201 });
@@ -45,11 +46,12 @@ export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
-  const { id, name, base_amount_inr, base_amount_usd, status } = await req.json();
+  const { id, name, base_amount_inr, base_amount_usd, status, allowed_grades } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
   const updates: Record<string, any> = {};
-  if (name   !== undefined) updates.name   = name;
-  if (status !== undefined) updates.status = status;
+  if (name           !== undefined) updates.name           = name;
+  if (status         !== undefined) updates.status         = status;
+  if (allowed_grades !== undefined) updates.allowed_grades = allowed_grades;
   if (base_amount_inr !== undefined) {
     updates.base_amount_inr = Math.round(Number(base_amount_inr));
     updates.base_amount     = Math.round(Number(base_amount_inr));
