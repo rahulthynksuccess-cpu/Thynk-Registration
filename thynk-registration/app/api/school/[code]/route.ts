@@ -3,6 +3,16 @@ import { createServiceClient } from '@/lib/supabase/server';
 
 export const revalidate = 300;
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function GET(
   req: Request,
   { params }: { params: { code: string } }
@@ -28,7 +38,7 @@ export async function GET(
   const { data, error } = await query.single();
 
   if (error || !data) {
-    return NextResponse.json({ error: 'School not found' }, { status: 404 });
+    return NextResponse.json({ error: 'School not found' }, { status: 404, headers: CORS_HEADERS });
   }
 
   const now = new Date().toISOString();
@@ -37,7 +47,7 @@ export async function GET(
   );
 
   if (!activePricing.length) {
-    return NextResponse.json({ error: 'No active pricing for this school' }, { status: 404 });
+    return NextResponse.json({ error: 'No active pricing for this school' }, { status: 404, headers: CORS_HEADERS });
   }
 
   // ── Fetch project allowed_grades ──────────────────────────────────
@@ -79,5 +89,5 @@ export async function GET(
     pricing: activePricing,
     public_gateway_config: publicGatewayConfig,
     allowed_grades: allowedGrades,
-  });
+  }, { headers: CORS_HEADERS });
 }
