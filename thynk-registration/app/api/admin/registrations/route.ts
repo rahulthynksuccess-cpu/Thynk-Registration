@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     .select('role, school_id')
     .eq('user_id', user.id);
 
-  const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
+  const isSuperAdmin     = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
   const allowedSchoolIds = roleRows?.map(r => r.school_id).filter(Boolean) ?? [];
 
   // Build query — added country, state to schools join; currency to pricing join
@@ -52,8 +52,11 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Flatten for dashboard consumption
+  // FIX: pricing is a Supabase array relation — must use [0] index, not direct access
   const flat = (rows ?? []).map((r: any) => {
     const payment = r.payments?.[0] ?? {};
+    const pricing = r.pricing?.[0] ?? {};          // ← FIX: was r.pricing (always undefined)
+
     return {
       id:              r.id,
       created_at:      r.created_at,
@@ -70,11 +73,11 @@ export async function GET(req: NextRequest) {
       school_name:     r.schools?.name,
       country:         r.schools?.country ?? 'India',
       state:           r.schools?.state   ?? null,
-      program_name:    r.pricing?.program_name,
-      currency:        r.pricing?.currency ?? 'INR',
+      program_name:    pricing.program_name,        // ← FIX: was r.pricing?.program_name
+      currency:        pricing.currency ?? 'INR',   // ← FIX: was r.pricing?.currency
       gateway:         payment.gateway        ?? null,
       gateway_txn_id:  payment.gateway_txn_id ?? null,
-      base_amount:     payment.base_amount    ?? r.pricing?.base_amount ?? 0,
+      base_amount:     payment.base_amount    ?? pricing.base_amount ?? 0,  // ← FIX
       discount_amount: payment.discount_amount ?? 0,
       final_amount:    payment.final_amount   ?? 0,
       discount_code:   payment.discount_code  ?? null,
