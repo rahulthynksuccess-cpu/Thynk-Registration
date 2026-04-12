@@ -127,7 +127,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!user) return;
     if (activePage === 'overview')     loadPrograms();
-    if (activePage === 'reporting')    loadPrograms();
+   if (activePage === 'reporting')  { loadPrograms(); loadSchools(); }
     if (activePage === 'programs')     loadPrograms();
     if (activePage === 'schools')      loadSchools();
     if (activePage === 'discounts')    loadDiscounts();
@@ -337,7 +337,7 @@ export default function AdminDashboard() {
 
           {/* Reporting */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
-            <ReportingPage allRows={allRows} programs={programs} />
+           <ReportingPage allRows={allRows} programs={programs} schools={schools} />
           </div>
 
           {/* Students */}
