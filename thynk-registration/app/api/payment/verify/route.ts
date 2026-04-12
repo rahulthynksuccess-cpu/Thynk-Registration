@@ -3,10 +3,12 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { verifyRazorpaySignature } from '@/lib/payment/razorpay';
 import { verifyCashfreePayment } from '@/lib/payment/cashfree';
 
-// Helper — builds the frontend URL for a school
-// Frontend: www.thynksuccess.com/registration/[projectSlug]/[schoolCode]
+const SUCCESS_URL = 'https://www.thynksuccess.com/registration/success';
+const FALLBACK_URL = 'https://www.thynksuccess.com';
+
+// Helper — builds the registration form URL for failed/error redirects
 function registrationUrl(schoolCode: string, projectSlug: string) {
-  const frontend = process.env.NEXT_PUBLIC_FRONTEND_URL ?? 'https://www.thynksuccess.com';
+  const frontend = process.env.NEXT_PUBLIC_FRONTEND_URL ?? FALLBACK_URL;
   return `${frontend}/registration/${projectSlug}/${schoolCode}`;
 }
 
@@ -61,12 +63,11 @@ export async function POST(req: NextRequest) {
 // GET — redirect return URL used by Cashfree / Easebuzz after payment
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const paymentId   = searchParams.get('paymentId');
-  const gw          = searchParams.get('gw');
-  const status      = searchParams.get('status');
-  const frontend    = process.env.NEXT_PUBLIC_FRONTEND_URL ?? 'https://www.thynksuccess.com';
+  const paymentId = searchParams.get('paymentId');
+  const gw        = searchParams.get('gw');
+  const status    = searchParams.get('status');
 
-  if (!paymentId) return NextResponse.redirect(`${frontend}?error=missing_payment`);
+  if (!paymentId) return NextResponse.redirect(`${FALLBACK_URL}?error=missing_payment`);
 
   const supabase = createServiceClient();
   const { data: payment } = await supabase
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
     .eq('id', paymentId)
     .single();
 
-  if (!payment) return NextResponse.redirect(`${frontend}?error=not_found`);
+  if (!payment) return NextResponse.redirect(`${FALLBACK_URL}?error=not_found`);
 
   const schoolCode  = (payment.registrations as any)?.schools?.school_code ?? '';
   const projectSlug = (payment.registrations as any)?.schools?.project_slug ?? '';
@@ -86,8 +87,8 @@ export async function GET(req: NextRequest) {
     try {
       const appId  = gc.cf_app_id ?? process.env.CASHFREE_APP_ID!;
       const secret = gc.cf_secret ?? process.env.CASHFREE_SECRET_KEY!;
-      const mode   = gc.cf_mode   ?? 'production';
-      const result = await verifyCashfreePayment(payment.gateway_txn_id!, appId, secret, mode);
+      const mode   = gc.cf_mode   ?? process.env.CASHFREE_MODE ?? 'production';
+      const result = await verifyCashfreePayment(payment.gateway_txn_id!, appId, secret, mode as 'production' | 'sandbox');
       const newStatus = result.status === 'PAID' ? 'paid' : 'failed';
 
       await supabase.from('payments').update({ status: newStatus, paid_at: newStatus === 'paid' ? new Date().toISOString() : null }).eq('id', paymentId);
@@ -95,7 +96,7 @@ export async function GET(req: NextRequest) {
       if (newStatus === 'paid') await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId });
 
       const dest = newStatus === 'paid'
-        ? `${base}/success?paymentId=${paymentId}`
+        ? SUCCESS_URL
         : `${base}?payment=failed`;
       return NextResponse.redirect(dest);
     } catch {
@@ -110,7 +111,7 @@ export async function GET(req: NextRequest) {
     if (newStatus === 'paid') await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId });
 
     const dest = newStatus === 'paid'
-      ? `${base}/success?paymentId=${paymentId}`
+      ? SUCCESS_URL
       : `${base}?payment=failed`;
     return NextResponse.redirect(dest);
   }
