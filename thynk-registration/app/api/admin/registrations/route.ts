@@ -9,7 +9,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const schoolCode = searchParams.get('schoolCode');
   const status     = searchParams.get('status');
-  const gateway    = searchParams.get('gateway');
   const search     = searchParams.get('q');
   const page       = parseInt(searchParams.get('page') ?? '1');
   const limit      = Math.min(parseInt(searchParams.get('limit') ?? '500'), 1000);
@@ -24,15 +23,51 @@ export async function GET(req: NextRequest) {
   const isSuperAdmin     = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
   const allowedSchoolIds = roleRows?.map(r => r.school_id).filter(Boolean) ?? [];
 
-  // Build query
+  // Resolve schoolCode → school_id (FIX: dot notation doesn't work in Supabase filters)
+  let schoolIdFromCode: string | null = null;
+  if (schoolCode) {
+    const { data: schoolData } = await service
+      .from('schools')
+      .select('id')
+      .eq('school_code', schoolCode)
+      .single();
+    schoolIdFromCode = schoolData?.id ?? null;
+  }
+
+  // Build query — FIX: removed !inner so rows without a school are not silently dropped
   let query = service
     .from('registrations')
     .select(`
-      id, created_at, student_name, class_grade, gender, parent_school, city,
-      parent_name, contact_phone, contact_email, status,
-      schools!inner(id, school_code, name, org_name, country, state),
-      pricing(program_name, base_amount, currency),
-      payments(gateway, gateway_txn_id, base_amount, discount_amount, final_amount, discount_code, status, paid_at)
+      id,
+      created_at,
+      student_name,
+      class_grade,
+      gender,
+      parent_school,
+      city,
+      parent_name,
+      contact_phone,
+      contact_email,
+      status,
+      schools(
+        id,
+        school_code,
+        name,
+        org_name,
+        country,
+        state,
+        pricing(program_name, base_amount, currency)
+      ),
+      payments(
+        gateway,
+        gateway_txn_id,
+        base_amount,
+        discount_amount,
+        final_amount,
+        discount_code,
+        status,
+        paid_at
+      )
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -42,19 +77,29 @@ export async function GET(req: NextRequest) {
     query = query.in('school_id', allowedSchoolIds);
   }
 
-  if (schoolCode) {
-    query = query.eq('schools.school_code', schoolCode);
+  if (schoolIdFromCode) {
+    query = query.eq('school_id', schoolIdFromCode);
   }
 
-  if (status) query = query.eq('status', status);
+  if (status) {
+    // status can refer to payment status — filter after flattening
+    // (registration status and payment status are different columns)
+  }
 
   const { data: rows, count, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (error) {
+    console.error('[registrations] Supabase error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   // Flatten for dashboard consumption
+  // FIX: pricing is nested under schools, not directly on registrations
   const flat = (rows ?? []).map((r: any) => {
-    const payment = r.payments?.[0] ?? {};
-    const pricing = r.pricing?.[0]  ?? {};  // pricing is a Supabase array relation
+    const payment = Array.isArray(r.payments) ? (r.payments[0] ?? {}) : (r.payments ?? {});
+    const school  = r.schools ?? {};
+    // FIX: pricing lives under schools
+    const pricing = Array.isArray(school.pricing) ? (school.pricing[0] ?? {}) : (school.pricing ?? {});
 
     return {
       id:              r.id,
@@ -68,30 +113,51 @@ export async function GET(req: NextRequest) {
       contact_phone:   r.contact_phone,
       contact_email:   r.contact_email,
       reg_status:      r.status,
-      school_code:     r.schools?.school_code,
-      school_name:     r.schools?.name,
-      country:         r.schools?.country ?? 'India',
-      state:           r.schools?.state   ?? null,
-      program_name:    pricing.program_name         ?? null,
-      currency:        pricing.currency             ?? 'INR',
-      gateway:         payment.gateway              ?? null,
-      gateway_txn_id:  payment.gateway_txn_id       ?? null,
-      base_amount:     payment.base_amount          ?? pricing.base_amount ?? 0,
-      discount_amount: payment.discount_amount      ?? 0,
-      final_amount:    payment.final_amount         ?? 0,
-      discount_code:   payment.discount_code        ?? null,
-      payment_status:  payment.status               ?? null,
-      paid_at:         payment.paid_at              ?? null,
+      school_id:       school.id        ?? null,
+      school_code:     school.school_code ?? null,
+      school_name:     school.name       ?? null,
+      org_name:        school.org_name   ?? null,
+      country:         school.country    ?? 'India',
+      state:           school.state      ?? null,
+      // FIX: program_name and currency now come from school.pricing
+      program_name:    pricing.program_name ?? null,
+      currency:        pricing.currency     ?? 'INR',
+      gateway:         payment.gateway           ?? null,
+      gateway_txn_id:  payment.gateway_txn_id    ?? null,
+      base_amount:     payment.base_amount        ?? pricing.base_amount ?? 0,
+      discount_amount: payment.discount_amount    ?? 0,
+      final_amount:    payment.final_amount       ?? 0,
+      discount_code:   payment.discount_code      ?? null,
+      // FIX: explicitly map payment.status so dashboard filters work correctly
+      payment_status:  payment.status             ?? null,
+      paid_at:         payment.paid_at            ?? null,
     };
   });
 
+  // Apply payment status filter after flattening (since it lives in payments table)
+  let filtered = flat;
+  if (status) {
+    filtered = flat.filter(r => r.payment_status === status);
+  }
+
   // Search filter
-  const filtered = search
-    ? flat.filter(r => {
-        const hay = [r.student_name, r.parent_name, r.contact_phone, r.contact_email, r.parent_school, r.city, r.gateway_txn_id].join(' ').toLowerCase();
-        return hay.includes(search.toLowerCase());
-      })
-    : flat;
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(r => {
+      const hay = [
+        r.student_name,
+        r.parent_name,
+        r.contact_phone,
+        r.contact_email,
+        r.parent_school,
+        r.city,
+        r.gateway_txn_id,
+        r.school_name,
+        r.school_code,
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
 
   return NextResponse.json({ rows: filtered, count: count ?? filtered.length });
 }
