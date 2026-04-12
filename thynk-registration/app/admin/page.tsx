@@ -1115,7 +1115,10 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
   const [gradesLoading, setGradesLoading] = useState(true);
 
   useEffect(() => {
-    api('/api/admin/grades?active=true')
+    fetch(`${BACKEND}/api/admin/grades?active=true`, {
+      credentials: 'include',
+    })
+      .then(r => r.json())
       .then(d => { setAllGrades(d.grades ?? []); setGradesLoading(false); })
       .catch(() => setGradesLoading(false));
   }, []);
