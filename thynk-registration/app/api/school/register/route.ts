@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Activity log ───────────────────────────────────────────────
-  await supabase.from('activity_logs').insert({
+  void supabase.from('activity_logs').insert({
     school_id:   school.id,
     action:      'school.self_registered',
     entity_type: 'school',
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       project_name:  project.name,
       contact_email: primaryContact?.email ?? null,
     },
-  }).catch(() => null); // non-critical
+  }); // non-critical
 
   return NextResponse.json(
     {

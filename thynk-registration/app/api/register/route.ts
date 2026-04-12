@@ -255,8 +255,10 @@ export async function POST(req: NextRequest) {
 
     // FIX: decrement discount usage safely — function exists after running SQL migration
     if (payment?.id && discountCode) {
-      await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id })
-        .catch((err: any) => console.warn('decrement_discount_usage failed:', err.message));
+      supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }).then(
+        () => {},
+        (err: any) => console.warn('decrement_discount_usage failed:', err?.message)
+      );
     }
 
     return NextResponse.json({

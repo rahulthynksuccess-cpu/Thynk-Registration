@@ -56,14 +56,14 @@ export async function PATCH(req: NextRequest) {
       .update({ status: 'registered', is_active: false, is_registration_active: false })
       .eq('id', id);
 
-    await service.from('activity_logs').insert({
+    void service.from('activity_logs').insert({
       user_id:     user.id,
       school_id:   id,
       action:      'school.rejected',
       entity_type: 'school',
       entity_id:   id,
       metadata:    { rejected_by: user.email },
-    }).catch(() => null);
+    });
 
     return NextResponse.json({ success: true, action: 'rejected' });
   }
@@ -160,7 +160,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Create default discount code (0 discount — admin edits in Discount Codes tab)
-  await service.from('discount_codes').upsert(
+  void service.from('discount_codes').upsert(
     {
       school_id:       id,
       code:            discCode,
@@ -169,10 +169,10 @@ export async function PATCH(req: NextRequest) {
       max_uses:        null,
     },
     { onConflict: 'school_id,code', ignoreDuplicates: true }
-  ).catch(() => null);
+  );
 
   // Activity log
-  await service.from('activity_logs').insert({
+  void service.from('activity_logs').insert({
     user_id:     user.id,
     school_id:   id,
     action:      'school.approved',
@@ -185,7 +185,7 @@ export async function PATCH(req: NextRequest) {
       approved_by: user.email,
       reg_url:     redirectURL,
     },
-  }).catch(() => null);
+  });
 
   return NextResponse.json({
     success: true,

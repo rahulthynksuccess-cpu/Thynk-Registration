@@ -131,13 +131,13 @@ export async function POST(req: NextRequest) {
     is_active: true,
   });
 
-  await service.from('discount_codes').insert({
+  void service.from('discount_codes').insert({
     school_id:       school.id,
     code:            discCode,
     discount_amount: 0,
     is_active:       true,
     max_uses:        null,
-  }).throwOnError().catch(() => null);
+  });
 
   return NextResponse.json({ school }, { status: 201 });
 }

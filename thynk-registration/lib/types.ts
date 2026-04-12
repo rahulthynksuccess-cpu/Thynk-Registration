@@ -24,6 +24,7 @@ export interface School {
   branding: SchoolBranding;
   gateway_config: SchoolGatewayConfig;
   is_active: boolean;
+  project_id?: string | null;
   created_at: string;
 }
 
