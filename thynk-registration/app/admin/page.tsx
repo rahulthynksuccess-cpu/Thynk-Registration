@@ -361,15 +361,16 @@ export default function AdminDashboard() {
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setProgramForm({})}>+ Add Program</button>}</div>
             </div>
             <div className="tbl-wrap"><table>
-              <thead><tr><th>Program Name</th><th>Slug</th><th>Registration URL</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Program Name</th><th>Slug</th><th>Base Price INR (₹)</th><th>Base Price USD ($)</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {programs.length===0
-                  ? <tr><td colSpan={5} className="table-empty">No programs yet. Create a program first, then assign schools to it.</td></tr>
+                  ? <tr><td colSpan={6} className="table-empty">No programs yet. Create a program first, then assign schools to it.</td></tr>
                   : programs.map(p=>(
                     <tr key={p.id}>
                       <td style={{fontWeight:700}}>{p.name}</td>
                       <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{p.slug}</code></td>
-                      <td style={{fontSize:12,color:'var(--m)'}}>{`www.thynksuccess.com/registration/${p.slug}/[schoolcode]`}</td>
+                      <td><span className="amt">₹{fmtR(p.base_amount_inr ?? p.base_amount ?? 0)}</span></td>
+                      <td><span className="amt" style={{color:'#22c55e'}}>{p.base_amount_usd ? `$${fmtR(p.base_amount_usd)}` : <span style={{color:'var(--m)',fontWeight:400}}>—</span>}</span></td>
                       <td><span className={`badge ${p.status==='active'?'badge-paid':'badge-cancelled'}`}>{p.status}</span></td>
                       <td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setProgramForm(p)}>Edit</button></td>
                     </tr>
@@ -683,10 +684,12 @@ const SS:React.CSSProperties = { ...IS, appearance:'none' as any };
 // ── Program Form ────────────────────────────────────────────────────
 function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()=>void; onSave:(d:Row)=>void }) {
   const [f,setF] = useState({
-    id:     initial.id??'',
-    name:   initial.name??'',
-    slug:   initial.slug??'',
-    status: initial.status??'active',
+    id:              initial.id??'',
+    name:            initial.name??'',
+    slug:            initial.slug??'',
+    base_amount_inr: initial.base_amount_inr ? String(initial.base_amount_inr/100) : '',
+    base_amount_usd: initial.base_amount_usd ? String(initial.base_amount_usd/100) : '',
+    status:          initial.status??'active',
   });
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
   const autoSlug = (name:string) => name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
@@ -695,10 +698,32 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
       <Field label="Program Name *"><input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/></Field>
       <Field label="Slug * (used in URL)"><input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/></Field>
       <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>Registration URL: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code></p>
-      <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+        <Field label="Base Price — INR (₹) *">
+          <div style={{position:'relative'}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>₹</span>
+            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_inr} onChange={set('base_amount_inr')} placeholder="e.g. 1200" required/>
+          </div>
+          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Required — used for Indian schools</p>
+        </Field>
+        <Field label="Base Price — USD ($) (optional)">
+          <div style={{position:'relative'}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span>
+            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50 (optional)"/>
+          </div>
+          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Optional — leave blank for India-only programs</p>
+        </Field>
+        <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
+      </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({ id:f.id, name:f.name, slug:f.slug, status:f.status })}>{f.id?'Save Changes':'Create Program'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({
+          id: f.id, name: f.name, slug: f.slug, status: f.status,
+          base_amount_inr: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0,
+          base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null,
+          base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0,
+          currency: 'INR',
+        })}>{f.id?'Save Changes':'Create Program'}</button>
       </div>
     </ModalShell>
   );

@@ -26,8 +26,9 @@ export async function GET(req: NextRequest) {
   const service = createServiceClient();
   const { data: schools } = await service
     .from('schools')
-    .select(`id, school_code, name, org_name, logo_url, branding, gateway_config, is_active,
-             city, state, country, project_id, project_slug, discount_code, created_at,
+    .select(`id, school_code, name, org_name, logo_url, branding, gateway_config, is_active, is_registration_active,
+             city, state, country, address, pin_code, contact_persons,
+             project_id, project_slug, discount_code, created_at,
              pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)`)
     .order('created_at', { ascending: false });
   return NextResponse.json({ schools: schools ?? [] });
