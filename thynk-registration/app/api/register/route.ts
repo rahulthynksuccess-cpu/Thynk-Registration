@@ -1,10 +1,11 @@
 // app/api/register/route.ts
 // Student registration + payment initiation
-// Checks school approval status before allowing registration
-// FIXES APPLIED:
-//   1. Duplicate guard uses correct Supabase syntax (no quoted values in .not(...in...))
-//   2. decrement_discount_usage is handled safely with try/catch
-//   3. PayPal verification is server-side only
+// CHANGES:
+//   1. Reads gateway credentials from integration_configs table (set via Admin → Integrations UI)
+//      Falls back to Vercel env vars only if not configured in UI
+//   2. CASHFREE_MODE env var support added (no need to change code for test/live switch)
+//   3. All gateways redirect to https://www.thynksuccess.com/registration/success on success
+//   4. Payment status re-check endpoint added (GET /api/register?paymentId=xxx)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -17,7 +18,20 @@ function isIndiaCurrency(currency: string): boolean {
   return (currency || 'INR').toUpperCase() === 'INR';
 }
 
-// Verify PayPal order server-side using Orders API v2
+// ── Load gateway credentials from integration_configs table ───────────────────
+// The Admin → Integrations UI saves: { key_id, key_secret, mode, priority }
+// under integration_configs.config for each provider + school_id
+async function getGatewayConfig(supabase: any, schoolId: string, provider: string) {
+  const { data } = await supabase
+    .from('integration_configs')
+    .select('config, is_active')
+    .eq('school_id', schoolId)
+    .eq('provider', provider)
+    .single();
+  return data ?? null;
+}
+
+// ── Verify PayPal order server-side using Orders API v2 ───────────────────────
 async function verifyPayPalOrder(
   orderId: string,
   clientId: string,
@@ -29,7 +43,6 @@ async function verifyPayPalOrder(
     : 'https://api-m.paypal.com';
 
   try {
-    // Get access token
     const tokenRes = await fetch(`${base}/v1/oauth2/token`, {
       method: 'POST',
       headers: {
@@ -41,7 +54,6 @@ async function verifyPayPalOrder(
     if (!tokenRes.ok) return { verified: false, status: 'token_error' };
     const { access_token } = await tokenRes.json();
 
-    // Capture the order (idempotent — safe to call even if already captured)
     const captureRes = await fetch(`${base}/v2/checkout/orders/${orderId}/capture`, {
       method: 'POST',
       headers: {
@@ -62,11 +74,64 @@ async function verifyPayPalOrder(
     } catch { /* non-critical */ }
 
     return { verified, status: orderStatus, amount };
-  } catch (err: any) {
+  } catch {
     return { verified: false, status: 'network_error' };
   }
 }
 
+// ── GET — Payment status re-check (for delayed payment responses) ─────────────
+// Call: GET /api/register?paymentId=<uuid>
+// Returns current status so frontend can poll after a delayed redirect
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const paymentId = searchParams.get('paymentId');
+
+  if (!paymentId) {
+    return NextResponse.json({ error: 'Missing paymentId' }, { status: 400 });
+  }
+
+  const supabase = createServiceClient();
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('id, status, gateway, gateway_txn_id, final_amount, currency, registration_id, school_id, registrations(student_name, contact_email)')
+    .eq('id', paymentId)
+    .single();
+
+  if (!payment) {
+    return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+  }
+
+  // If still pending/initiated — try to verify with the gateway directly
+  if (payment.status === 'initiated' || payment.status === 'pending') {
+    if (payment.gateway === 'cashfree' && payment.gateway_txn_id) {
+      try {
+        const cfConfig = await getGatewayConfig(supabase, payment.school_id, 'cashfree');
+        const appId    = cfConfig?.config?.key_id     ?? process.env.CASHFREE_APP_ID!;
+        const secret   = cfConfig?.config?.key_secret ?? process.env.CASHFREE_SECRET_KEY!;
+        const mode     = cfConfig?.config?.mode       ?? process.env.CASHFREE_MODE ?? 'production';
+
+        const { verifyCashfreePayment } = await import('@/lib/payment/cashfree');
+        const result    = await verifyCashfreePayment(payment.gateway_txn_id, appId, secret, mode as 'production' | 'sandbox');
+        const newStatus = result.status === 'PAID' ? 'paid' : payment.status; // don't mark failed if just pending
+
+        if (newStatus === 'paid') {
+          await supabase.from('payments').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', paymentId);
+          await supabase.from('registrations').update({ status: 'paid' }).eq('id', payment.registration_id);
+          await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }).catch(() => {});
+          return NextResponse.json({ status: 'paid', gateway: payment.gateway });
+        }
+      } catch { /* fall through, return current status */ }
+    }
+  }
+
+  return NextResponse.json({
+    status:     payment.status,
+    gateway:    payment.gateway,
+    payment_id: payment.id,
+  });
+}
+
+// ── POST — Initiate registration + payment ────────────────────────────────────
 export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
   const body = await req.json();
@@ -91,15 +156,15 @@ export async function POST(req: NextRequest) {
     paypalStatus,
   } = body;
 
-  // ── Basic validation ───────────────────────────────────────────
+  // ── Basic validation ─────────────────────────────────────────────────────────
   if (!schoolId || !pricingId || !gateway || !studentName || !contactEmail) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  // ── Fetch school + check approval ──────────────────────────────
+  // ── Fetch school + check approval ────────────────────────────────────────────
   const { data: school } = await supabase
     .from('schools')
-    .select('id, name, status, is_active, is_registration_active, gateway_config, branding, org_name')
+    .select('id, name, status, is_active, is_registration_active, branding, org_name')
     .eq('id', schoolId)
     .single();
 
@@ -107,7 +172,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'School not found' }, { status: 404 });
   }
 
-  // CRITICAL: Only approved schools can accept student registrations
   if (school.status !== 'approved') {
     const statusMessages: Record<string, string> = {
       registered:       'This school registration is pending review. Student registrations are not open yet.',
@@ -126,7 +190,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Fetch pricing ──────────────────────────────────────────────
+  // ── Fetch pricing ────────────────────────────────────────────────────────────
   const { data: pricing, error: priceErr } = await supabase
     .from('pricing')
     .select('*')
@@ -141,8 +205,7 @@ export async function POST(req: NextRequest) {
 
   const currency = pricing.currency || clientCurrency || 'INR';
 
-  // ── Duplicate registration guard ───────────────────────────────
-  // FIX: Supabase .not(col, 'in', val) requires format (val1,val2) WITHOUT quotes
+  // ── Duplicate registration guard ─────────────────────────────────────────────
   const { data: existingReg } = await supabase
     .from('registrations')
     .select('id, status')
@@ -159,7 +222,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Resolve discount ───────────────────────────────────────────
+  // ── Resolve discount ─────────────────────────────────────────────────────────
   let discountAmount = 0;
   if (discountCode && isIndiaCurrency(currency)) {
     const { data: dc } = await supabase
@@ -174,35 +237,36 @@ export async function POST(req: NextRequest) {
       const notExpired   = !dc.expires_at || new Date(dc.expires_at) > new Date();
       const notExhausted = dc.max_uses === null || dc.used_count < dc.max_uses;
       if (notExpired && notExhausted) {
-        if (dc.discount_type === 'percent') {
-          discountAmount = Math.round((dc.discount_value / 100) * pricing.base_amount);
-        } else {
-          discountAmount = dc.discount_amount || 0;
-        }
+        discountAmount = dc.discount_type === 'percent'
+          ? Math.round((dc.discount_value / 100) * pricing.base_amount)
+          : (dc.discount_amount || 0);
       }
     }
   }
 
   const finalAmount = Math.max(0, pricing.base_amount - discountAmount);
 
-  // ── Handle PayPal (server-side verify) ────────────────────────
+  // ── Load integration config for the requested gateway ────────────────────────
+  const gwConfig = await getGatewayConfig(supabase, schoolId, gateway);
+  const gc       = gwConfig?.config ?? {};
+
+  // ── Handle PayPal (server-side verify, no redirect needed) ───────────────────
   if (gateway === 'paypal') {
     if (!paypalOrderId) {
       return NextResponse.json({ error: 'Missing PayPal order ID' }, { status: 400 });
     }
 
-    const gc             = (school?.gateway_config as any) ?? {};
-    const ppClientId     = gc.pp_client_id    || process.env.PAYPAL_CLIENT_ID!;
-    const ppClientSecret = gc.pp_client_secret || process.env.PAYPAL_CLIENT_SECRET!;
-    const ppMode         = gc.pp_mode          || (process.env.NODE_ENV === 'production' ? 'live' : 'sandbox');
+    // key_id = Client ID, key_secret = Client Secret in Integrations UI
+    const ppClientId     = gc.key_id     ?? process.env.PAYPAL_CLIENT_ID!;
+    const ppClientSecret = gc.key_secret ?? process.env.PAYPAL_CLIENT_SECRET!;
+    const ppMode         = gc.mode       ?? (process.env.NODE_ENV === 'production' ? 'live' : 'sandbox');
 
     let paypalVerified = false;
 
     if (ppClientId && ppClientSecret) {
-      const result   = await verifyPayPalOrder(paypalOrderId, ppClientId, ppClientSecret, ppMode);
+      const result   = await verifyPayPalOrder(paypalOrderId, ppClientId, ppClientSecret, ppMode as 'live' | 'sandbox');
       paypalVerified = result.verified;
     } else if (paypalStatus === 'COMPLETED') {
-      // Fallback: trust client status only when no server credentials are configured
       console.warn('PayPal server verification skipped — no credentials configured');
       paypalVerified = true;
     }
@@ -253,7 +317,6 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    // FIX: decrement discount usage safely — function exists after running SQL migration
     if (payment?.id && discountCode) {
       supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }).then(
         () => {},
@@ -269,7 +332,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Save registration (pending for card/UPI gateways) ─────────
+  // ── Save registration + payment (pending — will be updated after gateway callback) ──
   const { data: registration, error: regErr } = await supabase
     .from('registrations')
     .insert({
@@ -314,14 +377,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create payment record' }, { status: 500 });
   }
 
-  const gc     = (school?.gateway_config as any) ?? {};
   const appUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://thynk-registration.vercel.app';
 
   try {
-    // ── Razorpay ───────────────────────────────────────────────
+    // ── Razorpay ─────────────────────────────────────────────────────────────
     if (gateway === 'razorpay') {
-      const keyId     = gc.rzp_key_id  ?? process.env.RAZORPAY_KEY_ID!;
-      const keySecret = gc.rzp_secret  ?? process.env.RAZORPAY_KEY_SECRET!;
+      // key_id = Key ID, key_secret = Key Secret in Integrations UI
+      const keyId     = gc.key_id     ?? process.env.RAZORPAY_KEY_ID!;
+      const keySecret = gc.key_secret ?? process.env.RAZORPAY_KEY_SECRET!;
+
       const order = await createRazorpayOrder(
         {
           amount:   finalAmount,
@@ -351,11 +415,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Cashfree ───────────────────────────────────────────────
+    // ── Cashfree ─────────────────────────────────────────────────────────────
     if (gateway === 'cashfree') {
-      const appId     = gc.cf_app_id ?? process.env.CASHFREE_APP_ID!;
-      const secretKey = gc.cf_secret ?? process.env.CASHFREE_SECRET_KEY!;
-const mode      = gc.cf_mode   ?? process.env.CASHFREE_MODE ?? (process.env.NODE_ENV === 'production' ? 'production' : 'sandbox');
+      // key_id = App ID, key_secret = Secret Key, mode = sandbox|production in Integrations UI
+      const appId     = gc.key_id     ?? process.env.CASHFREE_APP_ID!;
+      const secretKey = gc.key_secret ?? process.env.CASHFREE_SECRET_KEY!;
+      const mode      = gc.mode       ?? process.env.CASHFREE_MODE ?? 'production';
       const txnId     = `CF${payment.id.replace(/-/g, '').slice(0, 16)}`;
 
       const cfOrder = await createCashfreeOrder(
@@ -368,7 +433,7 @@ const mode      = gc.cf_mode   ?? process.env.CASHFREE_MODE ?? (process.env.NODE
           customerPhone: contactPhone,
           returnUrl:     `${appUrl}/api/payment/verify?paymentId=${payment.id}&gw=cashfree`,
         },
-        appId, secretKey, mode
+        appId, secretKey, mode as 'production' | 'sandbox'
       );
 
       await supabase.from('payments').update({ gateway_txn_id: txnId, status: 'initiated' }).eq('id', payment.id);
@@ -383,11 +448,12 @@ const mode      = gc.cf_mode   ?? process.env.CASHFREE_MODE ?? (process.env.NODE
       });
     }
 
-    // ── Easebuzz ───────────────────────────────────────────────
+    // ── Easebuzz ─────────────────────────────────────────────────────────────
     if (gateway === 'easebuzz') {
-      const ebKey  = gc.eb_key  ?? process.env.EASEBUZZ_KEY!;
-      const ebSalt = gc.eb_salt ?? process.env.EASEBUZZ_SALT!;
-      const ebEnv  = gc.eb_env  ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
+      // key_id = Merchant Key, key_secret = Salt, mode = test|production in Integrations UI
+      const ebKey  = gc.key_id     ?? process.env.EASEBUZZ_KEY!;
+      const ebSalt = gc.key_secret ?? process.env.EASEBUZZ_SALT!;
+      const ebEnv  = gc.mode       ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
       const txnId  = generateTxnId('EB');
 
       const ebResult = await initEasebuzzPayment(
@@ -406,7 +472,7 @@ const mode      = gc.cf_mode   ?? process.env.CASHFREE_MODE ?? (process.env.NODE
           surl: `${appUrl}/api/payment/verify?paymentId=${payment.id}&gw=easebuzz&status=success`,
           furl: `${appUrl}/api/payment/verify?paymentId=${payment.id}&gw=easebuzz&status=failed`,
         },
-        ebKey, ebSalt, ebEnv
+        ebKey, ebSalt, ebEnv as 'production' | 'test'
       );
 
       await supabase.from('payments').update({ gateway_txn_id: txnId, status: 'initiated' }).eq('id', payment.id);
@@ -424,7 +490,6 @@ const mode      = gc.cf_mode   ?? process.env.CASHFREE_MODE ?? (process.env.NODE
     return NextResponse.json({ error: 'Unknown gateway' }, { status: 400 });
 
   } catch (err: any) {
-    // Clean up pending records on gateway failure
     await supabase.from('payments').update({ status: 'failed' }).eq('id', payment.id);
     await supabase.from('registrations').update({ status: 'failed' }).eq('id', registration.id);
     return NextResponse.json({ error: err.message ?? 'Gateway error' }, { status: 500 });
