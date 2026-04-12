@@ -2,6 +2,8 @@
 import { authFetch } from '@/lib/supabase/client';
 import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
 import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithApproval';
+import { SchoolLogPanel } from '@/components/admin/SchoolLogPanel';
+import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -30,6 +32,11 @@ const NAV = [
   { section:'Integrations' },
   { id:'_integrations', icon:'⚙️',  label:'Payment & Email', href:'/admin/integrations' },
   { id:'_triggers',     icon:'🔔', label:'Message Triggers', href:'/admin/message-triggers' },
+  { section:'Logs' },
+  { id:'logs_schools',  icon:'🏫', label:'School Logs'       },
+  { id:'logs_students', icon:'👨‍🎓', label:'Student Logs'      },
+  { id:'logs_email',    icon:'📧', label:'Email Logs'        },
+  { id:'logs_whatsapp', icon:'💬', label:'WhatsApp Logs'     },
   { section:'Settings' },
   { id:'_settings',     icon:'📍', label:'Settings & Locations', href:'/admin/settings' },
   { section:'Tools' },
@@ -60,6 +67,16 @@ export default function AdminDashboard() {
   const [triggers,     setTriggers]     = useState<Row[]>([]);
   const [templates,    setTemplates]    = useState<Row[]>([]);
   const [locations,    setLocations]    = useState<Row[]>([]);
+
+  // Logs state
+  const [logSchools,         setLogSchools]         = useState<Row[]>([]);
+  const [logSelectedSchool,  setLogSelectedSchool]  = useState<Row|null>(null);
+  const [logAllStudents,     setLogAllStudents]      = useState<Row[]>([]);
+  const [logSelectedStudent, setLogSelectedStudent] = useState<Row|null>(null);
+  const [logEmailRows,       setLogEmailRows]        = useState<Row[]>([]);
+  const [logWaRows,          setLogWaRows]           = useState<Row[]>([]);
+  const [logEmailLoading,    setLogEmailLoading]     = useState(false);
+  const [logWaLoading,       setLogWaLoading]        = useState(false);
 
   // Form modals
   const [programForm,     setProgramForm]     = useState<Row|null>(null);
@@ -138,6 +155,18 @@ export default function AdminDashboard() {
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')    loadTemplates();
     if (activePage === 'locations')    loadLocations();
+    if (activePage === 'logs_schools' || activePage === 'logs_students' || activePage === 'logs_email' || activePage === 'logs_whatsapp') {
+      loadSchools();
+      api('/api/admin/registrations?limit=1000').then((d: any) => setLogAllStudents((d.rows??[]).filter((r:Row)=>r.student_name?.trim())));
+    }
+    if (activePage === 'logs_email') {
+      setLogEmailLoading(true);
+      api('/api/admin/notification-logs?channel=email&limit=200').then((d:any)=>{ setLogEmailRows(d.logs??[]); setLogEmailLoading(false); }).catch(()=>setLogEmailLoading(false));
+    }
+    if (activePage === 'logs_whatsapp') {
+      setLogWaLoading(true);
+      api('/api/admin/notification-logs?channel=whatsapp&limit=200').then((d:any)=>{ setLogWaRows(d.logs??[]); setLogWaLoading(false); }).catch(()=>setLogWaLoading(false));
+    }
   }, [activePage, user]);
 
   function showToast(text:string, icon='') {
@@ -550,6 +579,125 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ))
+                }
+              </tbody>
+            </table></div>
+          </div>
+
+          {/* ── LOGS: SCHOOLS ─────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_schools'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>School <span>Logs</span></h1><p>Activity, registrations, email & WhatsApp logs per school</p></div>
+            </div>
+            {activePage==='logs_schools' && (
+              <div style={{padding:'0 0 24px'}}>
+                <div style={{marginBottom:16}}>
+                  <select
+                    style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:280}}
+                    value={logSelectedSchool?.id??''}
+                    onChange={e=>setLogSelectedSchool(schools.find(s=>s.id===e.target.value)??null)}
+                  >
+                    <option value="">— Select a school —</option>
+                    {schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
+                  </select>
+                </div>
+                {logSelectedSchool ? (
+                  <SchoolLogPanel
+                    schoolId={logSelectedSchool.id}
+                    schoolCode={logSelectedSchool.school_code}
+                    authHeaders={authHeaders}
+                    BACKEND={BACKEND}
+                  />
+                ) : (
+                  <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a school above to view its logs.</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── LOGS: STUDENTS ────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_students'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>Student <span>Logs</span></h1><p>Email & WhatsApp notification logs per student registration</p></div>
+            </div>
+            {activePage==='logs_students' && (
+              <div style={{padding:'0 0 24px'}}>
+                <div style={{marginBottom:16}}>
+                  <select
+                    style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:340}}
+                    value={logSelectedStudent?.id??''}
+                    onChange={e=>setLogSelectedStudent(logAllStudents.find(s=>s.id===e.target.value)??null)}
+                  >
+                    <option value="">— Select a student —</option>
+                    {logAllStudents.map(s=><option key={s.id} value={s.id}>{s.student_name} · {s.parent_email||s.parent_phone||''} ({s.school_code||''})</option>)}
+                  </select>
+                </div>
+                {logSelectedStudent ? (
+                  <StudentLogPanel
+                    registrationId={logSelectedStudent.id}
+                    studentEmail={logSelectedStudent.parent_email??''}
+                    studentPhone={logSelectedStudent.parent_phone??''}
+                    authHeaders={authHeaders}
+                    BACKEND={BACKEND}
+                  />
+                ) : (
+                  <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a student above to view notification logs.</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── LOGS: EMAIL ───────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_email'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>Email <span>Trigger Logs</span></h1><p>All outbound email notifications (latest 200)</p></div>
+              <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogEmailLoading(true);api('/api/admin/notification-logs?channel=email&limit=200').then((d:any)=>{setLogEmailRows(d.logs??[]);setLogEmailLoading(false);}).catch(()=>setLogEmailLoading(false));}}>🔄 Refresh</button></div>
+            </div>
+            <div className="tbl-wrap"><table>
+              <thead><tr><th>Time</th><th>Event</th><th>Recipient</th><th>School</th><th>Student</th><th>Status</th></tr></thead>
+              <tbody>
+                {logEmailLoading
+                  ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
+                  : logEmailRows.length===0
+                    ? <tr><td colSpan={6} className="table-empty">No email logs found.</td></tr>
+                    : logEmailRows.map((r,i)=>(
+                      <tr key={r.id??i}>
+                        <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
+                        <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
+                        <td style={{fontSize:12}}>{r.recipient??r.to_email??'—'}</td>
+                        <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
+                        <td style={{fontSize:12}}>{r.student_name??'—'}</td>
+                        <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
+                      </tr>
+                    ))
+                }
+              </tbody>
+            </table></div>
+          </div>
+
+          {/* ── LOGS: WHATSAPP ────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_whatsapp'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>WhatsApp <span>Trigger Logs</span></h1><p>All outbound WhatsApp notifications (latest 200)</p></div>
+              <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogWaLoading(true);api('/api/admin/notification-logs?channel=whatsapp&limit=200').then((d:any)=>{setLogWaRows(d.logs??[]);setLogWaLoading(false);}).catch(()=>setLogWaLoading(false));}}>🔄 Refresh</button></div>
+            </div>
+            <div className="tbl-wrap"><table>
+              <thead><tr><th>Time</th><th>Event</th><th>Phone</th><th>School</th><th>Student</th><th>Status</th></tr></thead>
+              <tbody>
+                {logWaLoading
+                  ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
+                  : logWaRows.length===0
+                    ? <tr><td colSpan={6} className="table-empty">No WhatsApp logs found.</td></tr>
+                    : logWaRows.map((r,i)=>(
+                      <tr key={r.id??i}>
+                        <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
+                        <td><code style={{background:'rgba(37,211,102,0.12)',color:'#25d366',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
+                        <td style={{fontSize:12}}>{r.recipient??r.to_phone??'—'}</td>
+                        <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
+                        <td style={{fontSize:12}}>{r.student_name??'—'}</td>
+                        <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
+                      </tr>
+                    ))
                 }
               </tbody>
             </table></div>
@@ -1310,7 +1458,7 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
   const countryData = LOCATION_DATA[f.country] ?? LOCATION_DATA['Other'];
   const stateList = Object.keys(countryData.states);
   const cityList = f.state ? (countryData.states[f.state] ?? []) : [];
-  const regUrl = selProgram ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}` : '';
+  const regUrl = selProgram ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/?school=${f.school_code||'[schoolcode]'}` : '';
   const basePriceDisplay = (() => { if (!selProgram) return null; if (isIndianCountry(f.country)) { const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null); return inr ? { label:`₹${fmtR(inr)}`, raw: String(inr/100) } : null; } else { const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null); return usd ? { label:`$${fmtR(usd)}`, raw: String(usd/100) } : null; } })();
   useEffect(() => { if (basePriceDisplay?.raw && !f.id) { setF(p => ({...p, school_price: basePriceDisplay.raw})); } }, [f.project_id, f.country]);
   return (
@@ -1405,7 +1553,7 @@ function SchoolsTable({ schools, programs, isSuperAdmin, onEdit }:{ schools:Row[
         <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Dashboard</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
         <tbody>
           {filtered.length===0 ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
-          : filtered.map(s=>{ const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/${s.school_code}`; const basePriceFmt = (() => { if (!prog) return '—'; const isIndia = (s.country||'India').toLowerCase()==='india'; if (isIndia) { const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null); return inr ? `₹${fmtR(inr)}` : '—'; } const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null); return usd ? `$${fmtR(usd)}` : '—'; })(); const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR'; const schoolPriceFmt = schoolCurrency === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
+          : filtered.map(s=>{ const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/?school=${s.school_code}`; const basePriceFmt = (() => { if (!prog) return '—'; const isIndia = (s.country||'India').toLowerCase()==='india'; if (isIndia) { const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null); return inr ? `₹${fmtR(inr)}` : '—'; } const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null); return usd ? `$${fmtR(usd)}` : '—'; })(); const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR'; const schoolPriceFmt = schoolCurrency === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
             return (<tr key={s.id}><td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{s.school_code}</code></td><td style={{fontWeight:700}}>{s.name}</td><td style={{fontSize:12,color:'var(--m)'}}>{s.org_name}</td><td style={{fontSize:12}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')||'—'}</td><td style={{fontSize:12}}>{prog?.name ?? s.project_slug ?? '—'}</td><td style={{fontSize:12,fontWeight:600,color:'var(--acc)'}}>{basePriceFmt}</td><td><span className="amt">{schoolPriceFmt}</span></td><td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.discount_code || s.school_code?.toUpperCase()}</code></td><td><a href={regUrl} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl.replace('https://','')}</a></td><td><a href="/school/login" target="_blank" style={{color:'#10b981',fontSize:11,fontWeight:600,textDecoration:'none',whiteSpace:'nowrap'}}>🏫 School Login</a></td><td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>{isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>onEdit(s)}>Edit</button></td>}</tr>);
           })}
         </tbody>

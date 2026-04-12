@@ -123,7 +123,7 @@ function ApproveModal({
           />
           {schoolCode && program && (
             <div style={{ fontSize: 11, color: 'var(--m)', marginTop: 4, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-              URL: {program.base_url || 'https://www.thynksuccess.com'}/registration/{program.slug}/{schoolCode}
+              URL: {program.base_url || 'https://www.thynksuccess.com'}/registration/{program.slug}/?school={schoolCode}
             </div>
           )}
         </div>

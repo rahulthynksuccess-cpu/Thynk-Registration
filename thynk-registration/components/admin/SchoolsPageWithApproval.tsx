@@ -232,7 +232,7 @@ export function SchoolsTableWithStatus({
             ) : (
               filtered.map(s => {
                 const prog         = programs.find(p => p.id === s.project_id) ?? programs.find(p => p.slug === s.project_slug);
-                const regUrl       = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug ?? ''}/${s.school_code}`;
+                const regUrl       = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug ?? ''}/?school=${s.school_code}`;
                 const schoolCurr   = s.pricing?.[0]?.currency ?? 'INR';
                 const priceFmt     = schoolCurr === 'USD'
                   ? `$${fmtR(s.pricing?.[0]?.base_amount ?? 0)}`
