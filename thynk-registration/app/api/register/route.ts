@@ -355,7 +355,7 @@ export async function POST(req: NextRequest) {
     if (gateway === 'cashfree') {
       const appId     = gc.cf_app_id ?? process.env.CASHFREE_APP_ID!;
       const secretKey = gc.cf_secret ?? process.env.CASHFREE_SECRET_KEY!;
-      const mode      = gc.cf_mode   ?? (process.env.NODE_ENV === 'production' ? 'production' : 'sandbox');
+const mode      = gc.cf_mode   ?? process.env.CASHFREE_MODE ?? (process.env.NODE_ENV === 'production' ? 'production' : 'sandbox');
       const txnId     = `CF${payment.id.replace(/-/g, '').slice(0, 16)}`;
 
       const cfOrder = await createCashfreeOrder(
