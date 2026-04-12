@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   const failed   = flat.filter(r => ['failed','cancelled'].includes(r.payment_status ?? ''));
   const totalRev = paid.reduce((s, r) => s + (r.final_amount ?? 0), 0);
 
-  // Class-wise counts
+  // Class-wise counts — ALL registrations (not just paid)
   const byClass: Record<string, { total: number; paid: number; unpaid: number }> = {};
   flat.forEach(r => {
     const cls = r.class_grade || 'Unknown';
@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
     else byClass[cls].unpaid++;
   });
 
-  // Gender-wise counts
+  // Gender-wise counts — ALL registrations (not just paid)
   const byGender: Record<string, { total: number; paid: number }> = {};
   flat.forEach(r => {
     const g = r.gender || 'Unknown';
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
     if (r.payment_status === 'paid') byGender[g].paid++;
   });
 
-  // Class × Gender cross-tab
+  // Class × Gender cross-tab — ALL registrations
   const crossTab: Record<string, Record<string, number>> = {};
   flat.forEach(r => {
     const cls = r.class_grade || 'Unknown';
