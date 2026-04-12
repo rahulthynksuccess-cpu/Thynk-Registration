@@ -651,8 +651,12 @@ function filterByTimeline(rows: Row[], days: number): Row[] {
   return rows.filter(r => new Date(r.created_at) >= cut);
 }
 
-function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] }) {
-  // ── FIX: default to -1 (Current Year) so all data shows instead of just last 30 days ──
+// ── FIX: helper to get school name from either field ──────────────
+function getSchoolName(r: Row): string {
+  return r.school_name ?? r.parent_school ?? '';
+}
+
+function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; programs: Row[]; schools: Row[] }) {
   const [timelineDays,  setTimelineDays]  = useState(-1);
   const [filterProgram, setFilterProgram] = useState('');
 
@@ -663,11 +667,14 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
 
   const countrySet  = [...new Set(rows.map(r => r.country ?? 'India').filter(Boolean))];
   const classSet    = [...new Set(rows.map(r => r.class_grade).filter(Boolean))].sort();
-  const schoolSet   = [...new Set(rows.map(r => r.school_name).filter(Boolean))];
+
+  // ── FIX: use getSchoolName() fallback everywhere ──────────────────
+  const schoolSet   = [...new Set(rows.map(r => getSchoolName(r)).filter(Boolean))];
   const gatewaySet  = [...new Set(rows.map(r => r.gateway).filter(Boolean))];
 
   const schoolStats = schoolSet.map(s => {
-    const sr = rows.filter(r => r.school_name === s);
+    // ── FIX: match against getSchoolName() ────────────────────────
+    const sr = rows.filter(r => getSchoolName(r) === s);
     const p  = sr.filter(r => r.payment_status === 'paid');
     return { name: s, total: sr.length, paid: p.length, rev: p.reduce((a,r)=>a+(r.final_amount??0),0) };
   }).sort((a,b) => b.total - a.total);
@@ -675,7 +682,8 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
   const countryStats = countrySet.map(c => {
     const cr = rows.filter(r => (r.country??'India') === c);
     const p  = cr.filter(r => r.payment_status === 'paid');
-    const sc = [...new Set(cr.map(r=>r.school_name).filter(Boolean))];
+    // ── FIX: use getSchoolName() for unique school count ──────────
+    const sc = [...new Set(cr.map(r => getSchoolName(r)).filter(Boolean))];
     return { country: c, schools: sc.length, total: cr.length, paid: p.length, rev: p.reduce((a,r)=>a+(r.final_amount??0),0) };
   }).sort((a,b) => b.total - a.total);
 
