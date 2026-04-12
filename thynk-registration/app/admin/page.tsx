@@ -67,6 +67,7 @@ export default function AdminDashboard() {
   const [triggers,     setTriggers]     = useState<Row[]>([]);
   const [templates,    setTemplates]    = useState<Row[]>([]);
   const [locations,    setLocations]    = useState<Row[]>([]);
+  const [activityLogs, setActivityLogs] = useState<Row[]>([]);
 
   // Logs state
   const [logSchools,         setLogSchools]         = useState<Row[]>([]);
@@ -146,7 +147,8 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!user) return;
     if (activePage === 'overview')     loadPrograms();
-   if (activePage === 'reporting')  { loadPrograms(); loadSchools(); }
+    if (activePage === 'reporting')  { loadPrograms(); loadSchools(); }
+    if (activePage === 'students')     loadPrograms();  // ← needed for Program filter dropdown
     if (activePage === 'programs')     loadPrograms();
     if (activePage === 'schools')      loadSchools();
     if (activePage === 'discounts')    loadDiscounts();
@@ -155,6 +157,11 @@ export default function AdminDashboard() {
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')    loadTemplates();
     if (activePage === 'locations')    loadLocations();
+    if (activePage === 'recent') {
+      api('/api/admin/activity-logs?limit=200')
+        .then((d: any) => setActivityLogs(d.logs ?? []))
+        .catch(() => {});
+    }
     if (activePage === 'logs_schools' || activePage === 'logs_students' || activePage === 'logs_email' || activePage === 'logs_whatsapp') {
       loadSchools();
       api('/api/admin/registrations?limit=1000').then((d: any) => setLogAllStudents((d.rows??[]).filter((r:Row)=>r.student_name?.trim())));
@@ -230,8 +237,8 @@ export default function AdminDashboard() {
   }
 
   function exportCSV() {
-    const h=['Date','Student','Class','Gender','School','City','Parent','Phone','Email','Gateway','Status','Base','Discount Code','Discount Amt','Final','Txn ID','Program'];
-    const rows=[h,...allRows.map(r=>[r.created_at?.slice(0,10),r.student_name,r.class_grade,r.gender,r.parent_school,r.city,r.parent_name,r.contact_phone,r.contact_email,r.gateway,r.payment_status,(r.base_amount??0)/100,r.discount_code,(r.discount_amount??0)/100,(r.final_amount??0)/100,r.gateway_txn_id,r.program_name])];
+    const h=['Date','Student','Class','Gender','Program','Country','School','City','Parent','Phone','Email','Gateway','Status','Base','Discount Code','Discount Amt','Final','Txn ID'];
+    const rows=[h,...allRows.map(r=>[r.created_at?.slice(0,10),r.student_name,r.class_grade,r.gender,r.program_name,r.country,r.parent_school,r.city,r.parent_name,r.contact_phone,r.contact_email,r.gateway,r.payment_status,(r.base_amount??0)/100,r.discount_code,(r.discount_amount??0)/100,(r.final_amount??0)/100,r.gateway_txn_id])];
     const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
     a.download=`Thynk_${new Date().toISOString().slice(0,10)}.csv`;a.click();
@@ -374,7 +381,8 @@ export default function AdminDashboard() {
           {/* Students */}
           <div className={`page${activePage==='students'?' active':''}`}>
             <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{allRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
-            <StudentsTable rows={allRows} onRowClick={setModal} />
+            {/* ↓ programs prop added for Program filter dropdown */}
+            <StudentsTable rows={allRows} programs={programs} onRowClick={setModal} />
           </div>
 
           {/* Trends */}
@@ -399,8 +407,13 @@ export default function AdminDashboard() {
 
           {/* Recent */}
           <div className={`page${activePage==='recent'?' active':''}`}>
-            <div className="topbar"><div className="topbar-left"><h1>Recent <span>Activity</span></h1></div></div>
-            <Timeline rows={allRows.slice(0,50)} onRowClick={setModal} />
+            <div className="topbar">
+              <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payments + school registrations</p></div>
+              <div className="topbar-right">
+                <button className="btn btn-outline" onClick={()=>api('/api/admin/activity-logs?limit=200').then((d:any)=>setActivityLogs(d.logs??[])).catch(()=>{})}>🔄 Refresh</button>
+              </div>
+            </div>
+            <UnifiedTimeline paymentRows={allRows.slice(0,100)} activityLogs={activityLogs} onRowClick={setModal} />
           </div>
 
           {/* ── PROGRAMS ────────────────────────────────────────────── */}
@@ -479,6 +492,24 @@ export default function AdminDashboard() {
             <div className="topbar">
               <div className="topbar-left"><h1>Admin <span>Users</span></h1></div>
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setUserForm({})}>+ Add Admin</button>}</div>
+            </div>
+            {/* School Dashboard URL info banner */}
+            <div style={{background:'var(--acc3)',border:'1.5px solid rgba(79,70,229,.2)',borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
+              <div style={{fontSize:22}}>🏫</div>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontWeight:700,fontSize:13,color:'var(--acc)',marginBottom:3}}>School Admin Portal URL</div>
+                <div style={{fontSize:11,color:'var(--m)',marginBottom:6}}>Share this link with school admins so they can log in to their dashboard and view their registrations.</div>
+                <code style={{fontFamily:'monospace',fontSize:12,color:'var(--text)',background:'var(--bg)',padding:'6px 10px',borderRadius:7,display:'inline-block',wordBreak:'break-all'}}>
+                  {(BACKEND||'https://thynk-registration.vercel.app')}/school/login
+                </code>
+              </div>
+              <button
+                onClick={()=>{navigator.clipboard.writeText(`${BACKEND||'https://thynk-registration.vercel.app'}/school/login`);showToast('School portal URL copied!','✅');}}
+                style={{padding:'8px 16px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0}}
+              >📋 Copy URL</button>
+              <a href="/school/login" target="_blank" rel="noreferrer"
+                style={{padding:'8px 14px',borderRadius:9,border:'1.5px solid var(--acc)',color:'var(--acc)',fontSize:12,fontWeight:700,textDecoration:'none',flexShrink:0}}
+              >↗ Open Portal</a>
             </div>
             <div className="tbl-wrap"><table>
               <thead><tr><th>Email</th><th>Role</th><th>School Access</th><th>Added</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
@@ -749,7 +780,7 @@ export default function AdminDashboard() {
           <div className="modal">
             <div className="modal-head"><h3>{modal.student_name}</h3><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
             <div className="modal-body">
-              {[['Status',<span key="s" className={`badge badge-${modal.payment_status??'pending'}`}>{modal.payment_status??'—'}</span>],['Date',modal.created_at?.slice(0,10)??'—'],['Student',modal.student_name],['Class',modal.class_grade],['Gender',modal.gender],['School',modal.school_name??modal.parent_school],['City',modal.city],['Parent',modal.parent_name],['Phone',<a key="p" href={`tel:${modal.contact_phone}`} style={{color:'var(--acc)',fontWeight:600}}>{modal.contact_phone}</a>],['Email',<a key="e" href={`mailto:${modal.contact_email}`} style={{color:'var(--acc)',fontSize:12}}>{modal.contact_email}</a>],['Gateway',modal.gateway??'—'],['Base',`₹${fmtR(modal.base_amount??0)}`],['Discount',modal.discount_code?`🏷️ ${modal.discount_code} (₹${fmtR(modal.discount_amount??0)} off)`:'None'],['Paid',<span key="a" style={{fontFamily:'Sora',fontWeight:800,color:'var(--green)',fontSize:18}}>₹{fmtR(modal.final_amount??0)}</span>],['Txn ID',<span key="t" style={{fontSize:11,color:'var(--m2)',wordBreak:'break-all'}}>{modal.gateway_txn_id??'—'}</span>]].map(([l,v])=><div key={String(l)} className="modal-row"><div className="modal-lbl">{l}</div><div className="modal-val">{v}</div></div>)}
+              {[['Status',<span key="s" className={`badge badge-${modal.payment_status??'pending'}`}>{modal.payment_status??'—'}</span>],['Date',modal.created_at?.slice(0,10)??'—'],['Student',modal.student_name],['Class',modal.class_grade],['Gender',modal.gender],['Program',modal.program_name??'—'],['Country',modal.country??'—'],['School',modal.school_name??modal.parent_school],['City',modal.city],['Parent',modal.parent_name],['Phone',<a key="p" href={`tel:${modal.contact_phone}`} style={{color:'var(--acc)',fontWeight:600}}>{modal.contact_phone}</a>],['Email',<a key="e" href={`mailto:${modal.contact_email}`} style={{color:'var(--acc)',fontSize:12}}>{modal.contact_email}</a>],['Gateway',modal.gateway??'—'],['Base',`₹${fmtR(modal.base_amount??0)}`],['Discount',modal.discount_code?`🏷️ ${modal.discount_code} (₹${fmtR(modal.discount_amount??0)} off)`:'None'],['Paid',<span key="a" style={{fontFamily:'Sora',fontWeight:800,color:'var(--green)',fontSize:18}}>₹{fmtR(modal.final_amount??0)}</span>],['Txn ID',<span key="t" style={{fontSize:11,color:'var(--m2)',wordBreak:'break-all'}}>{modal.gateway_txn_id??'—'}</span>]].map(([l,v])=><div key={String(l)} className="modal-row"><div className="modal-lbl">{l}</div><div className="modal-val">{v}</div></div>)}
             </div>
             <div className="modal-actions">
               <a className="fu-btn wa"   href={`https://wa.me/91${modal.contact_phone}`} target="_blank" rel="noreferrer">💬 WhatsApp</a>
@@ -790,19 +821,6 @@ export default function AdminDashboard() {
 }
 
 // ── Reporting Page ─────────────────────────────────────────────────
-// ── Reporting Page ─────────────────────────────────────────────────
-// DATA SOURCE RULES:
-// 1. School Count          → schools[] prop (school table, no registration dependency)
-// 2. Country Count         → unique countries from schools[] prop
-// 3. Country-wise table    → paid registrations only
-// 4. Class-wise            → paid registrations only
-// 5. Gender-wise           → paid registrations only
-// 6. Class × Country matrix→ paid registrations only
-// 7. Payment Collected     → paid registrations only
-// 8. Payment Mode Breakdown→ paid registrations only
-// 9. Top 10 Schools Revenue→ paid registrations only
-// 10.Top 10 Schools Students→ paid registrations only
-
 const TIMELINE_OPTIONS = [
   { label: 'Today',        days: 0  },
   { label: 'Last 5 Days',  days: 5  },
@@ -827,51 +845,28 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
   const [timelineDays,  setTimelineDays]  = useState(-1);
   const [filterProgram, setFilterProgram] = useState('');
 
-  // ── Step 1: apply program + timeline filter to get working rows ──
   const base        = filterProgram ? allRows.filter(r => r.program_name === filterProgram) : allRows;
   const rows        = filterByTimeline(base, timelineDays);
-
-  // ── Step 2: paid registrations only (used by most sections) ──────
   const paidRows    = rows.filter(r => r.payment_status === 'paid');
-
   const fmtAmt = (p: number) => { const v = p / 100; return isNaN(v) ? '0' : v.toLocaleString('en-IN'); };
 
-  // ── 1. School Count → always from schools[] table ────────────────
   const totalSchools   = schools.length;
   const activeSchools  = schools.filter(s => s.is_active !== false).length;
-
-  // ── 2. Country Count → unique countries in schools[] table ───────
   const countrySet     = [...new Set(schools.map(s => s.country ?? 'India').filter(Boolean))];
   const totalCountries = countrySet.length;
 
-  // ── 3. Country-wise → paid registrations ─────────────────────────
   const countryStats = countrySet.map(c => {
     const cr  = paidRows.filter(r => (r.country ?? 'India') === c);
-    // unique schools that appear in paid registrations for this country
     const sc  = [...new Set(cr.map(r => getSchoolName(r)).filter(Boolean))];
-    return {
-      country : c,
-      schools : sc.length,
-      students: cr.length,
-      rev     : cr.reduce((a, r) => a + (r.final_amount ?? 0), 0),
-    };
+    return { country: c, schools: sc.length, students: cr.length, rev: cr.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
   }).filter(c => c.students > 0).sort((a, b) => b.students - a.students);
 
-  // ── 4. Class-wise → paid registrations ───────────────────────────
   const classSet   = [...new Set(paidRows.map(r => r.class_grade).filter(Boolean))].sort();
-  const classStats = classSet.map(c => {
-    const cr = paidRows.filter(r => r.class_grade === c);
-    return { cls: c, total: cr.length };
-  });
+  const classStats = classSet.map(c => { const cr = paidRows.filter(r => r.class_grade === c); return { cls: c, total: cr.length }; });
 
-  // ── 5. Gender-wise → paid registrations ──────────────────────────
-  const genderStats = ['Male', 'Female', 'Other'].map(g => ({
-    gender: g,
-    total : paidRows.filter(r => r.gender === g).length,
-  })).filter(g => g.total > 0);
+  const genderStats = ['Male', 'Female', 'Other'].map(g => ({ gender: g, total: paidRows.filter(r => r.gender === g).length })).filter(g => g.total > 0);
   const unknownGender = paidRows.filter(r => !['Male', 'Female', 'Other'].includes(r.gender)).length;
 
-  // Gender × Class breakdown (paid only)
   const genderClassStats = classSet.map(c => {
     const cr = paidRows.filter(r => r.class_grade === c);
     const byGender: Record<string, number> = {};
@@ -879,31 +874,22 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
     return { cls: c, total: cr.length, byGender };
   });
 
-  // ── 6. Class × Country matrix → paid registrations ───────────────
   const topCountries  = [...new Set(paidRows.map(r => r.country ?? 'India').filter(Boolean))];
-  const top5Countries = topCountries
-    .map(c => ({ c, n: paidRows.filter(r => (r.country ?? 'India') === c).length }))
-    .sort((a, b) => b.n - a.n)
-    .slice(0, 5)
-    .map(x => x.c);
+  const top5Countries = topCountries.map(c => ({ c, n: paidRows.filter(r => (r.country ?? 'India') === c).length })).sort((a, b) => b.n - a.n).slice(0, 5).map(x => x.c);
 
   const classCountryMatrix = classSet.map(cls => {
     const entry: Record<string, any> = { cls };
-    top5Countries.forEach(c => {
-      entry[c] = paidRows.filter(r => r.class_grade === cls && (r.country ?? 'India') === c).length;
-    });
+    top5Countries.forEach(c => { entry[c] = paidRows.filter(r => r.class_grade === cls && (r.country ?? 'India') === c).length; });
     entry.total = paidRows.filter(r => r.class_grade === cls).length;
     return entry;
   });
 
-  // ── 7. Payment Collected → paid registrations ────────────────────
   const inrPaid = paidRows.filter(r => (r.currency ?? 'INR') === 'INR');
   const usdPaid = paidRows.filter(r => r.currency === 'USD');
   const inrRev  = inrPaid.reduce((a, r) => a + (r.final_amount ?? 0), 0);
   const usdRev  = usdPaid.reduce((a, r) => a + (r.final_amount ?? 0), 0);
   const totalRev = paidRows.reduce((a, r) => a + (r.final_amount ?? 0), 0);
 
-  // ── 8. Payment Mode → paid registrations ─────────────────────────
   const gatewaySet   = [...new Set(rows.map(r => r.gateway).filter(Boolean))];
   const gatewayStats = gatewaySet.map(g => {
     const all  = rows.filter(r => r.gateway === g);
@@ -911,20 +897,10 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
     return { gw: g, attempts: all.length, paid: paid.length, rev: paid.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
   }).sort((a, b) => b.paid - a.paid);
 
-  // ── 9. Top 10 Schools by Revenue → paid registrations ────────────
   const allSchoolNames = [...new Set(paidRows.map(r => getSchoolName(r)).filter(Boolean))];
-  const topRevenueSchools = allSchoolNames.map(s => {
-    const sr  = paidRows.filter(r => getSchoolName(r) === s);
-    return { name: s, students: sr.length, rev: sr.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
-  }).sort((a, b) => b.rev - a.rev).slice(0, 10);
+  const topRevenueSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); return { name: s, students: sr.length, rev: sr.reduce((a, r) => a + (r.final_amount ?? 0), 0) }; }).sort((a, b) => b.rev - a.rev).slice(0, 10);
+  const topStudentSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); return { name: s, students: sr.length, rev: sr.reduce((a, r) => a + (r.final_amount ?? 0), 0) }; }).sort((a, b) => b.students - a.students).slice(0, 10);
 
-  // ── 10. Top 10 Schools by Students → paid registrations ──────────
-  const topStudentSchools = allSchoolNames.map(s => {
-    const sr  = paidRows.filter(r => getSchoolName(r) === s);
-    return { name: s, students: sr.length, rev: sr.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
-  }).sort((a, b) => b.students - a.students).slice(0, 10);
-
-  // ── Helpers ───────────────────────────────────────────────────────
   const maxOf = (arr: number[]) => Math.max(...arr, 1);
 
   const MiniBar = ({ val, max, color = 'var(--acc)' }: { val: number; max: number; color?: string }) => (
@@ -962,91 +938,52 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
 
   return (
     <div>
-      {/* ── Topbar ── */}
       <div className="topbar" style={{ marginBottom: 20 }}>
         <div className="topbar-left">
           <h1>Reporting <span>Analytics</span></h1>
-          <p>
-            {totalSchools} schools · {paidRows.length.toLocaleString()} paid students · ₹{fmtAmt(totalRev)} collected
-          </p>
+          <p>{totalSchools} schools · {paidRows.length.toLocaleString()} paid students · ₹{fmtAmt(totalRev)} collected</p>
         </div>
         <div className="topbar-right" style={{ gap: 10 }}>
-          <select
-            value={filterProgram}
-            onChange={e => setFilterProgram(e.target.value)}
-            style={{ border: '1.5px solid var(--bd)', borderRadius: 10, padding: '7px 14px', fontSize: 13, fontFamily: 'DM Sans,sans-serif', outline: 'none', color: 'var(--text)', background: 'var(--card)', cursor: 'pointer', minWidth: 160 }}
-          >
+          <select value={filterProgram} onChange={e => setFilterProgram(e.target.value)} style={{ border: '1.5px solid var(--bd)', borderRadius: 10, padding: '7px 14px', fontSize: 13, fontFamily: 'DM Sans,sans-serif', outline: 'none', color: 'var(--text)', background: 'var(--card)', cursor: 'pointer', minWidth: 160 }}>
             <option value="">All Programs</option>
             {programs.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
           </select>
           <div style={{ display: 'flex', gap: 4 }}>
             {TIMELINE_OPTIONS.map(opt => (
-              <button
-                key={opt.label}
-                onClick={() => setTimelineDays(opt.days)}
-                style={{
-                  padding: '6px 12px', borderRadius: 8, border: '1.5px solid', cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-                  background: timelineDays === opt.days ? 'var(--acc)' : 'transparent',
-                  borderColor: timelineDays === opt.days ? 'var(--acc)' : 'var(--bd)',
-                  color: timelineDays === opt.days ? '#fff' : 'var(--m)', transition: 'all .12s',
-                }}
-              >
-                {opt.label}
-              </button>
+              <button key={opt.label} onClick={() => setTimelineDays(opt.days)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid', cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', background: timelineDays === opt.days ? 'var(--acc)' : 'transparent', borderColor: timelineDays === opt.days ? 'var(--acc)' : 'var(--bd)', color: timelineDays === opt.days ? '#fff' : 'var(--m)', transition: 'all .12s' }}>{opt.label}</button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── 1 & 2: Summary KPIs ── */}
       <Section title="Summary" note="Schools & countries from school table · rest from paid registrations">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {/* School count — from school table */}
-          <KPI icon="🏫" label="Total Schools"     val={totalSchools}                                                              color='var(--acc)'  sub={`${activeSchools} active`} />
-          {/* Country count — from school table */}
-          <KPI icon="🌍" label="Countries Reached" val={totalCountries}                                                            color='#8b5cf6'     sub="from school records" />
-          {/* Rest — from paid registrations */}
-          <KPI icon="✅" label="Paid Students"      val={paidRows.length}                                                          color='#10b981'     sub={`of ${rows.length} total registrations`} />
-          <KPI icon="📚" label="Classes Covered"    val={classSet.length}                                                          color='#06b6d4'     sub="unique grades (paid)" />
-          <KPI icon="₹"  label="INR Collected"      val={`₹${fmtAmt(inrRev)}`}                                                    color='#4f46e5'     sub={`${inrPaid.length} txns`} />
-          <KPI icon="$"  label="USD Collected"      val={`$${fmtAmt(usdRev)}`}                                                    color='#22c55e'     sub={`${usdPaid.length} txns`} />
+          <KPI icon="🏫" label="Total Schools"     val={totalSchools}   color='var(--acc)'  sub={`${activeSchools} active`} />
+          <KPI icon="🌍" label="Countries Reached" val={totalCountries} color='#8b5cf6'     sub="from school records" />
+          <KPI icon="✅" label="Paid Students"      val={paidRows.length} color='#10b981'   sub={`of ${rows.length} total registrations`} />
+          <KPI icon="📚" label="Classes Covered"    val={classSet.length} color='#06b6d4'   sub="unique grades (paid)" />
+          <KPI icon="₹"  label="INR Collected"      val={`₹${fmtAmt(inrRev)}`} color='#4f46e5' sub={`${inrPaid.length} txns`} />
+          <KPI icon="$"  label="USD Collected"      val={`$${fmtAmt(usdRev)}`} color='#22c55e' sub={`${usdPaid.length} txns`} />
         </div>
       </Section>
 
-      {/* ── 3: Country-wise Schools & Students ── */}
       <Section title="Country-wise Schools & Students" note="Paid registrations only">
         {countryStats.length === 0
           ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations yet</div>
           : (
             <div className="tbl-wrap">
               <table>
-                <thead>
-                  <tr>
-                    <th>Country</th>
-                    <th>Schools (paid regs)</th>
-                    <th>Paid Students</th>
-                    <th>Revenue (₹)</th>
-                    <th>Avg per Student</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Country</th><th>Schools (paid regs)</th><th>Paid Students</th><th>Revenue (₹)</th><th>Avg per Student</th></tr></thead>
                 <tbody>
                   {countryStats.map(c => (
                     <tr key={c.country}>
                       <td><span style={{ fontWeight: 700 }}>{COUNTRY_EMOJI[c.country] ?? '🌍'} {c.country}</span></td>
                       <td><span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>{c.schools}</span></td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 3, height: 6, overflow: 'hidden', minWidth: 60 }}>
-                            <div style={{ width: `${Math.max(2, Math.round(c.students / maxOf(countryStats.map(x => x.students)) * 100))}%`, height: '100%', background: '#06b6d4', borderRadius: 3 }} />
-                          </div>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#10b981', minWidth: 28 }}>{c.students}</span>
-                        </div>
-                      </td>
+                      <td><div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 3, height: 6, overflow: 'hidden', minWidth: 60 }}><div style={{ width: `${Math.max(2, Math.round(c.students / maxOf(countryStats.map(x => x.students)) * 100))}%`, height: '100%', background: '#06b6d4', borderRadius: 3 }} /></div><span style={{ fontSize: 12, fontWeight: 700, color: '#10b981', minWidth: 28 }}>{c.students}</span></div></td>
                       <td><span className="amt">₹{fmtAmt(c.rev)}</span></td>
                       <td style={{ color: 'var(--m)', fontSize: 12 }}>₹{c.students ? fmtAmt(Math.round(c.rev / c.students)) : '0'}</td>
                     </tr>
                   ))}
-                  {/* Totals row */}
                   <tr style={{ background: 'rgba(79,70,229,0.06)', fontWeight: 800 }}>
                     <td style={{ fontWeight: 800, color: 'var(--acc)' }}>TOTAL</td>
                     <td><span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>{[...new Set(paidRows.map(r => getSchoolName(r)).filter(Boolean))].length}</span></td>
@@ -1060,10 +997,7 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
           )}
       </Section>
 
-      {/* ── 4 & 5: Class-wise + Gender-wise ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-
-        {/* Class-wise — paid only */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <div style={{ width: 3, height: 14, background: '#8b5cf6', borderRadius: 2 }} />
@@ -1071,8 +1005,7 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
             <span style={{ fontSize: 10, background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 340, overflowY: 'auto' }}>
-            {classStats.length === 0
-              ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
+            {classStats.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
               : classStats.map(c => (
                 <div key={c.cls} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, flexShrink: 0, minWidth: 70, textAlign: 'center' }}>{c.cls}</span>
@@ -1081,8 +1014,6 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
               ))}
           </div>
         </div>
-
-        {/* Gender-wise — paid only */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <div style={{ width: 3, height: 14, background: '#ec4899', borderRadius: 2 }} />
@@ -1090,234 +1021,51 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
             <span style={{ fontSize: 10, background: 'rgba(236,72,153,0.1)', color: '#ec4899', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span>
           </div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-            {genderStats.map(g => {
-              const color = g.gender === 'Male' ? '#2563eb' : g.gender === 'Female' ? '#db2777' : '#7c3aed';
-              const icon  = g.gender === 'Male' ? '👦' : g.gender === 'Female' ? '👧' : '🧑';
-              return (
-                <div key={g.gender} style={{ flex: 1, background: `${color}11`, border: `1.5px solid ${color}33`, borderRadius: 12, padding: '14px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 24 }}>{icon}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--m)', marginTop: 4 }}>{g.gender}</div>
-                  <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Sora', color, marginTop: 4 }}>{g.total}</div>
-                  <div style={{ fontSize: 10, color: 'var(--m)', marginTop: 2 }}>{paidRows.length ? Math.round(g.total / paidRows.length * 100) : 0}%</div>
-                </div>
-              );
-            })}
-            {unknownGender > 0 && (
-              <div style={{ flex: 1, background: 'rgba(148,163,184,0.08)', border: '1.5px solid rgba(148,163,184,0.2)', borderRadius: 12, padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: 24 }}>❓</div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--m)', marginTop: 4 }}>Unknown</div>
-                <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Sora', color: 'var(--m)', marginTop: 4 }}>{unknownGender}</div>
-              </div>
-            )}
+            {genderStats.map(g => { const color = g.gender === 'Male' ? '#2563eb' : g.gender === 'Female' ? '#db2777' : '#7c3aed'; const icon = g.gender === 'Male' ? '👦' : g.gender === 'Female' ? '👧' : '🧑'; return (<div key={g.gender} style={{ flex: 1, background: `${color}11`, border: `1.5px solid ${color}33`, borderRadius: 12, padding: '14px', textAlign: 'center' }}><div style={{ fontSize: 24 }}>{icon}</div><div style={{ fontSize: 11, fontWeight: 600, color: 'var(--m)', marginTop: 4 }}>{g.gender}</div><div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Sora', color, marginTop: 4 }}>{g.total}</div><div style={{ fontSize: 10, color: 'var(--m)', marginTop: 2 }}>{paidRows.length ? Math.round(g.total / paidRows.length * 100) : 0}%</div></div>); })}
+            {unknownGender > 0 && (<div style={{ flex: 1, background: 'rgba(148,163,184,0.08)', border: '1.5px solid rgba(148,163,184,0.2)', borderRadius: 12, padding: '14px', textAlign: 'center' }}><div style={{ fontSize: 24 }}>❓</div><div style={{ fontSize: 11, fontWeight: 600, color: 'var(--m)', marginTop: 4 }}>Unknown</div><div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Sora', color: 'var(--m)', marginTop: 4 }}>{unknownGender}</div></div>)}
           </div>
-          {/* Gender × Class table */}
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--m)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>By Class</div>
           <div style={{ maxHeight: 160, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--m)', fontWeight: 600 }}>Class</th>
-                  <th style={{ textAlign: 'center', padding: '4px 6px', color: '#2563eb', fontWeight: 700 }}>M</th>
-                  <th style={{ textAlign: 'center', padding: '4px 6px', color: '#db2777', fontWeight: 700 }}>F</th>
-                  <th style={{ textAlign: 'center', padding: '4px 6px', color: '#7c3aed', fontWeight: 700 }}>O</th>
-                  <th style={{ textAlign: 'right', padding: '4px 6px', color: 'var(--acc)', fontWeight: 700 }}>Tot</th>
-                </tr>
-              </thead>
-              <tbody>
-                {genderClassStats.map(c => (
-                  <tr key={c.cls} style={{ borderTop: '1px solid var(--bd)' }}>
-                    <td style={{ padding: '4px 6px', fontWeight: 600, color: 'var(--acc)' }}>{c.cls}</td>
-                    <td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#2563eb' }}>{c.byGender['Male'] || 0}</td>
-                    <td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#db2777' }}>{c.byGender['Female'] || 0}</td>
-                    <td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#7c3aed' }}>{c.byGender['Other'] || 0}</td>
-                    <td style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 800, color: 'var(--text)' }}>{c.total}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <thead><tr><th style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--m)', fontWeight: 600 }}>Class</th><th style={{ textAlign: 'center', padding: '4px 6px', color: '#2563eb', fontWeight: 700 }}>M</th><th style={{ textAlign: 'center', padding: '4px 6px', color: '#db2777', fontWeight: 700 }}>F</th><th style={{ textAlign: 'center', padding: '4px 6px', color: '#7c3aed', fontWeight: 700 }}>O</th><th style={{ textAlign: 'right', padding: '4px 6px', color: 'var(--acc)', fontWeight: 700 }}>Tot</th></tr></thead>
+              <tbody>{genderClassStats.map(c => (<tr key={c.cls} style={{ borderTop: '1px solid var(--bd)' }}><td style={{ padding: '4px 6px', fontWeight: 600, color: 'var(--acc)' }}>{c.cls}</td><td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#2563eb' }}>{c.byGender['Male'] || 0}</td><td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#db2777' }}>{c.byGender['Female'] || 0}</td><td style={{ textAlign: 'center', padding: '4px 6px', fontWeight: 700, color: '#7c3aed' }}>{c.byGender['Other'] || 0}</td><td style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 800, color: 'var(--text)' }}>{c.total}</td></tr>))}</tbody>
             </table>
           </div>
         </div>
       </div>
 
-      {/* ── 6: Class × Country Matrix ── */}
       <Section title="Classwise × Country-wise Matrix" note="Paid registrations only">
-        {classCountryMatrix.length === 0
-          ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
-          : (
-            <div style={{ overflowX: 'auto', background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: '4px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--m)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)', position: 'sticky', left: 0 }}>Class</th>
-                    {top5Countries.map(c => (
-                      <th key={c} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--m)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)', whiteSpace: 'nowrap' }}>
-                        {COUNTRY_EMOJI[c] ?? '🌍'} {c}
-                      </th>
-                    ))}
-                    <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--acc)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)' }}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {classCountryMatrix.map((row, i) => (
-                    <tr key={row.cls} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
-                      <td style={{ padding: '9px 16px', fontWeight: 700, color: 'var(--acc)', fontSize: 12, position: 'sticky', left: 0, background: i % 2 === 0 ? 'var(--card)' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid var(--bd)' }}>
-                        <span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 10px', borderRadius: 6 }}>{row.cls}</span>
-                      </td>
-                      {top5Countries.map(c => (
-                        <td key={c} style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid var(--bd)', fontWeight: row[c] > 0 ? 700 : 400, color: row[c] > 0 ? 'var(--text)' : 'var(--m2)', fontSize: 13 }}>
-                          {row[c] || '—'}
-                        </td>
-                      ))}
-                      <td style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid var(--bd)', fontWeight: 800, color: 'var(--acc)', fontSize: 14 }}>{row.total}</td>
-                    </tr>
-                  ))}
-                  <tr style={{ background: 'rgba(79,70,229,0.06)' }}>
-                    <td style={{ padding: '9px 16px', fontWeight: 800, color: 'var(--m)', fontSize: 11, position: 'sticky', left: 0, background: 'rgba(79,70,229,0.06)' }}>TOTAL</td>
-                    {top5Countries.map(c => (
-                      <td key={c} style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 800, color: 'var(--acc)', fontSize: 13 }}>
-                        {paidRows.filter(r => (r.country ?? 'India') === c).length || '—'}
-                      </td>
-                    ))}
-                    <td style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 900, color: 'var(--acc)', fontSize: 15 }}>{paidRows.length}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
+        {classCountryMatrix.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
+          : (<div style={{ overflowX: 'auto', background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: '4px' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr><th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--m)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)', position: 'sticky', left: 0 }}>Class</th>{top5Countries.map(c => (<th key={c} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--m)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)', whiteSpace: 'nowrap' }}>{COUNTRY_EMOJI[c] ?? '🌍'} {c}</th>))}<th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--acc)', fontSize: 11, background: 'rgba(255,255,255,0.03)', borderBottom: '1.5px solid var(--bd)' }}>Total</th></tr></thead><tbody>{classCountryMatrix.map((row, i) => (<tr key={row.cls} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}><td style={{ padding: '9px 16px', fontWeight: 700, color: 'var(--acc)', fontSize: 12, position: 'sticky', left: 0, background: i % 2 === 0 ? 'var(--card)' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid var(--bd)' }}><span style={{ background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 10px', borderRadius: 6 }}>{row.cls}</span></td>{top5Countries.map(c => (<td key={c} style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid var(--bd)', fontWeight: row[c] > 0 ? 700 : 400, color: row[c] > 0 ? 'var(--text)' : 'var(--m2)', fontSize: 13 }}>{row[c] || '—'}</td>))}<td style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid var(--bd)', fontWeight: 800, color: 'var(--acc)', fontSize: 14 }}>{row.total}</td></tr>))}<tr style={{ background: 'rgba(79,70,229,0.06)' }}><td style={{ padding: '9px 16px', fontWeight: 800, color: 'var(--m)', fontSize: 11, position: 'sticky', left: 0, background: 'rgba(79,70,229,0.06)' }}>TOTAL</td>{top5Countries.map(c => (<td key={c} style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 800, color: 'var(--acc)', fontSize: 13 }}>{paidRows.filter(r => (r.country ?? 'India') === c).length || '—'}</td>))}<td style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 900, color: 'var(--acc)', fontSize: 15 }}>{paidRows.length}</td></tr></tbody></table></div>)}
       </Section>
 
-      {/* ── 7: Payment Collected ── */}
       <Section title="Payment Collected" note="Paid registrations only">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-          <div style={{ background: 'var(--card)', border: '2px solid rgba(79,70,229,0.25)', borderRadius: 14, padding: '20px 24px' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', marginBottom: 6 }}>🇮🇳 INR COLLECTIONS</div>
-            <div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Sora', color: 'var(--acc)' }}>₹{fmtAmt(inrRev)}</div>
-            <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--m)' }}>
-              <span>{inrPaid.length} transactions</span>
-              <span>Avg ₹{inrPaid.length ? fmtAmt(Math.round(inrRev / inrPaid.length)) : '0'}</span>
-            </div>
-          </div>
-          <div style={{ background: 'var(--card)', border: '2px solid rgba(34,197,94,0.25)', borderRadius: 14, padding: '20px 24px' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', marginBottom: 6 }}>🌐 USD COLLECTIONS</div>
-            <div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Sora', color: '#22c55e' }}>${fmtAmt(usdRev)}</div>
-            <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--m)' }}>
-              <span>{usdPaid.length} transactions</span>
-              <span>Avg ${usdPaid.length ? fmtAmt(Math.round(usdRev / usdPaid.length)) : '0'}</span>
-            </div>
-          </div>
+          <div style={{ background: 'var(--card)', border: '2px solid rgba(79,70,229,0.25)', borderRadius: 14, padding: '20px 24px' }}><div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', marginBottom: 6 }}>🇮🇳 INR COLLECTIONS</div><div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Sora', color: 'var(--acc)' }}>₹{fmtAmt(inrRev)}</div><div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--m)' }}><span>{inrPaid.length} transactions</span><span>Avg ₹{inrPaid.length ? fmtAmt(Math.round(inrRev / inrPaid.length)) : '0'}</span></div></div>
+          <div style={{ background: 'var(--card)', border: '2px solid rgba(34,197,94,0.25)', borderRadius: 14, padding: '20px 24px' }}><div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', marginBottom: 6 }}>🌐 USD COLLECTIONS</div><div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Sora', color: '#22c55e' }}>${fmtAmt(usdRev)}</div><div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--m)' }}><span>{usdPaid.length} transactions</span><span>Avg ${usdPaid.length ? fmtAmt(Math.round(usdRev / usdPaid.length)) : '0'}</span></div></div>
         </div>
       </Section>
 
-      {/* ── 8: Payment Mode Breakdown ── */}
       <Section title="Payment Mode Breakdown" note="Attempts = all · Revenue = paid only">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-          {gatewayStats.map((g, i) => {
-            const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4'];
-            const color  = GW_COLORS[g.gw] ?? COLORS[i % COLORS.length];
-            return (
-              <div key={g.gw} style={{ background: 'var(--card)', border: `1.5px solid ${color}44`, borderRadius: 12, padding: '14px 18px', flex: 1, minWidth: 140 }}>
-                <span className="gw-tag" style={{ fontSize: 12 }}>{g.gw}</span>
-                <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Sora', color, margin: '8px 0 2px' }}>{g.paid}</div>
-                <div style={{ fontSize: 11, color: 'var(--m)' }}>{g.attempts} attempts · {g.attempts ? Math.round(g.paid / g.attempts * 100) : 0}% conv</div>
-                <div style={{ fontSize: 11, color, fontWeight: 700, marginTop: 2 }}>₹{fmtAmt(g.rev)}</div>
-              </div>
-            );
-          })}
+          {gatewayStats.map((g, i) => { const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']; const color = GW_COLORS[g.gw] ?? COLORS[i % COLORS.length]; return (<div key={g.gw} style={{ background: 'var(--card)', border: `1.5px solid ${color}44`, borderRadius: 12, padding: '14px 18px', flex: 1, minWidth: 140 }}><span className="gw-tag" style={{ fontSize: 12 }}>{g.gw}</span><div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Sora', color, margin: '8px 0 2px' }}>{g.paid}</div><div style={{ fontSize: 11, color: 'var(--m)' }}>{g.attempts} attempts · {g.attempts ? Math.round(g.paid / g.attempts * 100) : 0}% conv</div><div style={{ fontSize: 11, color, fontWeight: 700, marginTop: 2 }}>₹{fmtAmt(g.rev)}</div></div>); })}
           {gatewayStats.length === 0 && <div style={{ color: 'var(--m2)', fontSize: 13, padding: '20px' }}>No payment data</div>}
         </div>
-        <div className="tbl-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Gateway</th>
-                <th>Attempts</th>
-                <th>Paid</th>
-                <th>Failed / Pending</th>
-                <th>Revenue (Paid only)</th>
-                <th>Conv%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {gatewayStats.length === 0
-                ? <tr><td colSpan={6} className="table-empty">No data</td></tr>
-                : gatewayStats.map(g => (
-                  <tr key={g.gw}>
-                    <td><span className="gw-tag">{g.gw}</span></td>
-                    <td><MiniBar val={g.attempts} max={maxOf(gatewayStats.map(x => x.attempts))} /></td>
-                    <td><span style={{ color: '#10b981', fontWeight: 700 }}>{g.paid}</span></td>
-                    <td style={{ color: '#ef4444', fontWeight: 600 }}>{g.attempts - g.paid}</td>
-                    <td><span className="amt">₹{fmtAmt(g.rev)}</span></td>
-                    <td style={{ fontWeight: 700 }}>{g.attempts ? Math.round(g.paid / g.attempts * 100) : 0}%</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+        <div className="tbl-wrap"><table><thead><tr><th>Gateway</th><th>Attempts</th><th>Paid</th><th>Failed / Pending</th><th>Revenue (Paid only)</th><th>Conv%</th></tr></thead><tbody>{gatewayStats.length === 0 ? <tr><td colSpan={6} className="table-empty">No data</td></tr> : gatewayStats.map(g => (<tr key={g.gw}><td><span className="gw-tag">{g.gw}</span></td><td><MiniBar val={g.attempts} max={maxOf(gatewayStats.map(x => x.attempts))} /></td><td><span style={{ color: '#10b981', fontWeight: 700 }}>{g.paid}</span></td><td style={{ color: '#ef4444', fontWeight: 600 }}>{g.attempts - g.paid}</td><td><span className="amt">₹{fmtAmt(g.rev)}</span></td><td style={{ fontWeight: 700 }}>{g.attempts ? Math.round(g.paid / g.attempts * 100) : 0}%</td></tr>))}</tbody></table></div>
       </Section>
 
-      {/* ── 9 & 10: Top 10 Schools ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-
-        {/* Top 10 by Revenue */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <div style={{ width: 3, height: 14, background: '#f59e0b', borderRadius: 2 }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>🏆 Top 10 Schools — Revenue</span>
-            <span style={{ fontSize: 10, background: 'rgba(245,158,11,0.1)', color: '#f59e0b', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span>
-          </div>
-          {topRevenueSchools.length === 0
-            ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
-            : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {topRevenueSchools.map((s, i) => (
-                  <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: i < 3 ? `${RANK_COLORS[i]}0d` : 'transparent', border: i < 3 ? `1px solid ${RANK_COLORS[i]}33` : '1px solid transparent' }}>
-                    <span style={{ fontSize: i < 3 ? 18 : 12, width: 24, textAlign: 'center', flexShrink: 0, fontWeight: 800, color: RANK_COLORS[i] }}>
-                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }} title={s.name}>{s.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--m)', marginTop: 1 }}>{s.students} paid students</div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b', fontFamily: 'Sora' }}>₹{fmtAmt(s.rev)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><div style={{ width: 3, height: 14, background: '#f59e0b', borderRadius: 2 }} /><span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>🏆 Top 10 Schools — Revenue</span><span style={{ fontSize: 10, background: 'rgba(245,158,11,0.1)', color: '#f59e0b', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span></div>
+          {topRevenueSchools.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
+            : (<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{topRevenueSchools.map((s, i) => (<div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: i < 3 ? `${RANK_COLORS[i]}0d` : 'transparent', border: i < 3 ? `1px solid ${RANK_COLORS[i]}33` : '1px solid transparent' }}><span style={{ fontSize: i < 3 ? 18 : 12, width: 24, textAlign: 'center', flexShrink: 0, fontWeight: 800, color: RANK_COLORS[i] }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</span><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }} title={s.name}>{s.name}</div><div style={{ fontSize: 10, color: 'var(--m)', marginTop: 1 }}>{s.students} paid students</div></div><div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b', fontFamily: 'Sora' }}>₹{fmtAmt(s.rev)}</div></div></div>))}</div>)}
         </div>
-
-        {/* Top 10 by Students */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <div style={{ width: 3, height: 14, background: '#06b6d4', borderRadius: 2 }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>🎓 Top 10 Schools — Students</span>
-            <span style={{ fontSize: 10, background: 'rgba(6,182,212,0.1)', color: '#06b6d4', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span>
-          </div>
-          {topStudentSchools.length === 0
-            ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
-            : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {topStudentSchools.map((s, i) => (
-                  <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: i < 3 ? `${RANK_COLORS[i]}0d` : 'transparent', border: i < 3 ? `1px solid ${RANK_COLORS[i]}33` : '1px solid transparent' }}>
-                    <span style={{ fontSize: i < 3 ? 18 : 12, width: 24, textAlign: 'center', flexShrink: 0, fontWeight: 800, color: RANK_COLORS[i] }}>
-                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }} title={s.name}>{s.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--m)', marginTop: 1 }}>₹{fmtAmt(s.rev)} revenue</div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: '#06b6d4', fontFamily: 'Sora' }}>{s.students}</div>
-                      <div style={{ fontSize: 10, color: 'var(--m)' }}>students</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><div style={{ width: 3, height: 14, background: '#06b6d4', borderRadius: 2 }} /><span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>🎓 Top 10 Schools — Students</span><span style={{ fontSize: 10, background: 'rgba(6,182,212,0.1)', color: '#06b6d4', padding: '2px 8px', borderRadius: 20, fontWeight: 600, marginLeft: 'auto' }}>Paid only</span></div>
+          {topStudentSchools.length === 0 ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations</div>
+            : (<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{topStudentSchools.map((s, i) => (<div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: i < 3 ? `${RANK_COLORS[i]}0d` : 'transparent', border: i < 3 ? `1px solid ${RANK_COLORS[i]}33` : '1px solid transparent' }}><span style={{ fontSize: i < 3 ? 18 : 12, width: 24, textAlign: 'center', flexShrink: 0, fontWeight: 800, color: RANK_COLORS[i] }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</span><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }} title={s.name}>{s.name}</div><div style={{ fontSize: 10, color: 'var(--m)', marginTop: 1 }}>₹{fmtAmt(s.rev)} revenue</div></div><div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontSize: 22, fontWeight: 800, color: '#06b6d4', fontFamily: 'Sora' }}>{s.students}</div><div style={{ fontSize: 10, color: 'var(--m)' }}>students</div></div></div>))}</div>)}
         </div>
       </div>
-
     </div>
   );
 }
@@ -1747,26 +1495,107 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
 }
 
 // ── Table components ────────────────────────────────────────────────
-function StudentsTable({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>void }) {
-  const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [gateway,setGateway]=useState('');const [city,setCity]=useState('');const [cls,setCls]=useState('');const [gender,setGender]=useState('');
-  const statuses=[...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
-  const gateways=[...new Set(rows.map(r=>r.gateway).filter(Boolean))];
-  const cities=[...new Set(rows.map(r=>r.city).filter(Boolean))].sort();
-  const classes=[...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
-  const filtered=rows.filter(r=>{const hay=[r.student_name,r.parent_name,r.contact_phone,r.contact_email,r.parent_school,r.city,r.gateway_txn_id].join(' ').toLowerCase();return(!search||hay.includes(search.toLowerCase()))&&(!status||r.payment_status===status)&&(!gateway||r.gateway===gateway)&&(!city||r.city===city)&&(!cls||r.class_grade===cls)&&(!gender||r.gender===gender);});
+// ── UPDATED: Added Program, Country, State, City (synced), School dropdowns + Program & Country columns ──
+function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row[]; onRowClick:(r:Row)=>void }) {
+  const [search,  setSearch]  = useState('');
+  const [status,  setStatus]  = useState('');
+  const [gateway, setGateway] = useState('');
+  const [program, setProgram] = useState('');
+  const [country, setCountry] = useState('');
+  const [state,   setState]   = useState('');
+  const [city,    setCity]    = useState('');
+  const [school,  setSchool]  = useState('');
+  const [cls,     setCls]     = useState('');
+  const [gender,  setGender]  = useState('');
+
+  // Derive unique option lists from data
+  const statuses  = [...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
+  const gateways  = [...new Set(rows.map(r=>r.gateway).filter(Boolean))];
+  const countries = [...new Set(rows.map(r=>r.country).filter(Boolean))].sort();
+  const classes   = [...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
+
+  // States filtered by selected country
+  const statesForCountry = [...new Set(
+    rows.filter(r=>!country||r.country===country).map(r=>r.state).filter(Boolean)
+  )].sort();
+
+  // Cities filtered by selected country + state
+  const citiesForState = [...new Set(
+    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)).map(r=>r.city).filter(Boolean)
+  )].sort();
+
+  // Schools filtered by current country + state + city selection
+  const schoolsFiltered = [...new Set(
+    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)&&(!city||r.city===city))
+      .map(r=>r.school_name??r.parent_school).filter(Boolean)
+  )].sort();
+
+  // Cascade resets when parent filter changes
+  const handleCountryChange = (v:string) => { setCountry(v); setState(''); setCity(''); setSchool(''); };
+  const handleStateChange   = (v:string) => { setState(v);   setCity(''); setSchool(''); };
+  const handleCityChange    = (v:string) => { setCity(v);    setSchool(''); };
+
+  const filtered = rows.filter(r => {
+    const hay = [r.student_name,r.parent_name,r.contact_phone,r.contact_email,r.parent_school,r.city,r.gateway_txn_id,r.school_name].join(' ').toLowerCase();
+    const schoolName = r.school_name??r.parent_school??'';
+    return (
+      (!search  || hay.includes(search.toLowerCase())) &&
+      (!status  || r.payment_status===status) &&
+      (!gateway || r.gateway===gateway) &&
+      (!program || r.program_name===program) &&
+      (!country || r.country===country) &&
+      (!state   || r.state===state) &&
+      (!city    || r.city===city) &&
+      (!school  || schoolName===school) &&
+      (!cls     || r.class_grade===cls) &&
+      (!gender  || r.gender===gender)
+    );
+  });
+
   return (<>
     <div className="table-toolbar">
       <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)}/>
-      <select value={status}  onChange={e=>setStatus(e.target.value)}>  <option value="">All Status</option>   {statuses.map(s=><option key={s}>{s}</option>)}</select>
-      <select value={gateway} onChange={e=>setGateway(e.target.value)}><option value="">All Gateways</option>{gateways.map(g=><option key={g}>{g}</option>)}</select>
-      <select value={city}    onChange={e=>setCity(e.target.value)}>    <option value="">All Cities</option>   {cities.map(c=><option key={c}>{c}</option>)}</select>
-      <select value={cls}     onChange={e=>setCls(e.target.value)}>     <option value="">All Classes</option>  {classes.map(c=><option key={c}>{c}</option>)}</select>
-      <select value={gender}  onChange={e=>setGender(e.target.value)}>  <option value="">All Gender</option>   {['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}</select>
+      <select value={status}  onChange={e=>setStatus(e.target.value)}>
+        <option value="">All Status</option>
+        {statuses.map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={gateway} onChange={e=>setGateway(e.target.value)}>
+        <option value="">All Gateways</option>
+        {gateways.map(g=><option key={g}>{g}</option>)}
+      </select>
+      <select value={program} onChange={e=>setProgram(e.target.value)}>
+        <option value="">All Programs</option>
+        {programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+      </select>
+      <select value={country} onChange={e=>handleCountryChange(e.target.value)}>
+        <option value="">All Countries</option>
+        {countries.map(c=><option key={c}>{c}</option>)}
+      </select>
+      <select value={state} onChange={e=>handleStateChange(e.target.value)}>
+        <option value="">All States</option>
+        {statesForCountry.map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={city} onChange={e=>handleCityChange(e.target.value)}>
+        <option value="">All Cities</option>
+        {citiesForState.map(c=><option key={c}>{c}</option>)}
+      </select>
+      <select value={school} onChange={e=>setSchool(e.target.value)}>
+        <option value="">All Schools</option>
+        {schoolsFiltered.map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={cls} onChange={e=>setCls(e.target.value)}>
+        <option value="">All Classes</option>
+        {classes.map(c=><option key={c}>{c}</option>)}
+      </select>
+      <select value={gender} onChange={e=>setGender(e.target.value)}>
+        <option value="">All Gender</option>
+        {['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}
+      </select>
       <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {rows.length}</span>
     </div>
     <div className="tbl-wrap"><table>
-      <thead><tr>{['#','Date','Status','Student','Gender','Class','School','City','Parent','Phone','Gateway','Amount','Discount'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-      <tbody>{filtered.length===0?<tr><td colSpan={13} className="table-empty">No records found</td></tr>:filtered.map((r,i)=>(
+      <thead><tr>{['#','Date','Status','Student','Gender','Class','Program','Country','School','City','Parent','Phone','Gateway','Amount','Discount'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+      <tbody>{filtered.length===0?<tr><td colSpan={15} className="table-empty">No records found</td></tr>:filtered.map((r,i)=>(
         <tr key={r.id} onClick={()=>onRowClick(r)}>
           <td style={{color:'var(--m2)',fontSize:11}}>{i+1}</td>
           <td style={{color:'var(--m)',fontSize:11}}>{r.created_at?.slice(0,10)}</td>
@@ -1774,6 +1603,8 @@ function StudentsTable({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>vo
           <td><div style={{fontWeight:700}}>{r.student_name}</div></td>
           <td><span style={{fontSize:11,padding:'2px 8px',borderRadius:6,fontWeight:600,background:r.gender==='Male'?'#eff6ff':r.gender==='Female'?'#fdf2f8':'var(--bg)',color:r.gender==='Male'?'#2563eb':r.gender==='Female'?'#db2777':'var(--m)'}}>{r.gender??'—'}</span></td>
           <td><span style={{fontSize:11,background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontWeight:600}}>{r.class_grade??'—'}</span></td>
+          <td><span style={{fontSize:11,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',padding:'2px 8px',borderRadius:6,fontWeight:600,whiteSpace:'nowrap'}}>{r.program_name??'—'}</span></td>
+          <td style={{fontSize:12,whiteSpace:'nowrap'}}>{r.country??'—'}</td>
           <td style={{fontSize:12}}>{r.school_name??r.parent_school??'—'}</td>
           <td style={{fontSize:12}}>{r.city??'—'}</td>
           <td style={{fontSize:12}}>{r.parent_name??'—'}</td>
@@ -1807,4 +1638,104 @@ function Timeline({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>void })
   const dc:Record<string,string>={paid:'paid',failed:'failed',initiated:'initiated',cancelled:'cancelled',pending:'initiated'};
   const de:Record<string,string>={paid:'✅',failed:'❌',initiated:'⏳',cancelled:'🚫',pending:'⏳'};
   return <div>{rows.map(r=>{const st=r.payment_status??'pending';return(<div key={r.id} className="tl-item" onClick={()=>onRowClick(r)}><div className={`tl-dot ${dc[st]??'initiated'}`}>{de[st]??'⏳'}</div><div className="tl-info"><div className="tl-name">{r.student_name} <span style={{fontWeight:400,color:'var(--m)',fontSize:12}}>· {r.class_grade} · {r.school_name??r.parent_school}</span></div><div className="tl-meta">{r.gateway} · {r.city} · {r.contact_phone}</div></div><div style={{textAlign:'right'}}><div className="tl-amt">₹{fmtR(r.final_amount??0)}</div><div className="tl-time">{r.created_at?.slice(0,10)}</div></div></div>);})}</div>;
+}
+
+// ── Unified Timeline ───────────────────────────────────────────────
+function UnifiedTimeline({ paymentRows, activityLogs, onRowClick }:{ paymentRows:Row[]; activityLogs:Row[]; onRowClick:(r:Row)=>void }) {
+  const [filter, setFilter] = React.useState<'all'|'payments'|'schools'>('all');
+
+  const payEvents = paymentRows.map(r => ({
+    id: `pay-${r.id}`,
+    type: 'payment' as const,
+    ts: r.created_at,
+    dot: r.payment_status === 'paid' ? 'paid' : r.payment_status === 'failed' ? 'failed' : 'initiated',
+    icon: r.payment_status === 'paid' ? '✅' : r.payment_status === 'failed' ? '❌' : r.payment_status === 'cancelled' ? '🚫' : '⏳',
+    title: r.student_name ?? '—',
+    sub: `${r.class_grade ?? ''} · ${r.school_name ?? r.parent_school ?? ''}`,
+    meta: `${r.gateway ?? '—'} · ${r.city ?? '—'} · ${r.contact_phone ?? ''}`,
+    badge: r.payment_status,
+    amount: r.final_amount ?? 0,
+    raw: r,
+  }));
+
+  const ACTION_MAP: Record<string,{icon:string;dot:string;label:string}> = {
+    'school.self_registered': { icon:'🏫', dot:'initiated', label:'School Registered' },
+    'school.approved':        { icon:'✅', dot:'paid',      label:'School Approved'   },
+    'school.rejected':        { icon:'❌', dot:'failed',    label:'School Rejected'   },
+    'school.registered':      { icon:'🏫', dot:'initiated', label:'School Registered' },
+  };
+  const logEvents = activityLogs
+    .filter(l => l.action?.startsWith('school.'))
+    .map(l => {
+      const am = ACTION_MAP[l.action] ?? { icon:'📋', dot:'initiated', label: l.action };
+      const m  = l.metadata ?? {};
+      return {
+        id: `log-${l.id}`,
+        type: 'school' as const,
+        ts: l.created_at,
+        dot: am.dot,
+        icon: am.icon,
+        title: m.name ?? l.schools?.name ?? '—',
+        sub: am.label,
+        meta: [m.city, m.country, m.project_name].filter(Boolean).join(' · ') || (l.schools?.school_code ? `Code: ${l.schools.school_code}` : ''),
+        badge: am.dot === 'paid' ? 'badge-paid' : am.dot === 'failed' ? 'badge-cancelled' : 'badge-initiated',
+        amount: 0,
+        raw: null,
+      };
+    });
+
+  const all = [...payEvents, ...logEvents].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  const filtered = filter === 'payments' ? all.filter(e => e.type === 'payment')
+                 : filter === 'schools'  ? all.filter(e => e.type === 'school')
+                 : all;
+
+  const schoolCount = logEvents.length;
+  const payCount    = payEvents.filter(e => e.raw?.payment_status === 'paid').length;
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+        {([['all','All Activity',all.length,'var(--acc)'],['payments','💳 Payments',payEvents.length,'#10b981'],['schools','🏫 School Registrations',schoolCount,'#f59e0b']] as const).map(([key,label,count,color])=>(
+          <button key={key} onClick={()=>setFilter(key as any)} style={{padding:'7px 14px',borderRadius:9,border:`1.5px solid ${filter===key?color:'var(--bd)'}`,background:filter===key?`${color}18`:'transparent',color:filter===key?color:'var(--m)',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            {label} <span style={{marginLeft:4,background:filter===key?color:'var(--bd)',color:'#fff',borderRadius:20,fontSize:10,padding:'1px 6px',fontWeight:800}}>{count}</span>
+          </button>
+        ))}
+        <span style={{marginLeft:'auto',fontSize:11,color:'var(--m)'}}>{filtered.length} events · {payCount} paid · {schoolCount} school events</span>
+      </div>
+
+      {filtered.length === 0 && (
+        <div style={{textAlign:'center',padding:'48px 0',color:'var(--m)',fontSize:14}}>
+          {filter === 'schools' ? '🏫 No school registration activity yet' : '📭 No activity yet'}
+        </div>
+      )}
+
+      <div>
+        {filtered.map(e => (
+          <div key={e.id} className="tl-item" onClick={() => e.raw && onRowClick(e.raw)} style={{cursor: e.raw ? 'pointer' : 'default'}}>
+            <div style={{position:'relative',flexShrink:0}}>
+              <div className={`tl-dot ${e.dot}`}>{e.icon}</div>
+              {e.type === 'school' && (
+                <div style={{position:'absolute',top:-2,right:-2,width:10,height:10,borderRadius:'50%',background:'#f59e0b',border:'2px solid var(--bg)',fontSize:7,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800}}>S</div>
+              )}
+            </div>
+            <div className="tl-info">
+              <div className="tl-name">
+                {e.title}
+                {e.type === 'school' && <span style={{marginLeft:6,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:20,background:'rgba(245,158,11,0.12)',color:'#d97706'}}>School</span>}
+                {e.type === 'payment' && e.raw && <span className={`badge badge-${e.raw.payment_status}`} style={{marginLeft:6,fontSize:10}}>{e.raw.payment_status}</span>}
+              </div>
+              <div className="tl-meta">{e.sub}</div>
+              {e.meta && <div className="tl-meta" style={{fontSize:10,marginTop:1,opacity:.7}}>{e.meta}</div>}
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              {e.amount > 0 && <div className="tl-amt">₹{fmtR(e.amount)}</div>}
+              {e.type === 'school' && <div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>Registration</div>}
+              <div className="tl-time">{new Date(e.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+              <div style={{fontSize:10,color:'var(--m2)'}}>{new Date(e.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
