@@ -9,6 +9,7 @@ const PUBLIC_API = [
   '/api/discount',
   '/api/payment/verify',
   '/api/payment/webhook',
+  '/api/project',          // public project lookup by slug (used by registration.html)
 ];
 
 function isPublicApi(pathname: string) {
@@ -24,7 +25,6 @@ export async function middleware(request: NextRequest) {
 
   // Handle CORS for public API routes
   if (pathname.startsWith('/api/')) {
-    const origin = request.headers.get('origin') || '*';
     const isPublic = isPublicApi(pathname);
     const allowOrigin = isPublic ? '*' : 'https://www.thynksuccess.com';
 
