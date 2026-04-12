@@ -40,6 +40,33 @@ export async function GET(
     return NextResponse.json({ error: 'No active pricing for this school' }, { status: 404 });
   }
 
+  // ── Fetch project allowed_grades ──────────────────────────────────
+  // Use project_slug from school row (or the query param) to look up allowed grades
+  const slug = projectSlug ?? (data as any).project_slug;
+  let allowedGrades: string[] = [];
+
+  if (slug) {
+    const { data: project } = await supabase
+      .from('projects')
+      .select('allowed_grades')
+      .eq('slug', slug)
+      .single();
+
+    if (project?.allowed_grades?.length) {
+      allowedGrades = project.allowed_grades as string[];
+    }
+  }
+
+  // Fall back to all active grades if project has none configured
+  if (!allowedGrades.length) {
+    const { data: allGrades } = await supabase
+      .from('grades')
+      .select('name')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true });
+    allowedGrades = (allGrades ?? []).map((g: any) => g.name);
+  }
+
   const { gateway_config, ...safeSchool } = data;
   const publicGatewayConfig = {
     rzp_key_id: (gateway_config as any)?.rzp_key_id ?? process.env.RAZORPAY_KEY_ID,
@@ -51,5 +78,6 @@ export async function GET(
     ...safeSchool,
     pricing: activePricing,
     public_gateway_config: publicGatewayConfig,
+    allowed_grades: allowedGrades,
   });
 }
