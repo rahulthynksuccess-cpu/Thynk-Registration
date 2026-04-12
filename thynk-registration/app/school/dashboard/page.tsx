@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, authFetch } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 type Row = Record<string, any>;
@@ -65,7 +65,7 @@ export default function SchoolDashboard() {
   // ── Load data ─────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     try {
-      const res  = await fetch(`${BACKEND}/api/school/dashboard`, { credentials: 'include' });
+      const res  = await authFetch(`${BACKEND}/api/school/dashboard`);
       if (res.status === 401) { router.push('/school/login'); return; }
       if (res.status === 403) { showToast('Access denied'); return; }
       const json = await res.json();

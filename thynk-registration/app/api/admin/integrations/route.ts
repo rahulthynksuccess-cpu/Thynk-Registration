@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/activity';
 
-async function requireAdmin() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+async function requireAdmin(req: NextRequest) {
+  const user = await getUserFromRequest(req);
   if (!user) return null;
   const service = createServiceClient();
   const { data } = await service.from('admin_roles').select('role,school_id').eq('user_id', user.id).single();
@@ -12,7 +11,7 @@ async function requireAdmin() {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { searchParams } = new URL(req.url);
@@ -25,7 +24,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
@@ -40,7 +39,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { id, ...updates } = await req.json();
@@ -50,7 +49,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { id } = await req.json();

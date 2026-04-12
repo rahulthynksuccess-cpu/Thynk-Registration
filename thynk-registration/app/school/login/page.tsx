@@ -1,6 +1,6 @@
 'use client';
 import { Suspense, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, authFetch } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 function SchoolLoginForm() {

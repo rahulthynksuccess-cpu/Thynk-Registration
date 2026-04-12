@@ -1,10 +1,9 @@
-import { NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   // Verify caller is super admin
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserFromRequest(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const service = createServiceClient();
@@ -63,10 +62,9 @@ export async function POST(req: Request) {
   return NextResponse.json({ school }, { status: 201 });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   // List all schools (super admin only)
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserFromRequest(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const service = createServiceClient();

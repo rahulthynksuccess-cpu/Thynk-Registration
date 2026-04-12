@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 
-async function requireSuperAdmin() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+async function requireSuperAdmin(req: NextRequest) {
+  const user = await getUserFromRequest(req);
   if (!user) return null;
   const service = createServiceClient();
-  const { data } = await service.from('admin_roles').select('role').eq('user_id', user.id).eq('role', 'super_admin').is('school_id', null).single();
+  const { data } = await service
+    .from('admin_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('role', 'super_admin')
+    .is('school_id', null)
+    .single();
   return data ? user : null;
 }
 
 // GET — list all admin users with their roles
-export async function GET() {
-  const user = await requireSuperAdmin();
+export async function GET(req: NextRequest) {
+  const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { data: roles } = await service
@@ -34,7 +39,7 @@ export async function GET() {
 
 // POST — create a new admin user and assign role
 export async function POST(req: NextRequest) {
-  const user = await requireSuperAdmin();
+  const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { email, password, role, school_id } = await req.json();
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE — remove user and their roles
 export async function DELETE(req: NextRequest) {
-  const user = await requireSuperAdmin();
+  const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { user_id, role_id } = await req.json();

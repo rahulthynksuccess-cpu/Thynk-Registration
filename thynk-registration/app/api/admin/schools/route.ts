@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 
-async function requireSuperAdmin() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+async function requireSuperAdmin(req: NextRequest) {
+  const user = await getUserFromRequest(req);
   if (!user) return null;
   const service = createServiceClient();
   const { data } = await service
@@ -21,8 +20,8 @@ function currencyForCountry(country: string): string {
   return (country || '').toLowerCase() === 'india' ? 'INR' : 'USD';
 }
 
-export async function GET() {
-  const user = await requireSuperAdmin();
+export async function GET(req: NextRequest) {
+  const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { data: schools } = await service
@@ -35,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireSuperAdmin();
+  const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
@@ -126,7 +125,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const user = await requireSuperAdmin();
+  const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const {
@@ -225,7 +224,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const user = await requireSuperAdmin();
+  const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { id } = await req.json();

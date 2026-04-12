@@ -24,11 +24,10 @@ const NAV = [
   { id:'discounts',     icon:'🏷️', label:'Discount Codes' },
   { id:'users',         icon:'👥', label:'Admin Users'    },
   { section:'Integrations' },
-  { id:'integrations',  icon:'⚙️',  label:'Payment & Email'},
-  { id:'triggers',      icon:'🔔', label:'Triggers'       },
-  { id:'templates',     icon:'✉️',  label:'Message Templates'},
+  { id:'_integrations', icon:'⚙️',  label:'Payment & Email', href:'/admin/integrations' },
+  { id:'_triggers',     icon:'🔔', label:'Message Triggers', href:'/admin/message-triggers' },
   { section:'Settings' },
-  { id:'locations',     icon:'📍', label:'Location Master'  },
+  { id:'_settings',     icon:'📍', label:'Settings & Locations', href:'/admin/settings' },
   { section:'Tools' },
   { id:'_export',       icon:'⬇️', label:'Export CSV', action:true },
   { id:'_refresh',      icon:'🔄', label:'Refresh',    action:true },
@@ -46,6 +45,7 @@ export default function AdminDashboard() {
   const [modal, setModal]             = useState<Row|null>(null);
   const [drillData, setDrillData]     = useState<{title:string;rows:Row[]}|null>(null);
   const [trendDays, setTrendDays]     = useState(7);
+  const accessTokenRef                = useRef<string>('');
 
   // Management state
   const [programs,     setPrograms]     = useState<Row[]>([]);
@@ -71,18 +71,35 @@ export default function AdminDashboard() {
 
   // ── Auth ─────────────────────────────────────────────────────────
   useEffect(() => {
-    createClient().auth.getUser().then(async ({ data }) => {
-      if (!data.user) { router.push('/admin/login'); return; }
-      setUser(data.user);
-      const supabase = createClient();
-      const { data: role } = await supabase.from('admin_roles').select('role').eq('user_id', data.user.id).eq('role','super_admin').is('school_id',null).maybeSingle();
+    const supabase = createClient();
+    supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      if (!sessionData.session) { router.push('/admin/login'); return; }
+      // Store access token for API calls — this is the fix for POST/PATCH Forbidden
+      accessTokenRef.current = sessionData.session.access_token;
+      setUser(sessionData.session.user);
+      const { data: role } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','super_admin').is('school_id',null).maybeSingle();
       setSuperAdmin(!!role);
     });
+    // Keep token fresh when Supabase auto-refreshes it
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) accessTokenRef.current = session.access_token;
+    });
+    return () => subscription.unsubscribe();
   }, [router]);
+
+  // ── Auth headers helper ───────────────────────────────────────────
+  const authHeaders = useCallback((): HeadersInit => ({
+    'Content-Type': 'application/json',
+    ...(accessTokenRef.current ? { 'Authorization': `Bearer ${accessTokenRef.current}` } : {}),
+  }), []);
 
   // ── Loaders ──────────────────────────────────────────────────────
   const api = useCallback((path: string, opts?: RequestInit) =>
-    fetch(`${BACKEND}${path}`, { credentials: 'include', ...opts }).then(r => r.json()), []);
+    fetch(`${BACKEND}${path}`, {
+      credentials: 'include',
+      headers: { ...(accessTokenRef.current ? { 'Authorization': `Bearer ${accessTokenRef.current}` } : {}), ...(opts?.headers ?? {}) },
+      ...opts,
+    }).then(r => r.json()), []);
 
   const loadRegistrations = useCallback(async () => {
     try {
@@ -185,7 +202,8 @@ export default function AdminDashboard() {
     showToast('CSV exported!','✅');
   }
 
-  function navAction(id:string) {
+  function navAction(id:string, href?:string) {
+    if (href) { window.location.href = href; return; }
     if (id==='_export')  { exportCSV(); return; }
     if (id==='_refresh') { loadRegistrations(); return; }
     setActivePage(id);
@@ -203,7 +221,7 @@ export default function AdminDashboard() {
 
   const saveForm = async (path:string, data:Row, onDone:()=>void, successMsg:string) => {
     const method = data.id ? 'PATCH' : 'POST';
-    const res = await fetch(`${BACKEND}${path}`, { credentials: 'include', method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+    const res = await fetch(`${BACKEND}${path}`, { credentials: 'include', method, headers: authHeaders(), body:JSON.stringify(data) });
     const r   = await res.json();
     if (!res.ok) { showToast(r.error ?? 'Error', '❌'); return; }
     showToast(successMsg, '✅');
@@ -229,11 +247,12 @@ export default function AdminDashboard() {
           <nav className="sb-nav">
             {NAV.map((item,i) => {
               if ('section' in item) return <div key={i} className="sb-section">{item.section}</div>;
-              const isActive = !item.action && activePage===item.id;
+              const isActive = !item.action && !('href' in item) && activePage===item.id;
               return (
-                <button key={item.id} className={`sb-item${isActive?' active':''}`} onClick={()=>navAction(item.id!)}>
+                <button key={item.id} className={`sb-item${isActive?' active':''}`} onClick={()=>navAction(item.id!, (item as any).href)}>
                   <span className="icon">{item.icon}</span>{item.label}
                   {item.badge && followUpCount>0 && <span className="sb-badge">{followUpCount}</span>}
+                  {('href' in item) && <span style={{fontSize:9,opacity:0.5,marginLeft:'auto'}}>↗</span>}
                 </button>
               );
             })}
@@ -391,7 +410,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${d.is_active?'badge-paid':'badge-cancelled'}`}>{d.is_active?'Active':'Inactive'}</span></td>
                       <td style={{display:'flex',gap:6}}>
                         <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setDiscountForm(d)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Delete code ${d.code}?`))return;await fetch(`${BACKEND}/api/admin/discounts`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:d.id})});loadDiscounts();}}>Delete</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Delete code ${d.code}?`))return;await fetch(`${BACKEND}/api/admin/discounts`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:d.id})});loadDiscounts();}}>Delete</button>
                       </td>
                     </tr>
                   ))
@@ -417,7 +436,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${u.role==='super_admin'?'badge-paid':'badge-initiated'}`}>{u.role==='super_admin'?'Super Admin':'School Admin'}</span></td>
                       <td style={{fontSize:12}}>{u.role==='super_admin'?'All Schools':u.schools?.name??'—'}</td>
                       <td style={{fontSize:12,color:'var(--m)'}}>{new Date(u.created_at).toLocaleDateString('en-IN')}</td>
-                      {isSuperAdmin&&<td><button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Remove ${u.email}?`))return;await fetch(`${BACKEND}/api/admin/users`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:u.id})});loadUsers();}}>Remove</button></td>}
+                      {isSuperAdmin&&<td><button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Remove ${u.email}?`))return;await fetch(`${BACKEND}/api/admin/users`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({role_id:u.id})});loadUsers();}}>Remove</button></td>}
                     </tr>
                   ))
                 }
@@ -442,7 +461,7 @@ export default function AdminDashboard() {
                     onEdit={()=>setIntegrationForm(cfg??{provider})}
                     onToggle={async()=>{
                       if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
+                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
                       loadIntegrations();
                     }}
                   />
@@ -460,7 +479,7 @@ export default function AdminDashboard() {
                     onEdit={()=>setIntegrationForm(cfg??{provider})}
                     onToggle={async()=>{
                       if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
+                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
                       loadIntegrations();
                     }}
                   />
@@ -478,7 +497,7 @@ export default function AdminDashboard() {
                     onEdit={()=>setIntegrationForm(cfg??{provider})}
                     onToggle={async()=>{
                       if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
+                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
                       loadIntegrations();
                     }}
                   />
@@ -507,7 +526,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
                       <td style={{display:'flex',gap:6}}>
                         <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTriggerForm(t)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete trigger?'))return;await fetch(`${BACKEND}/api/admin/triggers`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id})});loadTriggers();}}>Delete</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete trigger?'))return;await fetch(`${BACKEND}/api/admin/triggers`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:t.id})});loadTriggers();}}>Delete</button>
                       </td>
                     </tr>
                   ))
@@ -539,7 +558,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
                       <td style={{display:'flex',gap:6}}>
                         <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTemplateForm(t)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete template?'))return;await fetch(`${BACKEND}/api/admin/templates`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id})});loadTemplates();}}>Delete</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete template?'))return;await fetch(`${BACKEND}/api/admin/templates`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({id:t.id})});loadTemplates();}}>Delete</button>
                       </td>
                     </tr>
                   ))
@@ -1413,7 +1432,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
 
   async function toggleActive(row:Row) {
     await fetch(`${BACKEND}/api/admin/location`,{
-      credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},
+      credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},
       body:JSON.stringify({id:row.id,is_active:!row.is_active}),
     });
     onReload();
@@ -1422,7 +1441,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
   async function deleteRow(row:Row) {
     if(!confirm(`Delete "${row.city||row.state}"?`)) return;
     await fetch(`${BACKEND}/api/admin/location`,{
-      credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},
+      credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},
       body:JSON.stringify({id:row.id}),
     });
     showToast('Deleted','✅'); onReload();
@@ -1432,7 +1451,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
     setSaving(true);
     const method = d.id ? 'PATCH' : 'POST';
     const res = await fetch(`${BACKEND}/api/admin/location`,{
-      credentials:'include',method, headers:{'Content-Type':'application/json'},
+      credentials:'include',method, headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},
       body: JSON.stringify(d),
     });
     const json = await res.json();
