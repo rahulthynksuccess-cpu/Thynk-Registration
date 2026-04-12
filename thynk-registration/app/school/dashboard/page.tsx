@@ -208,6 +208,31 @@ export default function SchoolDashboard() {
     router.push('/school/login');
   }
 
+  function exportCSV(rows: Row[], filename: string) {
+    const headers = ["#","Date","Student Name","Class","Gender","Parent Name","Phone","Email","Program","Amount","Payment Status","Gateway","Txn ID"];
+    const csvRows = rows.map((r, i) => [
+      i + 1,
+      r.created_at?.slice(0, 10) ?? "",
+      r.student_name  ?? "",
+      r.class_grade   ?? "",
+      r.gender        ?? "",
+      r.parent_name   ?? "",
+      r.contact_phone ?? "",
+      r.contact_email ?? "",
+      r.program_name  ?? "",
+      r.payment_status === "paid" ? (r.final_amount / 100).toFixed(2) : "",
+      r.payment_status    ?? "",
+      r.gateway           ?? "",
+      r.gateway_txn_id    ?? "",
+    ].map(v => `"${String(v).replace(/"/g, "\"\"")}"` ).join(","));
+    const csv  = [headers.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function dc(id: string) {
     if (chartsRef.current[id]) { chartsRef.current[id].destroy(); delete chartsRef.current[id]; }
   }
@@ -403,6 +428,12 @@ export default function SchoolDashboard() {
                   <span style={{ display:'flex', alignItems:'center', fontSize:12, color:'var(--m)' }}>
                     {filteredRows.length} of {activeStudentRows.length}
                   </span>
+                  <button
+                    onClick={() => exportCSV(filteredRows, `${studentTab}-students-${new Date().toISOString().slice(0,10)}.csv`)}
+                    style={{ background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'9px 16px', fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
+                  >
+                    ⬇ Export CSV
+                  </button>
                 </div>
 
                 <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, overflow:'hidden' }}>
