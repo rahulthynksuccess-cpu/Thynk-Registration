@@ -1090,6 +1090,15 @@ const IS:React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', b
 const SS:React.CSSProperties = { ...IS, appearance:'none' as any };
 
 // ── Program Form ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// DROP-IN REPLACEMENT for the ProgramFormModal function in:
+//   app/admin/page.tsx
+//
+// Find the existing function (starts at ~line 1093):
+//   function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; ...
+// Replace the ENTIRE function (up to its closing `}`) with this code.
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()=>void; onSave:(d:Row)=>void }) {
   const [f,setF] = useState({
     id:              initial.id??'',
@@ -1098,14 +1107,49 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
     base_amount_inr: initial.base_amount_inr ? String(initial.base_amount_inr/100) : '',
     base_amount_usd: initial.base_amount_usd ? String(initial.base_amount_usd/100) : '',
     status:          initial.status??'active',
+    allowed_grades:  (initial.allowed_grades ?? []) as string[],
   });
+
+  // Load all active grades from the API
+  const [allGrades, setAllGrades] = useState<Row[]>([]);
+  const [gradesLoading, setGradesLoading] = useState(true);
+
+  useEffect(() => {
+    api('/api/admin/grades?active=true')
+      .then(d => { setAllGrades(d.grades ?? []); setGradesLoading(false); })
+      .catch(() => setGradesLoading(false));
+  }, []);
+
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
   const autoSlug = (name:string) => name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+
+  function toggleGrade(gradeName: string) {
+    setF(p => {
+      const already = p.allowed_grades.includes(gradeName);
+      return {
+        ...p,
+        allowed_grades: already
+          ? p.allowed_grades.filter(g => g !== gradeName)
+          : [...p.allowed_grades, gradeName],
+      };
+    });
+  }
+
+  function selectAll()   { setF(p => ({ ...p, allowed_grades: allGrades.map(g => g.name) })); }
+  function selectNone()  { setF(p => ({ ...p, allowed_grades: [] })); }
+
   return (
     <ModalShell title={f.id?'Edit Program':'New Program'} onClose={onClose}>
-      <Field label="Program Name *"><input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/></Field>
-      <Field label="Slug * (used in URL)"><input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/></Field>
-      <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>Registration URL: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code></p>
+      <Field label="Program Name *">
+        <input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/>
+      </Field>
+      <Field label="Slug * (used in URL)">
+        <input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/>
+      </Field>
+      <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>
+        Registration URL: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code>
+      </p>
+
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
         <Field label="Base Price — INR (₹) *">
           <div style={{position:'relative'}}>
@@ -1121,8 +1165,101 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
           </div>
           <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Optional — leave blank for India-only programs</p>
         </Field>
-        <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
+        <Field label="Status">
+          <select style={SS} value={f.status} onChange={set('status')}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </Field>
       </div>
+
+      {/* ── Allowed Grades ────────────────────────────── */}
+      <div style={{marginTop:18,marginBottom:4}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+          <label style={{display:'block',fontSize:12,fontWeight:600,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.04em'}}>
+            Allowed Grades *
+          </label>
+          <div style={{display:'flex',gap:8}}>
+            <button type="button" onClick={selectAll}
+              style={{padding:'3px 10px',borderRadius:6,border:'1.5px solid var(--acc)',background:'transparent',color:'var(--acc)',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>
+              All
+            </button>
+            <button type="button" onClick={selectNone}
+              style={{padding:'3px 10px',borderRadius:6,border:'1.5px solid var(--bd)',background:'transparent',color:'var(--m)',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>
+              None
+            </button>
+          </div>
+        </div>
+
+        {gradesLoading ? (
+          <div style={{padding:'14px 0',fontSize:12,color:'var(--m)'}}>Loading grades…</div>
+        ) : allGrades.length === 0 ? (
+          <div style={{padding:'12px 16px',borderRadius:10,border:'1.5px dashed var(--bd)',fontSize:12,color:'var(--m)',textAlign:'center'}}>
+            No grades configured. Go to <strong>Settings → Grade Master</strong> to add grades first.
+          </div>
+        ) : (
+          <>
+            <div style={{
+              display:'grid',
+              gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))',
+              gap:8,
+              padding:'14px 16px',
+              border:'1.5px solid var(--bd)',
+              borderRadius:10,
+              background:'var(--bg)',
+              maxHeight:220,
+              overflowY:'auto',
+            }}>
+              {allGrades.map(g => {
+                const checked = f.allowed_grades.includes(g.name);
+                return (
+                  <label
+                    key={g.id}
+                    onClick={() => toggleGrade(g.name)}
+                    style={{
+                      display:'flex',
+                      alignItems:'center',
+                      gap:8,
+                      padding:'7px 10px',
+                      borderRadius:8,
+                      border:`1.5px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,
+                      background: checked ? 'var(--acc3)' : 'var(--card)',
+                      cursor:'pointer',
+                      transition:'all .12s',
+                      userSelect:'none',
+                    }}
+                  >
+                    <div style={{
+                      width:16, height:16, borderRadius:4,
+                      border:`2px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,
+                      background: checked ? 'var(--acc)' : 'transparent',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      flexShrink:0, transition:'all .12s',
+                    }}>
+                      {checked && <span style={{color:'#fff',fontSize:10,fontWeight:800,lineHeight:1}}>✓</span>}
+                    </div>
+                    <span style={{
+                      fontFamily:'DM Sans,sans-serif',
+                      fontSize:12,
+                      fontWeight: checked ? 700 : 500,
+                      color: checked ? 'var(--acc)' : 'var(--text)',
+                      whiteSpace:'nowrap',
+                    }}>
+                      {g.name}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <p style={{fontSize:10,color:'var(--m)',marginTop:5}}>
+              {f.allowed_grades.length === 0
+                ? '⚠️ No grades selected — registration form will show all active grades as fallback.'
+                : `${f.allowed_grades.length} of ${allGrades.length} grades selected for this program's registration form.`}
+            </p>
+          </>
+        )}
+      </div>
+
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={()=>onSave({
@@ -1131,12 +1268,14 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
           base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null,
           base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0,
           currency: 'INR',
-        })}>{f.id?'Save Changes':'Create Program'}</button>
+          allowed_grades: f.allowed_grades,
+        })}>
+          {f.id?'Save Changes':'Create Program'}
+        </button>
       </div>
     </ModalShell>
   );
 }
-
 // ── Location master data ────────────────────────────────────────────
 const LOCATION_DATA: Record<string, { states: Record<string, string[]> }> = {
   India: {
