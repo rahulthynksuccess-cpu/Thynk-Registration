@@ -20,10 +20,16 @@ const GW_META: Record<AllGatewayKey, { name: string; selClass: string; sub: stri
 };
 
 function loadScript(src: string): Promise<void> {
-  return new Promise(resolve => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) { resolve(); return; }
     const s = document.createElement('script');
-    s.src = src; s.onload = () => resolve(); s.onerror = () => resolve();
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      s.remove(); // clean up so retry is possible
+      reject(new Error(`Failed to load script: ${src}`));
+    };
     document.head.appendChild(s);
   });
 }
@@ -193,10 +199,29 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
   async function renderPayPal() {
     if (paypalDone.current) return;
     showLoader('Loading PayPal…');
-    await loadScript(`https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD`);
+
+    // Remove any previously failed PayPal script so a fresh load is attempted
+    const staleScript = document.querySelector(`script[src*="paypal.com/sdk/js"]`);
+    if (staleScript) staleScript.remove();
+
+    const sdkUrl = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&components=buttons`;
+
+    try {
+      await loadScript(sdkUrl);
+    } catch {
+      hideLoader();
+      showToast('PayPal SDK failed to load. Check your connection or disable ad/script blockers and try again.', 'err');
+      return;
+    }
+
     hideLoader();
     const container = document.getElementById('paypal-btn-container');
-    if (!container || !(window as any).paypal) { showToast('PayPal failed to load.', 'err'); return; }
+    if (!container) { showToast('PayPal container not found.', 'err'); return; }
+    if (!(window as any).paypal || typeof (window as any).paypal.Buttons !== 'function') {
+      showToast('PayPal failed to initialize. Please reload and try again.', 'err');
+      return;
+    }
+
     container.innerHTML = '';
     paypalDone.current = true;
 
@@ -224,7 +249,11 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
         onSuccess();
       },
       onCancel: () => { paypalDone.current = false; showToast('PayPal cancelled.', 'err'); },
-      onError: (err: any) => { paypalDone.current = false; showToast('PayPal error: ' + (err?.message ?? 'Unknown'), 'err'); },
+      onError: (err: any) => {
+        paypalDone.current = false;
+        const msg = (err as any)?.message || (err as any)?.toString() || 'Unknown error';
+        showToast('PayPal error: ' + msg, 'err');
+      },
     }).render('#paypal-btn-container');
   }
 
