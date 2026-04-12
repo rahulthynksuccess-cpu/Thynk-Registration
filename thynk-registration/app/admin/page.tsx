@@ -82,7 +82,7 @@ export default function AdminDashboard() {
 
   // ── Loaders ──────────────────────────────────────────────────────
   const api = useCallback((path: string, opts?: RequestInit) =>
-    fetch(`${BACKEND}${path}`, opts).then(r => r.json()), []);
+    fetch(`${BACKEND}${path}`, { credentials: 'include', ...opts }).then(r => r.json()), []);
 
   const loadRegistrations = useCallback(async () => {
     try {
@@ -203,7 +203,7 @@ export default function AdminDashboard() {
 
   const saveForm = async (path:string, data:Row, onDone:()=>void, successMsg:string) => {
     const method = data.id ? 'PATCH' : 'POST';
-    const res = await fetch(`${BACKEND}${path}`, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+    const res = await fetch(`${BACKEND}${path}`, { credentials: 'include', method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
     const r   = await res.json();
     if (!res.ok) { showToast(r.error ?? 'Error', '❌'); return; }
     showToast(successMsg, '✅');
@@ -349,7 +349,7 @@ export default function AdminDashboard() {
                     <tr key={p.id}>
                       <td style={{fontWeight:700}}>{p.name}</td>
                       <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{p.slug}</code></td>
-                      <td style={{fontSize:12,color:'var(--m)'}}>{`www.thynksuccess.com/registration/${p.slug}/[schoolcode]`}</td>
+                      <td style={{fontSize:12,color:'var(--m)'}}>{`${p.base_url||'https://www.thynksuccess.com'}/registration/${p.slug}/[schoolcode]`}</td>
                       <td><span className="amt">₹{fmtR(p.base_amount_inr ?? (p.currency==='INR'?p.base_amount:0) ?? 0)}</span></td>
                       <td><span className="amt" style={{color:'#22c55e'}}>${fmtR(p.base_amount_usd ?? (p.currency==='USD'?p.base_amount:0) ?? 0)}</span></td>
                       <td><span className={`badge ${p.status==='active'?'badge-paid':'badge-cancelled'}`}>{p.status}</span></td>
@@ -391,7 +391,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${d.is_active?'badge-paid':'badge-cancelled'}`}>{d.is_active?'Active':'Inactive'}</span></td>
                       <td style={{display:'flex',gap:6}}>
                         <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setDiscountForm(d)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Delete code ${d.code}?`))return;await fetch(`${BACKEND}/api/admin/discounts`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:d.id})});loadDiscounts();}}>Delete</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Delete code ${d.code}?`))return;await fetch(`${BACKEND}/api/admin/discounts`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:d.id})});loadDiscounts();}}>Delete</button>
                       </td>
                     </tr>
                   ))
@@ -417,7 +417,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${u.role==='super_admin'?'badge-paid':'badge-initiated'}`}>{u.role==='super_admin'?'Super Admin':'School Admin'}</span></td>
                       <td style={{fontSize:12}}>{u.role==='super_admin'?'All Schools':u.schools?.name??'—'}</td>
                       <td style={{fontSize:12,color:'var(--m)'}}>{new Date(u.created_at).toLocaleDateString('en-IN')}</td>
-                      {isSuperAdmin&&<td><button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Remove ${u.email}?`))return;await fetch(`${BACKEND}/api/admin/users`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:u.id})});loadUsers();}}>Remove</button></td>}
+                      {isSuperAdmin&&<td><button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Remove ${u.email}?`))return;await fetch(`${BACKEND}/api/admin/users`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:u.id})});loadUsers();}}>Remove</button></td>}
                     </tr>
                   ))
                 }
@@ -442,7 +442,7 @@ export default function AdminDashboard() {
                     onEdit={()=>setIntegrationForm(cfg??{provider})}
                     onToggle={async()=>{
                       if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
+                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
                       loadIntegrations();
                     }}
                   />
@@ -460,7 +460,7 @@ export default function AdminDashboard() {
                     onEdit={()=>setIntegrationForm(cfg??{provider})}
                     onToggle={async()=>{
                       if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
+                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
                       loadIntegrations();
                     }}
                   />
@@ -478,7 +478,7 @@ export default function AdminDashboard() {
                     onEdit={()=>setIntegrationForm(cfg??{provider})}
                     onToggle={async()=>{
                       if(!cfg) return;
-                      await fetch(`${BACKEND}/api/admin/integrations`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
+                      await fetch(`${BACKEND}/api/admin/integrations`,{credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active})});
                       loadIntegrations();
                     }}
                   />
@@ -507,7 +507,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
                       <td style={{display:'flex',gap:6}}>
                         <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTriggerForm(t)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete trigger?'))return;await fetch(`${BACKEND}/api/admin/triggers`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id})});loadTriggers();}}>Delete</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete trigger?'))return;await fetch(`${BACKEND}/api/admin/triggers`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id})});loadTriggers();}}>Delete</button>
                       </td>
                     </tr>
                   ))
@@ -539,7 +539,7 @@ export default function AdminDashboard() {
                       <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
                       <td style={{display:'flex',gap:6}}>
                         <button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setTemplateForm(t)}>Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete template?'))return;await fetch(`${BACKEND}/api/admin/templates`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id})});loadTemplates();}}>Delete</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm('Delete template?'))return;await fetch(`${BACKEND}/api/admin/templates`,{credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id})});loadTemplates();}}>Delete</button>
                       </td>
                     </tr>
                   ))
@@ -668,17 +668,22 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
     id:           initial.id??'',
     name:         initial.name??'',
     slug:         initial.slug??'',
+    base_url:     initial.base_url??'',
     base_amount_inr: initial.base_amount_inr ? String(initial.base_amount_inr/100) : (initial.base_amount && initial.currency==='INR' ? String(initial.base_amount/100) : ''),
     base_amount_usd: initial.base_amount_usd ? String(initial.base_amount_usd/100) : (initial.base_amount && initial.currency==='USD' ? String(initial.base_amount/100) : ''),
     status:       initial.status??'active',
   });
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
   const autoSlug = (name:string) => name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  const computedUrl = `${f.base_url||'https://www.thynksuccess.com'}/registration/${f.slug||'[slug]'}/[schoolcode]`;
   return (
     <ModalShell title={f.id?'Edit Program':'New Program'} onClose={onClose}>
       <Field label="Program Name *"><input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/></Field>
       <Field label="Slug * (used in URL)"><input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/></Field>
-      <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>Registration URL will be: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code></p>
+      <Field label="Base URL (domain override — leave blank for default)">
+        <input style={IS} value={f.base_url} onChange={set('base_url')} placeholder="https://www.thynksuccess.com"/>
+        <p style={{fontSize:11,color:'var(--m)',marginTop:4}}>Registration URL will be: <code style={{wordBreak:'break-all'}}>{computedUrl}</code></p>
+      </Field>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
         <Field label="Base Price — INR (₹) *">
           <div style={{position:'relative'}}>
@@ -704,6 +709,7 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={()=>onSave({
           ...f,
+          base_url: f.base_url.trim() || null,
           base_amount_inr: Math.round(Number(f.base_amount_inr||0)*100),
           base_amount_usd: Math.round(Number(f.base_amount_usd||0)*100),
           // keep legacy base_amount as INR for backwards compat
@@ -843,7 +849,7 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
 
   // Auto-computed registration URL — always shown once program selected
   const regUrl = selProgram
-    ? `https://www.thynksuccess.com/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}`
+    ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}`
     : '';
 
   // Base price from program
@@ -1050,13 +1056,13 @@ function SchoolsTable({ schools, programs, isSuperAdmin, onEdit }:{ schools:Row[
         <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {schools.length}</span>
       </div>
       <div className="tbl-wrap"><table>
-        <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
+        <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Dashboard</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
         <tbody>
           {filtered.length===0
-            ? <tr><td colSpan={11} className="table-empty">No schools match the selected filters.</td></tr>
+            ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
             : filtered.map(s=>{
               const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug);
-              const regUrl = `https://www.thynksuccess.com/registration/${s.project_slug??''}/${s.school_code}`;
+              const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/${s.school_code}`;
               // Base price: pick INR or USD based on country
               const basePriceFmt = (() => {
                 if (!prog) return '—';
@@ -1083,6 +1089,7 @@ function SchoolsTable({ schools, programs, isSuperAdmin, onEdit }:{ schools:Row[
                   <td><span className="amt">{schoolPriceFmt}</span></td>
                   <td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.discount_code || s.school_code?.toUpperCase()}</code></td>
                   <td><a href={regUrl} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl.replace('https://','')}</a></td>
+                  <td><a href="/school/login" target="_blank" style={{color:'#10b981',fontSize:11,fontWeight:600,textDecoration:'none',whiteSpace:'nowrap'}}>🏫 School Login</a></td>
                   <td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>
                   {isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>onEdit(s)}>Edit</button></td>}
                 </tr>
@@ -1127,6 +1134,16 @@ function UserFormModal({ schools, onClose, onSave }:{ schools:Row[]; onClose:()=
       <Field label="Password *"><input style={IS} type="password" value={f.password} onChange={set('password')} placeholder="Minimum 8 characters"/></Field>
       <Field label="Role *"><select style={SS} value={f.role} onChange={set('role')}><option value="school_admin">School Admin</option><option value="super_admin">Super Admin</option></select></Field>
       {f.role==='school_admin'&&<Field label="Assign to School *"><select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">Select school</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}</select></Field>}
+      {f.role==='school_admin'&&(
+        <div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}>
+          <span style={{color:'var(--acc)',fontWeight:600}}>🏫 School Portal Login URL:</span>
+          <br/>
+          <code style={{color:'var(--text)',fontSize:11,wordBreak:'break-all'}}>
+            {(BACKEND||window.location.origin)}/school/login
+          </code>
+          <p style={{margin:'4px 0 0',color:'var(--m)',fontSize:11}}>Share this URL with the school admin so they can log in to their dashboard.</p>
+        </div>
+      )}
       <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={()=>onSave(f)}>Create Admin User</button>
@@ -1396,7 +1413,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
 
   async function toggleActive(row:Row) {
     await fetch(`${BACKEND}/api/admin/location`,{
-      method:'PATCH',headers:{'Content-Type':'application/json'},
+      credentials:'include',method:'PATCH',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:row.id,is_active:!row.is_active}),
     });
     onReload();
@@ -1405,7 +1422,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
   async function deleteRow(row:Row) {
     if(!confirm(`Delete "${row.city||row.state}"?`)) return;
     await fetch(`${BACKEND}/api/admin/location`,{
-      method:'DELETE',headers:{'Content-Type':'application/json'},
+      credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:row.id}),
     });
     showToast('Deleted','✅'); onReload();
@@ -1415,7 +1432,7 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
     setSaving(true);
     const method = d.id ? 'PATCH' : 'POST';
     const res = await fetch(`${BACKEND}/api/admin/location`,{
-      method, headers:{'Content-Type':'application/json'},
+      credentials:'include',method, headers:{'Content-Type':'application/json'},
       body: JSON.stringify(d),
     });
     const json = await res.json();

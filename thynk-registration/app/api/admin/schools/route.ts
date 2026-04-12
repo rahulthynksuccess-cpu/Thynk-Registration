@@ -58,13 +58,14 @@ export async function POST(req: NextRequest) {
   // Get program for redirect URL and slug
   const { data: program } = await service
     .from('projects')
-    .select('slug, name')
+    .select('slug, name, base_url')
     .eq('id', project_id)
     .single();
   if (!program) return NextResponse.json({ error: 'Program not found' }, { status: 400 });
 
   const code        = school_code.toLowerCase().replace(/\s+/g, '-');
-  const redirectURL = `https://www.thynksuccess.com/registration/${program.slug}/${code}`;
+  const baseOrigin  = program.base_url || 'https://www.thynksuccess.com';
+  const redirectURL = `${baseOrigin}/registration/${program.slug}/${code}`;
   const discCode    = (discount_code || code).toUpperCase();
 
   const { data: school, error } = await service.from('schools').insert({
@@ -170,7 +171,7 @@ export async function PATCH(req: NextRequest) {
   if (project_id) {
     const { data: program } = await service
       .from('projects')
-      .select('slug')
+      .select('slug, base_url')
       .eq('id', project_id)
       .single();
     if (program) {
@@ -183,7 +184,8 @@ export async function PATCH(req: NextRequest) {
         .eq('id', id)
         .single();
       if (schoolRec) {
-        branding.redirectURL = `https://www.thynksuccess.com/registration/${program.slug}/${schoolRec.school_code}`;
+        const baseOrigin = program.base_url || 'https://www.thynksuccess.com';
+        branding.redirectURL = `${baseOrigin}/registration/${program.slug}/${schoolRec.school_code}`;
         updatePayload.branding = branding;
       }
     }

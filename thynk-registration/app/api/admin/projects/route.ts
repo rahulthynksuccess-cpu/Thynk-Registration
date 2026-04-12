@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
-  const { name, slug, base_amount_inr, base_amount_usd, status } = body;
+  const { name, slug, base_url, base_amount_inr, base_amount_usd, status } = body;
 
   if (!name || !slug)
     return NextResponse.json({ error: 'name and slug required' }, { status: 400 });
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await service.from('projects').insert({
     name,
     slug:            slug.toLowerCase().replace(/\s+/g, '-'),
+    base_url:        base_url || null,
     base_amount:     inr,
     currency:        'INR',
     base_amount_inr: inr,
@@ -63,10 +64,12 @@ export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
-  const { id, base_amount_inr, base_amount_usd, ...rest } = await req.json();
+  const { id, base_url, base_amount_inr, base_amount_usd, ...rest } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
   const updates: Record<string, any> = { ...rest };
+
+  if (base_url !== undefined) updates.base_url = base_url || null;
 
   if (base_amount_inr !== undefined) {
     updates.base_amount_inr = Math.round(Number(base_amount_inr));
