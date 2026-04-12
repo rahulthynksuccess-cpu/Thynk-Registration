@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 
 // ── Types ────────────────────────────────────────────────────────────────────
+type Row = Record<string, any>;
 type Channel  = 'email' | 'whatsapp';
 const CHANNEL_COLOR: Record<Channel, string> = { email:'#60A5FA', whatsapp:'#25D366' };
 
