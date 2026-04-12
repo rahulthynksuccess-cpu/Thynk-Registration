@@ -54,6 +54,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'Razorpay credentials valid ✅' });
     }
 
+    if (provider === 'smtp') {
+      const nodemailer = await import('nodemailer');
+      const port = parseInt(config.port ?? '587');
+      const transporter = nodemailer.createTransport({
+        host:   config.host ?? 'smtp.gmail.com',
+        port,
+        secure: port === 465,
+        auth: {
+          user: config.user,
+          pass: config.password,
+        },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+      });
+      // Verify connection first
+      await transporter.verify();
+      // Send test email
+      await transporter.sendMail({
+        from: `"${config.from_name ?? 'Thynk Registration'}" <${config.from_email ?? config.user}>`,
+        to,
+        subject: '✅ Thynk Registration — SMTP Test',
+        text: [
+          'This is a test email from Thynk Registration.',
+          '',
+          'Your SMTP configuration is working correctly! 🎉',
+          '',
+          `Host: ${config.host}:${config.port}`,
+          `From: ${config.from_email ?? config.user}`,
+          '',
+          '— Thynk Registration Admin',
+        ].join('\n'),
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px">
+          <h2 style="color:#4f46e5;margin-top:0">✅ SMTP Test Successful</h2>
+          <p>Your SMTP configuration is working correctly!</p>
+          <table style="font-size:13px;color:#64748b;border-collapse:collapse;width:100%">
+            <tr><td style="padding:4px 0;font-weight:600">Host</td><td>${config.host}:${config.port}</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600">From</td><td>${config.from_email ?? config.user}</td></tr>
+          </table>
+          <p style="margin-top:20px;font-size:12px;color:#94a3b8">Sent from Thynk Registration Admin Panel</p>
+        </div>`,
+      });
+      return NextResponse.json({ success: true, message: `Test email sent to ${to} via ${config.host}` });
+    }
+
     return NextResponse.json({ error: 'Test not supported for this provider' }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 400 });
