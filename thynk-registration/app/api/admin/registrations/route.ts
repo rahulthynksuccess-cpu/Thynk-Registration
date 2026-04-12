@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const isSuperAdmin     = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
   const allowedSchoolIds = roleRows?.map(r => r.school_id).filter(Boolean) ?? [];
 
-  // Build query — added country, state to schools join; currency to pricing join
+  // Build query
   let query = service
     .from('registrations')
     .select(`
@@ -52,10 +52,9 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Flatten for dashboard consumption
-  // FIX: pricing is a Supabase array relation — must use [0] index, not direct access
   const flat = (rows ?? []).map((r: any) => {
     const payment = r.payments?.[0] ?? {};
-    const pricing = r.pricing?.[0] ?? {};          // ← FIX: was r.pricing (always undefined)
+    const pricing = r.pricing?.[0]  ?? {};  // pricing is a Supabase array relation
 
     return {
       id:              r.id,
@@ -73,16 +72,16 @@ export async function GET(req: NextRequest) {
       school_name:     r.schools?.name,
       country:         r.schools?.country ?? 'India',
       state:           r.schools?.state   ?? null,
-      program_name:    pricing.program_name,        // ← FIX: was r.pricing?.program_name
-      currency:        pricing.currency ?? 'INR',   // ← FIX: was r.pricing?.currency
-      gateway:         payment.gateway        ?? null,
-      gateway_txn_id:  payment.gateway_txn_id ?? null,
-      base_amount:     payment.base_amount    ?? pricing.base_amount ?? 0,  // ← FIX
-      discount_amount: payment.discount_amount ?? 0,
-      final_amount:    payment.final_amount   ?? 0,
-      discount_code:   payment.discount_code  ?? null,
-      payment_status:  payment.status         ?? null,
-      paid_at:         payment.paid_at        ?? null,
+      program_name:    pricing.program_name         ?? null,
+      currency:        pricing.currency             ?? 'INR',
+      gateway:         payment.gateway              ?? null,
+      gateway_txn_id:  payment.gateway_txn_id       ?? null,
+      base_amount:     payment.base_amount          ?? pricing.base_amount ?? 0,
+      discount_amount: payment.discount_amount      ?? 0,
+      final_amount:    payment.final_amount         ?? 0,
+      discount_code:   payment.discount_code        ?? null,
+      payment_status:  payment.status               ?? null,
+      paid_at:         payment.paid_at              ?? null,
     };
   });
 
