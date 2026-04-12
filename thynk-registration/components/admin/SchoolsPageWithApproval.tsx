@@ -1,27 +1,4 @@
 'use client';
-// components/admin/SchoolsPageWithApproval.tsx
-// Replaces the Schools section in admin/page.tsx
-// Has two tabs: Approval Queue + Approved Schools
-//
-// Usage in admin/page.tsx — replace the Schools page block with:
-//
-//   import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
-//   import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithApproval';
-//
-//   {/* ── SCHOOLS ─────────────────────────────────────────────── */}
-//   <div className={`page${activePage === 'schools' ? ' active' : ''}`}>
-//     <SchoolsPageWithApproval
-//       schools={schools}
-//       programs={programs}
-//       isSuperAdmin={isSuperAdmin}
-//       BACKEND={BACKEND}
-//       authHeaders={authHeaders}
-//       onEdit={s => { loadPrograms(); setSchoolForm(s); }}
-//       onRefresh={loadSchools}
-//       showToast={showToast}
-//     />
-//   </div>
-
 import React, { useState } from 'react';
 import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
 
@@ -40,7 +17,6 @@ const SS: React.CSSProperties = {
   appearance: 'none' as any,
 };
 
-// ── Main component ─────────────────────────────────────────────────
 export function SchoolsPageWithApproval({
   schools,
   programs,
@@ -62,10 +38,17 @@ export function SchoolsPageWithApproval({
 }) {
   const [tab, setTab] = useState<'queue' | 'approved'>('queue');
 
-  // Schools not yet approved go to the queue
+  // FIX: A school is pending if status exists AND is not 'approved'
+  // statuses: 'registered', 'pending_approval', or any non-approved value
   const pendingSchools  = schools.filter(s => s.status && s.status !== 'approved');
-  // Schools that are approved OR have no status column yet (legacy rows before migration)
   const approvedSchools = schools.filter(s => s.status === 'approved' || !s.status);
+
+  // FIX: Break down pending by sub-status for accurate display
+  const pendingByStatus = pendingSchools.reduce((acc, s) => {
+    const st = s.status ?? 'registered';
+    acc[st] = (acc[st] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   const TAB: (active: boolean) => React.CSSProperties = active => ({
     padding: '8px 18px',
@@ -121,14 +104,32 @@ export function SchoolsPageWithApproval({
       </div>
 
       {tab === 'queue' && (
-        <AdminApprovalQueue
-          pendingSchools={pendingSchools}
-          programs={programs}
-          BACKEND={BACKEND}
-          authHeaders={authHeaders}
-          onRefresh={onRefresh}
-          showToast={showToast}
-        />
+        <>
+          {/* FIX: Correct summary stats at top of queue */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+            {[
+              { label: 'Pending Approval', count: pendingByStatus['pending_approval'] ?? 0, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)' },
+              { label: 'Newly Registered', count: pendingByStatus['registered'] ?? 0,        color: '#4f46e5', bg: 'rgba(79,70,229,0.08)',  border: 'rgba(79,70,229,0.25)'  },
+              { label: 'Total Queue',      count: pendingSchools.length,                      color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)'  },
+            ].map(s => (
+              <div key={s.label} style={{
+                background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 12,
+                padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, flex: 1,
+              }}>
+                <span style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Sora', color: s.color }}>{s.count}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--m)' }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+          <AdminApprovalQueue
+            pendingSchools={pendingSchools}
+            programs={programs}
+            BACKEND={BACKEND}
+            authHeaders={authHeaders}
+            onRefresh={onRefresh}
+            showToast={showToast}
+          />
+        </>
       )}
 
       {tab === 'approved' && (
@@ -143,7 +144,6 @@ export function SchoolsPageWithApproval({
   );
 }
 
-// ── Approved schools table ─────────────────────────────────────────
 export function SchoolsTableWithStatus({
   schools,
   programs,
