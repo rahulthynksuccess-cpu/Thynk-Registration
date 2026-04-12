@@ -3,18 +3,14 @@ import { useState, useEffect, useRef } from 'react';
 import type { SchoolWithPricing, Pricing, GatewayKey } from '@/lib/types';
 import { formatAmount } from '@/lib/utils';
 
-// REPLACE with:
 interface Props {
-  school: SchoolWithPricing & { public_gateway_config: any };
+  school: SchoolWithPricing & { public_gateway_config: any; allowed_grades?: string[] };
   pricing: Pricing;
   projectSlug?: string;
   paymentError?: boolean;
 }
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
-
-// All API calls go to the Vercel backend, not the current origin
-
 
 // ── Gateway config ─────────────────────────────────────────────────
 type AllGatewayKey = GatewayKey | 'paypal';
@@ -71,6 +67,17 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
   const currency    = isIndia ? 'INR' : 'USD';
   const symbol      = isIndia ? '₹' : '$';
 
+  // Grades: use project's allowed_grades; fallback to default list
+  const DEFAULT_GRADES = [
+    'Nursery',
+    'Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6',
+    'Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12',
+  ];
+  const gradeOptions: string[] =
+    school.allowed_grades && school.allowed_grades.length > 0
+      ? school.allowed_grades
+      : DEFAULT_GRADES;
+
   // Detect geography on mount
   useEffect(() => {
     setIsIndia(detectIsIndia());
@@ -94,7 +101,6 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
   function hideLoader()             { setLoader({ show: false, text: '' }); }
 
   // ── Validation ─────────────────────────────────────────────────
-  // Phone: any non-empty value — no country or digit restriction
   const rules: Record<string, (v: string) => string | null> = {
     studentName:  v => v.trim().length >= 2 ? null : 'Enter student name (min 2 chars)',
     classGrade:   v => v !== '' ? null : 'Select class / grade',
@@ -197,7 +203,6 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
       prefill: {
         name:    fd.studentName,
         email:   fd.contactEmail,
-        // Only prefill phone for India — international numbers need country code which Razorpay may reject
         contact: isIndia ? fd.contactPhone : '',
       },
       notes: { student: fd.studentName, school: fd.parentSchool, city: fd.city, class_grade: fd.classGrade },
@@ -276,7 +281,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
         return actions.order.create({
           purchase_units: [{
             amount: {
-              value: (finalAmount / 100).toFixed(2), // cents → dollars
+              value: (finalAmount / 100).toFixed(2),
               currency_code: 'USD',
             },
             description: pricing.program_name,
@@ -286,7 +291,6 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
       onApprove: async (_: any, actions: any) => {
         showLoader('Confirming PayPal payment…');
         const order = await actions.order.capture();
-        // Save registration then show success
         try {
           await fetch(`${BACKEND}/api/register`, {
             method: 'POST',
@@ -376,6 +380,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
               onSubmit={goToPayment}
               errors={formErrors}
               programName={pricing.program_name}
+              gradeOptions={gradeOptions}
             />
           )}
 
@@ -398,7 +403,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
                 ))}
               </div>
 
-              {/* Discount (India only — PayPal orders don't support discount codes) */}
+              {/* Discount (India only) */}
               {isIndia && (
                 <>
                   <div className="disc-row">
@@ -439,7 +444,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
                 )}
               </div>
 
-              {/* Gateway selector — dynamic: India shows CF/RZP/EB, International shows PayPal */}
+              {/* Gateway selector */}
               <div className="gw-section">
                 <div className="gw-label">Select payment method</div>
                 <div className="gw-options" id="gwContainer">
@@ -457,7 +462,6 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
                 </div>
               </div>
 
-              {/* PayPal button container — renders inside here */}
               {selGW === 'paypal' && (
                 <div id="paypal-button-container" style={{ marginBottom: 16 }} />
               )}
@@ -523,10 +527,11 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
 }
 
 // ── Form sub-component ────────────────────────────────────────────
-function FormStep({ onSubmit, errors, programName }: {
+function FormStep({ onSubmit, errors, programName, gradeOptions }: {
   onSubmit: (data: Record<string, string>) => void;
   errors: Record<string, string>;
   programName: string;
+  gradeOptions: string[];
 }) {
   const [data, setData] = useState<Record<string, string>>({
     studentName: '', classGrade: '', gender: '',
@@ -552,10 +557,11 @@ function FormStep({ onSubmit, errors, programName }: {
       <div className="field-row">
         <div className="field">
           <label>Class / Grade *</label>
+          {/* ── Populated from project's allowed_grades ── */}
           <select value={data.classGrade} onChange={set('classGrade')} className={errors.classGrade ? 'err' : ''}>
             <option value="">Select class</option>
-            {['Class 1','Class 2','Class 3','Class 4','Class 5','Class 6','Class 7','Class 8','Class 9','Class 10','Class 11','Class 12'].map(c => (
-              <option key={c}>{c}</option>
+            {gradeOptions.map(g => (
+              <option key={g} value={g}>{g}</option>
             ))}
           </select>
           {errors.classGrade && <div className="err-msg show">{errors.classGrade}</div>}
@@ -593,7 +599,6 @@ function FormStep({ onSubmit, errors, programName }: {
       <div className="field-row">
         <div className="field">
           <label>Mobile Number *</label>
-          {/* No maxLength, no 10-digit restriction — accepts any phone number */}
           <input
             value={data.contactPhone}
             onChange={set('contactPhone')}
