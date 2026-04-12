@@ -14,7 +14,7 @@ export async function GET(
   let query = supabase
     .from('schools')
     .select(`
-      id, school_code, name, org_name, logo_url, branding, gateway_config, is_active, project_slug,
+      id, school_code, name, org_name, logo_url, branding, gateway_config, is_active, is_registration_active, project_slug,
       pricing (id, program_name, base_amount, currency, gateway_sequence, is_active, valid_from, valid_until)
     `)
     .eq('school_code', params.code.toLowerCase())

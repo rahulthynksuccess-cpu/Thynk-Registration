@@ -361,17 +361,15 @@ export default function AdminDashboard() {
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setProgramForm({})}>+ Add Program</button>}</div>
             </div>
             <div className="tbl-wrap"><table>
-              <thead><tr><th>Program Name</th><th>Slug</th><th>Base URL</th><th>Base Price INR (₹)</th><th>Base Price USD ($)</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Program Name</th><th>Slug</th><th>Registration URL</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {programs.length===0
-                  ? <tr><td colSpan={7} className="table-empty">No programs yet. Create a program first, then assign schools to it.</td></tr>
+                  ? <tr><td colSpan={5} className="table-empty">No programs yet. Create a program first, then assign schools to it.</td></tr>
                   : programs.map(p=>(
                     <tr key={p.id}>
                       <td style={{fontWeight:700}}>{p.name}</td>
                       <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{p.slug}</code></td>
-                      <td style={{fontSize:12,color:'var(--m)'}}>{`${p.base_url||'https://www.thynksuccess.com'}/registration/${p.slug}/[schoolcode]`}</td>
-                      <td><span className="amt">₹{fmtR(p.base_amount_inr ?? (p.currency==='INR'?p.base_amount:0) ?? 0)}</span></td>
-                      <td><span className="amt" style={{color:'#22c55e'}}>${fmtR(p.base_amount_usd ?? (p.currency==='USD'?p.base_amount:0) ?? 0)}</span></td>
+                      <td style={{fontSize:12,color:'var(--m)'}}>{`www.thynksuccess.com/registration/${p.slug}/[schoolcode]`}</td>
                       <td><span className={`badge ${p.status==='active'?'badge-paid':'badge-cancelled'}`}>{p.status}</span></td>
                       <td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setProgramForm(p)}>Edit</button></td>
                     </tr>
@@ -620,7 +618,7 @@ export default function AdminDashboard() {
       {programForm!==null&&<ProgramFormModal initial={programForm} onClose={()=>setProgramForm(null)} onSave={async(data)=>{await saveForm('/api/admin/projects',data,()=>{setProgramForm(null);loadPrograms();},data.id?'Program updated!':'Program created!');}} />}
 
       {/* School form */}
-      {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);loadSchools();},data.id?'School updated!':'School created!');}} />}
+      {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);setSchools([]);loadSchools();},data.id?'School updated!':'School created!');}} />}
 
       {/* Discount form */}
       {discountForm!==null&&<DiscountFormModal initial={discountForm} schools={schools} onClose={()=>setDiscountForm(null)} onSave={async(data)=>{await saveForm('/api/admin/discounts',data,()=>{setDiscountForm(null);loadDiscounts();},data.id?'Code updated!':'Code created!');}} />}
@@ -685,57 +683,22 @@ const SS:React.CSSProperties = { ...IS, appearance:'none' as any };
 // ── Program Form ────────────────────────────────────────────────────
 function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()=>void; onSave:(d:Row)=>void }) {
   const [f,setF] = useState({
-    id:           initial.id??'',
-    name:         initial.name??'',
-    slug:         initial.slug??'',
-    base_url:     initial.base_url??'',
-    base_amount_inr: initial.base_amount_inr ? String(initial.base_amount_inr/100) : (initial.base_amount && initial.currency==='INR' ? String(initial.base_amount/100) : ''),
-    base_amount_usd: initial.base_amount_usd ? String(initial.base_amount_usd/100) : (initial.base_amount && initial.currency==='USD' ? String(initial.base_amount/100) : ''),
-    status:       initial.status??'active',
+    id:     initial.id??'',
+    name:   initial.name??'',
+    slug:   initial.slug??'',
+    status: initial.status??'active',
   });
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
   const autoSlug = (name:string) => name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
-  const computedUrl = `${f.base_url||'https://www.thynksuccess.com'}/registration/${f.slug||'[slug]'}/[schoolcode]`;
   return (
     <ModalShell title={f.id?'Edit Program':'New Program'} onClose={onClose}>
       <Field label="Program Name *"><input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/></Field>
       <Field label="Slug * (used in URL)"><input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/></Field>
-      <Field label="Base URL (domain override — leave blank for default)">
-        <input style={IS} value={f.base_url} onChange={set('base_url')} placeholder="https://www.thynksuccess.com"/>
-        <p style={{fontSize:11,color:'var(--m)',marginTop:4}}>Registration URL will be: <code style={{wordBreak:'break-all'}}>{computedUrl}</code></p>
-      </Field>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="Base Price — INR (₹) *">
-          <div style={{position:'relative'}}>
-            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>₹</span>
-            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_inr} onChange={set('base_amount_inr')} placeholder="e.g. 1200"/>
-          </div>
-          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Used when school country = India</p>
-        </Field>
-        <Field label="Base Price — USD ($) *">
-          <div style={{position:'relative'}}>
-            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span>
-            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50"/>
-          </div>
-          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Used for all other countries</p>
-        </Field>
-        <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
-      </div>
-      <div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}>
-        <span style={{color:'var(--acc)',fontWeight:600}}>💡 Currency is auto-selected per school:</span>
-        <span style={{color:'var(--m)',marginLeft:6}}>Indian schools → INR price · International schools → USD price</span>
-      </div>
+      <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>Registration URL: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code></p>
+      <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({
-          ...f,
-          base_url: f.base_url.trim() || null,
-          base_amount_inr: Math.round(Number(f.base_amount_inr||0)*100),
-          base_amount_usd: Math.round(Number(f.base_amount_usd||0)*100),
-          // keep legacy base_amount as INR for backwards compat
-          base_amount: Math.round(Number(f.base_amount_inr||0)*100),
-          currency: 'INR',
-        })}>{f.id?'Save Changes':'Create Program'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({ id:f.id, name:f.name, slug:f.slug, status:f.status })}>{f.id?'Save Changes':'Create Program'}</button>
       </div>
     </ModalShell>
   );
@@ -835,7 +798,8 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
     discount_code: initial.discount_code ?? initial.school_code?.toUpperCase() ?? '',
     primary_color: initial.branding?.primaryColor??'#4f46e5',
     accent_color:  initial.branding?.accentColor??'#8b5cf6',
-    is_active:     initial.is_active!==false,
+    is_active:              initial.is_active!==false,
+    is_registration_active: initial.is_registration_active!==false,
   });
   const [contacts, setContacts] = useState<{name:string;designation:string;email:string;mobile:string}[]>(initContacts);
 
@@ -1021,14 +985,23 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         <Field label="Accent Colour"><input style={{...IS,height:40}} type="color" value={f.accent_color} onChange={set('accent_color')}/></Field>
       </div>
 
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
-        <input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto'}}/>
-        <label htmlFor="is_active" style={{fontSize:13,fontWeight:600}}>School is Active</label>
+      <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:14,padding:'12px 14px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto',accentColor:'var(--acc)'}}/>
+          <label htmlFor="is_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>School is Active</label>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/>
+          <label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>
+            Registration Active
+            <span style={{fontSize:11,fontWeight:400,color:'var(--m)',marginLeft:6}}>— registration form accepts new students only when checked</span>
+          </label>
+        </div>
       </div>
 
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code})}>{f.id?'Save Changes':'Create School'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code, is_registration_active:f.is_registration_active})}>{f.id?'Save Changes':'Create School'}</button>
       </div>
     </ModalShell>
   );

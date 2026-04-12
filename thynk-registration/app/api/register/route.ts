@@ -36,9 +36,14 @@ export async function POST(req: NextRequest) {
   // Fetch school gateway config
   const { data: school } = await supabase
     .from('schools')
-    .select('gateway_config, org_name, branding')
+    .select('gateway_config, org_name, branding, is_registration_active')
     .eq('id', schoolId)
     .single();
+
+  // Block if registration is not active for this school
+  if (school?.is_registration_active === false) {
+    return NextResponse.json({ error: 'Registrations are currently closed for this school.' }, { status: 403 });
+  }
 
   // Resolve discount
   let discountAmount = 0;

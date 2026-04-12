@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     address, pin_code, contact_persons,
     project_id, school_price, currency: bodyCurrency,
     discount_code,
-    primary_color, accent_color, is_active,
+    primary_color, accent_color, is_active, is_registration_active,
   } = body;
 
   if (!school_code || !name || !org_name || !project_id || !school_price)
@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
     },
     gateway_config: {},
     is_active: is_active !== false,
+    is_registration_active: is_registration_active !== false,
   }).select().single();
 
   if (error)
@@ -139,6 +140,7 @@ export async function PATCH(req: NextRequest) {
     address,
     pin_code,
     contact_persons,
+    is_registration_active,
     ...rest
   } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
@@ -162,10 +164,13 @@ export async function PATCH(req: NextRequest) {
     country: resolvedCountry,
   };
 
-  if (discount_code)    updatePayload.discount_code    = discount_code.toUpperCase();
-  if (address !== undefined)          updatePayload.address          = address || null;
-  if (pin_code !== undefined)         updatePayload.pin_code         = pin_code || null;
-  if (contact_persons !== undefined)  updatePayload.contact_persons  = contact_persons ?? [];
+  // Always update discount_code when provided (even empty → keep old)
+  if (discount_code !== undefined && discount_code !== null && discount_code !== '')
+    updatePayload.discount_code = discount_code.toUpperCase();
+  if (address !== undefined)               updatePayload.address               = address || null;
+  if (pin_code !== undefined)              updatePayload.pin_code              = pin_code || null;
+  if (contact_persons !== undefined)       updatePayload.contact_persons       = contact_persons ?? [];
+  if (is_registration_active !== undefined) updatePayload.is_registration_active = !!is_registration_active;
 
   if (project_id) {
     const { data: program } = await service

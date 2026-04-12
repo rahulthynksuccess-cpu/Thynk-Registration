@@ -31,23 +31,15 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
-  const { name, slug, base_url, base_amount_inr, base_amount_usd, status } = body;
+  const { name, slug, status } = body;
 
   if (!name || !slug)
     return NextResponse.json({ error: 'name and slug required' }, { status: 400 });
 
-  const inr = Math.round(Number(base_amount_inr || 0));
-  const usd = Math.round(Number(base_amount_usd || 0));
-
   const { data, error } = await service.from('projects').insert({
     name,
-    slug:            slug.toLowerCase().replace(/\s+/g, '-'),
-    base_url:        base_url || null,
-    base_amount:     inr,
-    currency:        'INR',
-    base_amount_inr: inr,
-    base_amount_usd: usd,
-    status:          status || 'active',
+    slug:   slug.toLowerCase().replace(/\s+/g, '-'),
+    status: status || 'active',
   }).select().single();
 
   if (error)
@@ -63,20 +55,14 @@ export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
-  const { id, base_url, base_amount_inr, base_amount_usd, ...rest } = await req.json();
+  const body = await req.json();
+  const { id, name, slug, status } = body;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-  const updates: Record<string, any> = { ...rest };
-
-  if (base_url !== undefined) updates.base_url = base_url || null;
-
-  if (base_amount_inr !== undefined) {
-    updates.base_amount_inr = Math.round(Number(base_amount_inr));
-    updates.base_amount     = Math.round(Number(base_amount_inr));
-  }
-  if (base_amount_usd !== undefined) {
-    updates.base_amount_usd = Math.round(Number(base_amount_usd));
-  }
+  const updates: Record<string, any> = {};
+  if (name   !== undefined) updates.name   = name;
+  if (status !== undefined) updates.status = status;
+  // slug is immutable after creation (used in URLs)
 
   const { data, error } = await service
     .from('projects')
