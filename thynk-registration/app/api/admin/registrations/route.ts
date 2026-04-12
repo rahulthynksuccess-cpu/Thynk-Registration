@@ -7,7 +7,6 @@ export async function GET(req: NextRequest) {
 
   const service = createServiceClient();
   const { searchParams } = new URL(req.url);
-
   const schoolCode = searchParams.get('schoolCode');
   const status     = searchParams.get('status');
   const gateway    = searchParams.get('gateway');
@@ -25,14 +24,14 @@ export async function GET(req: NextRequest) {
   const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
   const allowedSchoolIds = roleRows?.map(r => r.school_id).filter(Boolean) ?? [];
 
-  // Build query
+  // Build query — added country, state to schools join; currency to pricing join
   let query = service
     .from('registrations')
     .select(`
       id, created_at, student_name, class_grade, gender, parent_school, city,
       parent_name, contact_phone, contact_email, status,
-      schools!inner(id, school_code, name, org_name),
-      pricing(program_name, base_amount),
+      schools!inner(id, school_code, name, org_name, country, state),
+      pricing(program_name, base_amount, currency),
       payments(gateway, gateway_txn_id, base_amount, discount_amount, final_amount, discount_code, status, paid_at)
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -69,19 +68,22 @@ export async function GET(req: NextRequest) {
       reg_status:      r.status,
       school_code:     r.schools?.school_code,
       school_name:     r.schools?.name,
+      country:         r.schools?.country ?? 'India',
+      state:           r.schools?.state   ?? null,
       program_name:    r.pricing?.program_name,
-      gateway:         payment.gateway     ?? null,
+      currency:        r.pricing?.currency ?? 'INR',
+      gateway:         payment.gateway        ?? null,
       gateway_txn_id:  payment.gateway_txn_id ?? null,
-      base_amount:     payment.base_amount  ?? r.pricing?.base_amount ?? 0,
+      base_amount:     payment.base_amount    ?? r.pricing?.base_amount ?? 0,
       discount_amount: payment.discount_amount ?? 0,
-      final_amount:    payment.final_amount  ?? 0,
-      discount_code:   payment.discount_code ?? null,
-      payment_status:  payment.status       ?? null,
-      paid_at:         payment.paid_at      ?? null,
+      final_amount:    payment.final_amount   ?? 0,
+      discount_code:   payment.discount_code  ?? null,
+      payment_status:  payment.status         ?? null,
+      paid_at:         payment.paid_at        ?? null,
     };
   });
 
-  // Client-side search filter (done server-side here for simplicity)
+  // Search filter
   const filtered = search
     ? flat.filter(r => {
         const hay = [r.student_name, r.parent_name, r.contact_phone, r.contact_email, r.parent_school, r.city, r.gateway_txn_id].join(' ').toLowerCase();
