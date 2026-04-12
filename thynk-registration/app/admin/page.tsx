@@ -214,7 +214,6 @@ export default function AdminDashboard() {
     setActivePage(id);
   }
 
-  // FIX: use program_name for filtering (project_id doesn't exist in flattened rows)
   const ovRows  = overviewProgram ? allRows.filter(r=>r.program_name===overviewProgram) : allRows;
   const paid    = ovRows.filter(r=>r.payment_status==='paid');
   const pending = ovRows.filter(r=>['pending','initiated'].includes(r.payment_status));
@@ -290,7 +289,6 @@ export default function AdminDashboard() {
                   style={{border:'1.5px solid var(--bd)',borderRadius:10,padding:'7px 14px',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',color:'var(--text)',background:'var(--card)',cursor:'pointer',minWidth:160}}
                 >
                   <option value="">All Programs</option>
-                  {/* FIX: value is p.name so it matches r.program_name in the flattened rows */}
                   {programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
                 </select>
                 <div className="badge-live"><div className="dot"/>Live Data</div>
@@ -471,7 +469,6 @@ export default function AdminDashboard() {
               <div className="topbar-left"><h1>Integrations <span>Setup</span></h1><p>Payment gateways, email & WhatsApp providers</p></div>
               <div className="topbar-right"><button className="btn btn-primary" onClick={()=>setIntegrationForm({})}>+ Add Integration</button></div>
             </div>
-
             <SectionTitle>💳 Payment Gateways</SectionTitle>
             <div className="int-grid">
               {['razorpay','cashfree','easebuzz','paypal'].map(provider => {
@@ -488,7 +485,6 @@ export default function AdminDashboard() {
                 );
               })}
             </div>
-
             <SectionTitle>✉️ Email Providers</SectionTitle>
             <div className="int-grid">
               {['smtp','sendgrid','aws_ses'].map(provider => {
@@ -505,7 +501,6 @@ export default function AdminDashboard() {
                 );
               })}
             </div>
-
             <SectionTitle>💬 WhatsApp Providers</SectionTitle>
             <div className="int-grid">
               {['whatsapp_cloud','twilio'].map(provider => {
@@ -534,7 +529,7 @@ export default function AdminDashboard() {
               <thead><tr><th>Event</th><th>Channel</th><th>Template</th><th>School</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {triggers.length===0
-                  ? <tr><td colSpan={6} className="table-empty">No triggers yet. Add a trigger to auto-send messages on registration or payment events.</td></tr>
+                  ? <tr><td colSpan={6} className="table-empty">No triggers yet.</td></tr>
                   : triggers.map(t=>(
                     <tr key={t.id}>
                       <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{t.event_type}</code></td>
@@ -566,7 +561,7 @@ export default function AdminDashboard() {
               <thead><tr><th>Name</th><th>Channel</th><th>Subject</th><th>Preview</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {templates.length===0
-                  ? <tr><td colSpan={6} className="table-empty">No templates yet. Create email or WhatsApp message templates here.</td></tr>
+                  ? <tr><td colSpan={6} className="table-empty">No templates yet.</td></tr>
                   : templates.map(t=>(
                     <tr key={t.id}>
                       <td style={{fontWeight:700}}>{t.name}</td>
@@ -587,12 +582,7 @@ export default function AdminDashboard() {
 
           {/* ── LOCATION MASTER ──────────────────────────────────────── */}
           <div className={`page${activePage==='locations'?' active':''}`}>
-            <LocationMasterPage
-              rows={locations}
-              BACKEND={BACKEND}
-              onReload={loadLocations}
-              showToast={showToast}
-            />
+            <LocationMasterPage rows={locations} BACKEND={BACKEND} onReload={loadLocations} showToast={showToast} />
           </div>
 
         </main>
@@ -633,25 +623,12 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Program form */}
       {programForm!==null&&<ProgramFormModal initial={programForm} onClose={()=>setProgramForm(null)} onSave={async(data)=>{await saveForm('/api/admin/projects',data,()=>{setProgramForm(null);loadPrograms();},data.id?'Program updated!':'Program created!');}} />}
-
-      {/* School form */}
       {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);setSchools([]);loadSchools();},data.id?'School updated!':'School created!');}} />}
-
-      {/* Discount form */}
       {discountForm!==null&&<DiscountFormModal initial={discountForm} schools={schools} onClose={()=>setDiscountForm(null)} onSave={async(data)=>{await saveForm('/api/admin/discounts',data,()=>{setDiscountForm(null);loadDiscounts();},data.id?'Code updated!':'Code created!');}} />}
-
-      {/* User form */}
       {userForm!==null&&<UserFormModal schools={schools} onClose={()=>setUserForm(null)} onSave={async(data)=>{await saveForm('/api/admin/users',data,()=>{setUserForm(null);loadUsers();},'Admin user created!');}} />}
-
-      {/* Integration form */}
       {integrationForm!==null&&<IntegrationFormModal initial={integrationForm} schools={schools} onClose={()=>setIntegrationForm(null)} onSave={async(data)=>{await saveForm('/api/admin/integrations',data,()=>{setIntegrationForm(null);loadIntegrations();},data.id?'Integration updated!':'Integration saved!');}} />}
-
-      {/* Trigger form */}
       {triggerForm!==null&&<TriggerFormModal initial={triggerForm} schools={schools} templates={templates} onClose={()=>setTriggerForm(null)} onSave={async(data)=>{await saveForm('/api/admin/triggers',data,()=>{setTriggerForm(null);loadTriggers();},data.id?'Trigger updated!':'Trigger created!');}} />}
-
-      {/* Template form */}
       {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
     </>
   );
@@ -675,24 +652,21 @@ function filterByTimeline(rows: Row[], days: number): Row[] {
 }
 
 function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] }) {
+  // ── FIX: default to -1 (Current Year) so all data shows instead of just last 30 days ──
   const [timelineDays,  setTimelineDays]  = useState(-1);
   const [filterProgram, setFilterProgram] = useState('');
 
-  // FIX: filter by program_name (not project_id which doesn't exist in flattened rows)
   const base = filterProgram ? allRows.filter(r => r.program_name === filterProgram) : allRows;
   const rows = filterByTimeline(base, timelineDays);
   const paid = rows.filter(r => r.payment_status === 'paid');
   const fmtAmt = (p: number) => { const v = p/100; return isNaN(v)?'0':v.toLocaleString('en-IN'); };
 
-  // ── derived data ───────────────────────────────────────────────
   const countrySet  = [...new Set(rows.map(r => r.country ?? 'India').filter(Boolean))];
   const classSet    = [...new Set(rows.map(r => r.class_grade).filter(Boolean))].sort();
-  // FIX: use school_name (actual registered school) not parent_school (student's typed input)
   const schoolSet   = [...new Set(rows.map(r => r.school_name).filter(Boolean))];
   const gatewaySet  = [...new Set(rows.map(r => r.gateway).filter(Boolean))];
 
   const schoolStats = schoolSet.map(s => {
-    // FIX: filter by school_name
     const sr = rows.filter(r => r.school_name === s);
     const p  = sr.filter(r => r.payment_status === 'paid');
     return { name: s, total: sr.length, paid: p.length, rev: p.reduce((a,r)=>a+(r.final_amount??0),0) };
@@ -701,7 +675,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
   const countryStats = countrySet.map(c => {
     const cr = rows.filter(r => (r.country??'India') === c);
     const p  = cr.filter(r => r.payment_status === 'paid');
-    // FIX: use school_name for unique school count
     const sc = [...new Set(cr.map(r=>r.school_name).filter(Boolean))];
     return { country: c, schools: sc.length, total: cr.length, paid: p.length, rev: p.reduce((a,r)=>a+(r.final_amount??0),0) };
   }).sort((a,b) => b.total - a.total);
@@ -727,13 +700,11 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
     return { gw: g, total: gr.length, paid: p.length, rev: p.reduce((a,r)=>a+(r.final_amount??0),0) };
   }).sort((a,b)=>b.total-a.total);
 
-  // FIX: use r.currency which now comes from the API
   const inrPaid = paid.filter(r=>(r.currency??'INR')==='INR');
   const usdPaid = paid.filter(r=>r.currency==='USD');
   const inrRev  = inrPaid.reduce((a,r)=>a+(r.final_amount??0),0);
   const usdRev  = usdPaid.reduce((a,r)=>a+(r.final_amount??0),0);
 
-  // class × country matrix (top 5 countries by volume)
   const topCountries = countryStats.slice(0,5).map(c=>c.country);
   const classCountry = classSet.map(cls => {
     const entry: Record<string,any> = { cls };
@@ -744,7 +715,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
 
   const maxOf = (arr: number[]) => Math.max(...arr, 1);
 
-  // ── small reusable pieces ──────────────────────────────────────
   const MiniBar = ({ val, max, color='var(--acc)' }: { val:number; max:number; color?:string }) => (
     <div style={{display:'flex',alignItems:'center',gap:6}}>
       <div style={{flex:1,background:'rgba(255,255,255,0.06)',borderRadius:3,height:6,overflow:'hidden',minWidth:60}}>
@@ -778,14 +748,12 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
 
   return (
     <div>
-      {/* ── Top controls ── */}
       <div className="topbar" style={{marginBottom:20}}>
         <div className="topbar-left">
           <h1>Reporting <span>Analytics</span></h1>
           <p>{rows.length.toLocaleString()} records · {paid.length.toLocaleString()} paid</p>
         </div>
         <div className="topbar-right" style={{gap:10}}>
-          {/* FIX: value is p.name so filter matches r.program_name */}
           <select value={filterProgram} onChange={e=>setFilterProgram(e.target.value)}
             style={{border:'1.5px solid var(--bd)',borderRadius:10,padding:'7px 14px',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',color:'var(--text)',background:'var(--card)',cursor:'pointer',minWidth:160}}>
             <option value="">All Programs</option>
@@ -805,7 +773,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
         </div>
       </div>
 
-      {/* ── 1. Top KPIs ── */}
       <Section title="Summary">
         <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
           <KPI icon="🏫" label="Schools Registered"   val={schoolSet.length}   color='var(--acc)'/>
@@ -817,9 +784,7 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
         </div>
       </Section>
 
-      {/* ── 2. Schools + Countries side by side ── */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:32}}>
-        {/* Schools */}
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:14,padding:'20px'}}>
           <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:14,display:'flex',alignItems:'center',gap:6}}><span>🏫</span> Schools Registered — {schoolSet.length}</div>
           <div style={{display:'flex',flexDirection:'column',gap:8,maxHeight:320,overflowY:'auto'}}>
@@ -835,8 +800,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
               ))}
           </div>
         </div>
-
-        {/* Countries */}
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:14,padding:'20px'}}>
           <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:14,display:'flex',alignItems:'center',gap:6}}><span>🌍</span> Countries — {countrySet.length}</div>
           <div style={{display:'flex',flexDirection:'column',gap:8,maxHeight:320,overflowY:'auto'}}>
@@ -854,7 +817,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
         </div>
       </div>
 
-      {/* ── 3. Country-wise detailed table ── */}
       <Section title="Country-wise Schools & Students">
         <div className="tbl-wrap"><table>
           <thead><tr><th>Country</th><th>Schools</th><th>Total Students</th><th>Paid</th><th>Revenue (₹)</th><th>Conv%</th></tr></thead>
@@ -875,9 +837,7 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
         </table></div>
       </Section>
 
-      {/* ── 4. Class-wise + Gender side by side ── */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:32}}>
-        {/* Class-wise */}
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:14,padding:'20px'}}>
           <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:14}}>📚 Class-wise Students</div>
           <div style={{display:'flex',flexDirection:'column',gap:7,maxHeight:340,overflowY:'auto'}}>
@@ -892,8 +852,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
               ))}
           </div>
         </div>
-
-        {/* Gender */}
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:14,padding:'20px'}}>
           <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:14}}>⚧ Gender-wise</div>
           <div style={{display:'flex',gap:10,marginBottom:16}}>
@@ -917,7 +875,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
               </div>
             )}
           </div>
-          {/* Classwise gender table */}
           <div style={{fontSize:11,fontWeight:700,color:'var(--m)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.05em'}}>By Class</div>
           <div style={{maxHeight:180,overflowY:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
@@ -944,7 +901,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
         </div>
       </div>
 
-      {/* ── 5. Class × Country matrix ── */}
       <Section title="Classwise × Country-wise Matrix">
         <div style={{overflowX:'auto',background:'var(--card)',border:'1px solid var(--bd)',borderRadius:14,padding:'4px'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
@@ -989,7 +945,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
         </div>
       </Section>
 
-      {/* ── 6. Payment section ── */}
       <Section title="Payment Collected">
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
           <div style={{background:'var(--card)',border:'2px solid rgba(79,70,229,0.25)',borderRadius:14,padding:'20px 24px'}}>
@@ -1011,7 +966,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
         </div>
       </Section>
 
-      {/* ── 7. Payment Mode ── */}
       <Section title="Payment Mode Breakdown">
         <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:14}}>
           {gatewayStats.map((g,i)=>{
@@ -1049,7 +1003,6 @@ function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] 
     </div>
   );
 }
-
 
 // ── Shared UI helpers ──────────────────────────────────────────────
 function SectionTitle({ children }:{ children:React.ReactNode }) {
@@ -1096,73 +1049,33 @@ const SS:React.CSSProperties = { ...IS, appearance:'none' as any };
 // ── Program Form ────────────────────────────────────────────────────
 function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()=>void; onSave:(d:Row)=>void }) {
   const [f,setF] = useState({
-    id:              initial.id??'',
-    name:            initial.name??'',
-    slug:            initial.slug??'',
+    id: initial.id??'', name: initial.name??'', slug: initial.slug??'',
     base_amount_inr: initial.base_amount_inr ? String(initial.base_amount_inr/100) : '',
     base_amount_usd: initial.base_amount_usd ? String(initial.base_amount_usd/100) : '',
-    status:          initial.status??'active',
-    allowed_grades:  (initial.allowed_grades ?? []) as string[],
+    status: initial.status??'active',
+    allowed_grades: (initial.allowed_grades ?? []) as string[],
   });
-
   const [allGrades, setAllGrades] = useState<Row[]>([]);
   const [gradesLoading, setGradesLoading] = useState(true);
-
   useEffect(() => {
     fetch(`${BACKEND}/api/admin/grades?active=true`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => { setAllGrades(d.grades ?? []); setGradesLoading(false); })
-      .catch(() => setGradesLoading(false));
+      .then(r => r.json()).then(d => { setAllGrades(d.grades ?? []); setGradesLoading(false); }).catch(() => setGradesLoading(false));
   }, []);
-
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
   const autoSlug = (name:string) => name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
-
-  function toggleGrade(gradeName: string) {
-    setF(p => {
-      const already = p.allowed_grades.includes(gradeName);
-      return { ...p, allowed_grades: already ? p.allowed_grades.filter(g => g !== gradeName) : [...p.allowed_grades, gradeName] };
-    });
-  }
-
+  function toggleGrade(gradeName: string) { setF(p => { const already = p.allowed_grades.includes(gradeName); return { ...p, allowed_grades: already ? p.allowed_grades.filter(g => g !== gradeName) : [...p.allowed_grades, gradeName] }; }); }
   function selectAll()  { setF(p => ({ ...p, allowed_grades: allGrades.map(g => g.name) })); }
   function selectNone() { setF(p => ({ ...p, allowed_grades: [] })); }
-
   return (
     <ModalShell title={f.id?'Edit Program':'New Program'} onClose={onClose}>
-      <Field label="Program Name *">
-        <input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/>
-      </Field>
-      <Field label="Slug * (used in URL)">
-        <input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/>
-      </Field>
-      <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>
-        Registration URL: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code>
-      </p>
-
+      <Field label="Program Name *"><input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/></Field>
+      <Field label="Slug * (used in URL)"><input style={IS} value={f.slug} onChange={set('slug')} placeholder="thynk-success-2025" disabled={!!f.id}/></Field>
+      <p style={{fontSize:11,color:'var(--m)',marginTop:-10,marginBottom:12}}>Registration URL: <code>www.thynksuccess.com/registration/{f.slug||'[slug]'}/[schoolcode]</code></p>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="Base Price — INR (₹) *">
-          <div style={{position:'relative'}}>
-            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>₹</span>
-            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_inr} onChange={set('base_amount_inr')} placeholder="e.g. 1200" required/>
-          </div>
-          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Required — used for Indian schools</p>
-        </Field>
-        <Field label="Base Price — USD ($) (optional)">
-          <div style={{position:'relative'}}>
-            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span>
-            <input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50 (optional)"/>
-          </div>
-          <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Optional — leave blank for India-only programs</p>
-        </Field>
-        <Field label="Status">
-          <select style={SS} value={f.status} onChange={set('status')}>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </Field>
+        <Field label="Base Price — INR (₹) *"><div style={{position:'relative'}}><span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>₹</span><input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_inr} onChange={set('base_amount_inr')} placeholder="e.g. 1200" required/></div><p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Required — used for Indian schools</p></Field>
+        <Field label="Base Price — USD ($) (optional)"><div style={{position:'relative'}}><span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span><input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50 (optional)"/></div><p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Optional — leave blank for India-only programs</p></Field>
+        <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
       </div>
-
       <div style={{marginTop:18,marginBottom:4}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
           <label style={{display:'block',fontSize:12,fontWeight:600,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.04em'}}>Allowed Grades *</label>
@@ -1171,48 +1084,17 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
             <button type="button" onClick={selectNone} style={{padding:'3px 10px',borderRadius:6,border:'1.5px solid var(--bd)',background:'transparent',color:'var(--m)',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>None</button>
           </div>
         </div>
-
-        {gradesLoading ? (
-          <div style={{padding:'14px 0',fontSize:12,color:'var(--m)'}}>Loading grades…</div>
-        ) : allGrades.length === 0 ? (
-          <div style={{padding:'12px 16px',borderRadius:10,border:'1.5px dashed var(--bd)',fontSize:12,color:'var(--m)',textAlign:'center'}}>
-            No grades configured. Go to <strong>Settings → Grade Master</strong> to add grades first.
+        {gradesLoading ? <div style={{padding:'14px 0',fontSize:12,color:'var(--m)'}}>Loading grades…</div>
+        : allGrades.length === 0 ? <div style={{padding:'12px 16px',borderRadius:10,border:'1.5px dashed var(--bd)',fontSize:12,color:'var(--m)',textAlign:'center'}}>No grades configured. Go to <strong>Settings → Grade Master</strong> to add grades first.</div>
+        : (<><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))',gap:8,padding:'14px 16px',border:'1.5px solid var(--bd)',borderRadius:10,background:'var(--bg)',maxHeight:220,overflowY:'auto'}}>
+            {allGrades.map(g => { const checked = f.allowed_grades.includes(g.name); return (<label key={g.id} onClick={() => toggleGrade(g.name)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:`1.5px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc3)' : 'var(--card)',cursor:'pointer',transition:'all .12s',userSelect:'none'}}><div style={{width:16,height:16,borderRadius:4,border:`2px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc)' : 'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all .12s'}}>{checked && <span style={{color:'#fff',fontSize:10,fontWeight:800,lineHeight:1}}>✓</span>}</div><span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight: checked ? 700 : 500,color: checked ? 'var(--acc)' : 'var(--text)',whiteSpace:'nowrap'}}>{g.name}</span></label>); })}
           </div>
-        ) : (
-          <>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))',gap:8,padding:'14px 16px',border:'1.5px solid var(--bd)',borderRadius:10,background:'var(--bg)',maxHeight:220,overflowY:'auto'}}>
-              {allGrades.map(g => {
-                const checked = f.allowed_grades.includes(g.name);
-                return (
-                  <label key={g.id} onClick={() => toggleGrade(g.name)}
-                    style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:`1.5px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc3)' : 'var(--card)',cursor:'pointer',transition:'all .12s',userSelect:'none'}}>
-                    <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc)' : 'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all .12s'}}>
-                      {checked && <span style={{color:'#fff',fontSize:10,fontWeight:800,lineHeight:1}}>✓</span>}
-                    </div>
-                    <span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight: checked ? 700 : 500,color: checked ? 'var(--acc)' : 'var(--text)',whiteSpace:'nowrap'}}>{g.name}</span>
-                  </label>
-                );
-              })}
-            </div>
-            <p style={{fontSize:10,color:'var(--m)',marginTop:5}}>
-              {f.allowed_grades.length === 0
-                ? '⚠️ No grades selected — registration form will show all active grades as fallback.'
-                : `${f.allowed_grades.length} of ${allGrades.length} grades selected for this program's registration form.`}
-            </p>
-          </>
-        )}
+          <p style={{fontSize:10,color:'var(--m)',marginTop:5}}>{f.allowed_grades.length === 0 ? '⚠️ No grades selected — registration form will show all active grades as fallback.' : `${f.allowed_grades.length} of ${allGrades.length} grades selected for this program's registration form.`}</p>
+        </>)}
       </div>
-
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({
-          id: f.id, name: f.name, slug: f.slug, status: f.status,
-          base_amount_inr: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0,
-          base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null,
-          base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0,
-          currency: 'INR',
-          allowed_grades: f.allowed_grades,
-        })}>{f.id?'Save Changes':'Create Program'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({ id: f.id, name: f.name, slug: f.slug, status: f.status, base_amount_inr: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null, base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, currency: 'INR', allowed_grades: f.allowed_grades })}>{f.id?'Save Changes':'Create Program'}</button>
       </div>
     </ModalShell>
   );
@@ -1220,49 +1102,9 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
 
 // ── Location master data ────────────────────────────────────────────
 const LOCATION_DATA: Record<string, { states: Record<string, string[]> }> = {
-  India: {
-    states: {
-      'Andhra Pradesh': ['Visakhapatnam','Vijayawada','Guntur','Nellore','Tirupati'],
-      'Arunachal Pradesh': ['Itanagar','Naharlagun','Pasighat'],
-      'Assam': ['Guwahati','Silchar','Dibrugarh','Jorhat'],
-      'Bihar': ['Patna','Gaya','Bhagalpur','Muzaffarpur','Darbhanga'],
-      'Chhattisgarh': ['Raipur','Bhilai','Bilaspur','Durg'],
-      'Delhi': ['New Delhi','Delhi'],
-      'Goa': ['Panaji','Margao','Vasco da Gama'],
-      'Gujarat': ['Ahmedabad','Surat','Vadodara','Rajkot','Gandhinagar','Bhavnagar'],
-      'Haryana': ['Gurugram','Faridabad','Chandigarh','Ambala','Hisar','Karnal'],
-      'Himachal Pradesh': ['Shimla','Dharamsala','Manali','Solan'],
-      'Jharkhand': ['Ranchi','Jamshedpur','Dhanbad','Bokaro'],
-      'Karnataka': ['Bengaluru','Mysuru','Hubli','Mangaluru','Belagavi'],
-      'Kerala': ['Thiruvananthapuram','Kochi','Kozhikode','Thrissur','Kollam'],
-      'Madhya Pradesh': ['Bhopal','Indore','Gwalior','Jabalpur','Ujjain'],
-      'Maharashtra': ['Mumbai','Pune','Nagpur','Nashik','Aurangabad','Thane','Navi Mumbai'],
-      'Manipur': ['Imphal'],
-      'Meghalaya': ['Shillong'],
-      'Mizoram': ['Aizawl'],
-      'Nagaland': ['Kohima','Dimapur'],
-      'Odisha': ['Bhubaneswar','Cuttack','Rourkela','Berhampur'],
-      'Punjab': ['Ludhiana','Amritsar','Jalandhar','Patiala','Chandigarh'],
-      'Rajasthan': ['Jaipur','Jodhpur','Udaipur','Kota','Ajmer','Bikaner'],
-      'Sikkim': ['Gangtok'],
-      'Tamil Nadu': ['Chennai','Coimbatore','Madurai','Tiruchirappalli','Salem','Tirunelveli'],
-      'Telangana': ['Hyderabad','Warangal','Nizamabad','Karimnagar'],
-      'Tripura': ['Agartala'],
-      'Uttar Pradesh': ['Lucknow','Kanpur','Agra','Varanasi','Prayagraj','Ghaziabad','Noida','Meerut','Bareilly'],
-      'Uttarakhand': ['Dehradun','Haridwar','Roorkee','Rishikesh','Nainital'],
-      'West Bengal': ['Kolkata','Howrah','Durgapur','Asansol','Siliguri'],
-      'Jammu & Kashmir': ['Srinagar','Jammu'],
-      'Ladakh': ['Leh','Kargil'],
-      'Chandigarh': ['Chandigarh'],
-      'Puducherry': ['Puducherry'],
-      'Andaman & Nicobar': ['Port Blair'],
-      'Lakshadweep': ['Kavaratti'],
-      'Dadra & Nagar Haveli': ['Silvassa'],
-      'Daman & Diu': ['Daman','Diu'],
-    },
-  },
+  India: { states: { 'Andhra Pradesh': ['Visakhapatnam','Vijayawada','Guntur','Nellore','Tirupati'], 'Arunachal Pradesh': ['Itanagar','Naharlagun','Pasighat'], 'Assam': ['Guwahati','Silchar','Dibrugarh','Jorhat'], 'Bihar': ['Patna','Gaya','Bhagalpur','Muzaffarpur','Darbhanga'], 'Chhattisgarh': ['Raipur','Bhilai','Bilaspur','Durg'], 'Delhi': ['New Delhi','Delhi'], 'Goa': ['Panaji','Margao','Vasco da Gama'], 'Gujarat': ['Ahmedabad','Surat','Vadodara','Rajkot','Gandhinagar','Bhavnagar'], 'Haryana': ['Gurugram','Faridabad','Chandigarh','Ambala','Hisar','Karnal'], 'Himachal Pradesh': ['Shimla','Dharamsala','Manali','Solan'], 'Jharkhand': ['Ranchi','Jamshedpur','Dhanbad','Bokaro'], 'Karnataka': ['Bengaluru','Mysuru','Hubli','Mangaluru','Belagavi'], 'Kerala': ['Thiruvananthapuram','Kochi','Kozhikode','Thrissur','Kollam'], 'Madhya Pradesh': ['Bhopal','Indore','Gwalior','Jabalpur','Ujjain'], 'Maharashtra': ['Mumbai','Pune','Nagpur','Nashik','Aurangabad','Thane','Navi Mumbai'], 'Manipur': ['Imphal'], 'Meghalaya': ['Shillong'], 'Mizoram': ['Aizawl'], 'Nagaland': ['Kohima','Dimapur'], 'Odisha': ['Bhubaneswar','Cuttack','Rourkela','Berhampur'], 'Punjab': ['Ludhiana','Amritsar','Jalandhar','Patiala','Chandigarh'], 'Rajasthan': ['Jaipur','Jodhpur','Udaipur','Kota','Ajmer','Bikaner'], 'Sikkim': ['Gangtok'], 'Tamil Nadu': ['Chennai','Coimbatore','Madurai','Tiruchirappalli','Salem','Tirunelveli'], 'Telangana': ['Hyderabad','Warangal','Nizamabad','Karimnagar'], 'Tripura': ['Agartala'], 'Uttar Pradesh': ['Lucknow','Kanpur','Agra','Varanasi','Prayagraj','Ghaziabad','Noida','Meerut','Bareilly'], 'Uttarakhand': ['Dehradun','Haridwar','Roorkee','Rishikesh','Nainital'], 'West Bengal': ['Kolkata','Howrah','Durgapur','Asansol','Siliguri'], 'Jammu & Kashmir': ['Srinagar','Jammu'], 'Ladakh': ['Leh','Kargil'], 'Chandigarh': ['Chandigarh'], 'Puducherry': ['Puducherry'], 'Andaman & Nicobar': ['Port Blair'], 'Lakshadweep': ['Kavaratti'], 'Dadra & Nagar Haveli': ['Silvassa'], 'Daman & Diu': ['Daman','Diu'] } },
   'United Arab Emirates': { states: { 'Abu Dhabi': ['Abu Dhabi','Al Ain'], 'Dubai': ['Dubai'], 'Sharjah': ['Sharjah'], 'Ajman': ['Ajman'], 'Fujairah': ['Fujairah'], 'Ras Al Khaimah': ['Ras Al Khaimah'], 'Umm Al Quwain': ['Umm Al Quwain'] } },
-  'Saudi Arabia': { states: { 'Riyadh': ['Riyadh'], 'Makkah': ['Jeddah','Mecca','Taif'], 'Madinah': ['Medina'], 'Eastern Province': ['Dammam','Khobar','Dhahran','Jubail'], 'Asir': ['Abha'], 'Kuwait': [] } },
+  'Saudi Arabia': { states: { 'Riyadh': ['Riyadh'], 'Makkah': ['Jeddah','Mecca','Taif'], 'Madinah': ['Medina'], 'Eastern Province': ['Dammam','Khobar','Dhahran','Jubail'], 'Asir': ['Abha'] } },
   'Kuwait': { states: { 'Kuwait Governorate': ['Kuwait City'], 'Ahmadi': ['Ahmadi'], 'Hawalli': ['Hawalli'], 'Farwaniya': ['Farwaniya'] } },
   'Qatar': { states: { 'Doha': ['Doha'], 'Al Rayyan': ['Al Rayyan'], 'Al Wakrah': ['Al Wakrah'], 'Al Khor': ['Al Khor'] } },
   'Bahrain': { states: { 'Capital': ['Manama'], 'Muharraq': ['Muharraq'], 'Northern': ['Hamad Town'], 'Southern': ['Riffa'] } },
@@ -1281,80 +1123,26 @@ const LOCATION_DATA: Record<string, { states: Record<string, string[]> }> = {
   'Pakistan': { states: { 'Punjab': ['Lahore','Faisalabad','Rawalpindi'], 'Sindh': ['Karachi','Hyderabad'], 'KPK': ['Peshawar'], 'Islamabad Capital Territory': ['Islamabad'] } },
   'Other': { states: { 'Other': [] } },
 };
-const INDIA_CURRENCY = 'INR';
 const isIndianCountry = (c: string) => c === 'India';
 
 // ── School Form ─────────────────────────────────────────────────────
 const EMPTY_CONTACT = { name:'', designation:'', email:'', mobile:'' };
 
 function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
-  const initContacts = (() => {
-    if (Array.isArray(initial.contact_persons) && initial.contact_persons.length) return initial.contact_persons;
-    return [{ ...EMPTY_CONTACT }];
-  })();
-
-  const [f,setF] = useState({
-    id:            initial.id??'',
-    school_code:   initial.school_code??'',
-    name:          initial.name??'',
-    org_name:      initial.org_name??'',
-    address:       initial.address??'',
-    pin_code:      initial.pin_code??'',
-    country:       initial.country||'India',
-    state:         initial.state??'',
-    city:          initial.city??'',
-    project_id:    initial.project_id??'',
-    school_price:  initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '',
-    currency:      initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'),
-    discount_code: initial.discount_code ?? initial.school_code?.toUpperCase() ?? '',
-    primary_color: initial.branding?.primaryColor??'#4f46e5',
-    accent_color:  initial.branding?.accentColor??'#8b5cf6',
-    is_active:              initial.is_active!==false,
-    is_registration_active: initial.is_registration_active!==false,
-  });
+  const initContacts = (() => { if (Array.isArray(initial.contact_persons) && initial.contact_persons.length) return initial.contact_persons; return [{ ...EMPTY_CONTACT }]; })();
+  const [f,setF] = useState({ id:initial.id??'', school_code:initial.school_code??'', name:initial.name??'', org_name:initial.org_name??'', address:initial.address??'', pin_code:initial.pin_code??'', country:initial.country||'India', state:initial.state??'', city:initial.city??'', project_id:initial.project_id??'', school_price:initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '', currency:initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'), discount_code:initial.discount_code ?? initial.school_code?.toUpperCase() ?? '', primary_color:initial.branding?.primaryColor??'#4f46e5', accent_color:initial.branding?.accentColor??'#8b5cf6', is_active:initial.is_active!==false, is_registration_active:initial.is_registration_active!==false });
   const [contacts, setContacts] = useState<{name:string;designation:string;email:string;mobile:string}[]>(initContacts);
-
-  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => {
-    const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
-    setF(p => {
-      const updated = {...p, [k]: val};
-      if (k === 'country') { updated.currency = isIndianCountry(val as string) ? 'INR' : 'USD'; updated.state = ''; updated.city = ''; }
-      if (k === 'state') updated.city = '';
-      if (k === 'school_code' && !p.id) { updated.discount_code = (val as string).toUpperCase(); }
-      return updated;
-    });
-  };
-
-  const setContact = (idx:number, field:string) => (e:React.ChangeEvent<HTMLInputElement>) => {
-    setContacts(prev => prev.map((c,i) => i===idx ? {...c,[field]:e.target.value} : c));
-  };
+  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => { const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value; setF(p => { const updated = {...p, [k]: val}; if (k === 'country') { updated.currency = isIndianCountry(val as string) ? 'INR' : 'USD'; updated.state = ''; updated.city = ''; } if (k === 'state') updated.city = ''; if (k === 'school_code' && !p.id) { updated.discount_code = (val as string).toUpperCase(); } return updated; }); };
+  const setContact = (idx:number, field:string) => (e:React.ChangeEvent<HTMLInputElement>) => { setContacts(prev => prev.map((c,i) => i===idx ? {...c,[field]:e.target.value} : c)); };
   const addContact = () => { if (contacts.length < 4) setContacts(p=>[...p,{...EMPTY_CONTACT}]); };
   const removeContact = (idx:number) => { if (contacts.length > 1) setContacts(p=>p.filter((_,i)=>i!==idx)); };
-
   const selProgram = programs.find(p=>p.id===f.project_id);
   const countryData = LOCATION_DATA[f.country] ?? LOCATION_DATA['Other'];
   const stateList = Object.keys(countryData.states);
   const cityList = f.state ? (countryData.states[f.state] ?? []) : [];
-
-  const regUrl = selProgram
-    ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}`
-    : '';
-
-  const basePriceDisplay = (() => {
-    if (!selProgram) return null;
-    if (isIndianCountry(f.country)) {
-      const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null);
-      return inr ? { label:`₹${fmtR(inr)}`, raw: String(inr/100) } : null;
-    } else {
-      const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null);
-      return usd ? { label:`$${fmtR(usd)}`, raw: String(usd/100) } : null;
-    }
-  })();
-
-  useEffect(() => {
-    if (basePriceDisplay?.raw && !f.id) { setF(p => ({...p, school_price: basePriceDisplay.raw})); }
-  }, [f.project_id, f.country]);
-
+  const regUrl = selProgram ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}` : '';
+  const basePriceDisplay = (() => { if (!selProgram) return null; if (isIndianCountry(f.country)) { const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null); return inr ? { label:`₹${fmtR(inr)}`, raw: String(inr/100) } : null; } else { const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null); return usd ? { label:`$${fmtR(usd)}`, raw: String(usd/100) } : null; } })();
+  useEffect(() => { if (basePriceDisplay?.raw && !f.id) { setF(p => ({...p, school_price: basePriceDisplay.raw})); } }, [f.project_id, f.country]);
   return (
     <ModalShell title={f.id?'Edit School':'Add New School'} onClose={onClose}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
@@ -1362,44 +1150,20 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         <Field label="School Name *"><input style={IS} value={f.name} onChange={set('name')} placeholder="Delhi Public School"/></Field>
         <Field label="Organisation Name *"><input style={IS} value={f.org_name} onChange={set('org_name')} placeholder="Thynk Success"/></Field>
       </div>
-
       <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>🏠 Address</div>
-        <Field label="Complete Address *">
-          <textarea style={{...IS,height:64,resize:'vertical'}} value={f.address} onChange={set('address')} placeholder="Enter full street address…"/>
-        </Field>
+        <Field label="Complete Address *"><textarea style={{...IS,height:64,resize:'vertical'}} value={f.address} onChange={set('address')} placeholder="Enter full street address…"/></Field>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'0 12px'}}>
           <Field label="Pin Code *"><input style={IS} value={f.pin_code} onChange={set('pin_code')} placeholder="110001"/></Field>
-          <Field label="Country *">
-            <select style={SS} value={f.country} onChange={set('country')}>
-              {Object.keys(LOCATION_DATA).map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-          </Field>
-          <Field label="State / Region *">
-            <select style={SS} value={f.state} onChange={set('state')} disabled={stateList.length===0}>
-              <option value="">Select State</option>
-              {stateList.map(s=><option key={s} value={s}>{s}</option>)}
-            </select>
-          </Field>
-          <Field label="City *">
-            {cityList.length > 0 ? (
-              <select style={SS} value={f.city} onChange={set('city')}>
-                <option value="">Select City</option>
-                {cityList.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-            ) : (
-              <input style={IS} value={f.city} onChange={set('city')} placeholder="Enter city"/>
-            )}
-          </Field>
+          <Field label="Country *"><select style={SS} value={f.country} onChange={set('country')}>{Object.keys(LOCATION_DATA).map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
+          <Field label="State / Region *"><select style={SS} value={f.state} onChange={set('state')} disabled={stateList.length===0}><option value="">Select State</option>{stateList.map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
+          <Field label="City *">{cityList.length > 0 ? <select style={SS} value={f.city} onChange={set('city')}><option value="">Select City</option>{cityList.map(c=><option key={c} value={c}>{c}</option>)}</select> : <input style={IS} value={f.city} onChange={set('city')} placeholder="Enter city"/>}</Field>
         </div>
       </div>
-
       <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
           <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase'}}>👤 Contact Persons</div>
-          {contacts.length < 4 && (
-            <button onClick={addContact} style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:6,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer'}}>+ Add Contact</button>
-          )}
+          {contacts.length < 4 && <button onClick={addContact} style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:6,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer'}}>+ Add Contact</button>}
         </div>
         {contacts.map((c,idx)=>(
           <div key={idx} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:8,padding:'10px 12px',marginBottom:idx<contacts.length-1?10:0}}>
@@ -1415,83 +1179,31 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
             </div>
           </div>
         ))}
-        <p style={{fontSize:10,color:'var(--m)',marginTop:8}}>You can add up to 4 contact persons. All fields are required for each contact.</p>
+        <p style={{fontSize:10,color:'var(--m)',marginTop:8}}>You can add up to 4 contact persons.</p>
       </div>
-
-      <Field label="Program *">
-        <select style={SS} value={f.project_id} onChange={set('project_id')}>
-          <option value="">Select a program</option>
-          {programs.filter(p=>p.status==='active').map(p=>{
-            const inr = p.base_amount_inr ?? (p.currency==='INR'?p.base_amount:null);
-            const usd = p.base_amount_usd ?? (p.currency==='USD'?p.base_amount:null);
-            return <option key={p.id} value={p.id}>{p.name} — {inr?`₹${(inr/100).toLocaleString('en-IN')}`:'—'} / {usd?`$${(usd/100).toLocaleString()}`:'—'}</option>;
-          })}
-        </select>
-      </Field>
-
-      <Field label="Registration Link (auto-generated)">
-        <input style={{...IS,fontFamily:'monospace',fontSize:11,color:'var(--acc)',background:'var(--acc3)'}}
-          value={regUrl || '(select a program and enter school code)'}
-          readOnly
-          onClick={e=>(e.target as HTMLInputElement).select()}
-        />
-        {regUrl && <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Click to select · Base URL + School Code auto-combined</p>}
-      </Field>
-
+      <Field label="Program *"><select style={SS} value={f.project_id} onChange={set('project_id')}><option value="">Select a program</option>{programs.filter(p=>p.status==='active').map(p=>{ const inr = p.base_amount_inr ?? (p.currency==='INR'?p.base_amount:null); const usd = p.base_amount_usd ?? (p.currency==='USD'?p.base_amount:null); return <option key={p.id} value={p.id}>{p.name} — {inr?`₹${(inr/100).toLocaleString('en-IN')}`:'—'} / {usd?`$${(usd/100).toLocaleString()}`:'—'}</option>; })}</select></Field>
+      <Field label="Registration Link (auto-generated)"><input style={{...IS,fontFamily:'monospace',fontSize:11,color:'var(--acc)',background:'var(--acc3)'}} value={regUrl || '(select a program and enter school code)'} readOnly onClick={e=>(e.target as HTMLInputElement).select()}/>{regUrl && <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Click to select · Base URL + School Code auto-combined</p>}</Field>
       <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>💰 Pricing</div>
-        {basePriceDisplay && (
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,background:'var(--acc3)',borderRadius:8,padding:'8px 12px'}}>
-            <span style={{fontSize:12,color:'var(--m)',fontWeight:600}}>Program Base Price:</span>
-            <span style={{fontSize:15,fontWeight:800,fontFamily:'Sora',color:'var(--acc)'}}>{basePriceDisplay.label}</span>
-            <span style={{fontSize:11,color:'var(--m)'}}>(auto-filled below)</span>
-          </div>
-        )}
+        {basePriceDisplay && <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,background:'var(--acc3)',borderRadius:8,padding:'8px 12px'}}><span style={{fontSize:12,color:'var(--m)',fontWeight:600}}>Program Base Price:</span><span style={{fontSize:15,fontWeight:800,fontFamily:'Sora',color:'var(--acc)'}}>{basePriceDisplay.label}</span><span style={{fontSize:11,color:'var(--m)'}}>(auto-filled below)</span></div>}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-          <Field label={`School Pricing (${f.currency}) *`}>
-            <input style={IS} type="number" value={f.school_price} onChange={set('school_price')}
-              placeholder={basePriceDisplay ? `Base: ${basePriceDisplay.label}` : 'Enter amount'}/>
-          </Field>
-          <Field label="Currency">
-            <select style={SS} value={f.currency} onChange={set('currency')}>
-              <option value="INR">INR (₹) — India</option>
-              <option value="USD">USD ($) — International</option>
-            </select>
-            <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Auto-set from country selection</p>
-          </Field>
+          <Field label={`School Pricing (${f.currency}) *`}><input style={IS} type="number" value={f.school_price} onChange={set('school_price')} placeholder={basePriceDisplay ? `Base: ${basePriceDisplay.label}` : 'Enter amount'}/></Field>
+          <Field label="Currency"><select style={SS} value={f.currency} onChange={set('currency')}><option value="INR">INR (₹) — India</option><option value="USD">USD ($) — International</option></select><p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Auto-set from country selection</p></Field>
         </div>
       </div>
-
       <div style={{background:'var(--orange2,rgba(245,158,11,0.08))',border:'1px solid rgba(245,158,11,0.2)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:'var(--orange,#f59e0b)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>🏷️ Discount Code</div>
-        <Field label="Discount Code (default = school code)">
-          <input style={{...IS,textTransform:'uppercase',fontFamily:'monospace',fontWeight:700}} value={f.discount_code}
-            onChange={e=>setF(p=>({...p,discount_code:e.target.value.toUpperCase()}))} placeholder="e.g. DELHI-DPS"/>
-        </Field>
-        <p style={{fontSize:11,color:'var(--m)',marginTop:-8}}>
-          When a student uses the Registration URL and enters this code, the school-specific discount fee will be applied.
-        </p>
+        <Field label="Discount Code (default = school code)"><input style={{...IS,textTransform:'uppercase',fontFamily:'monospace',fontWeight:700}} value={f.discount_code} onChange={e=>setF(p=>({...p,discount_code:e.target.value.toUpperCase()}))} placeholder="e.g. DELHI-DPS"/></Field>
+        <p style={{fontSize:11,color:'var(--m)',marginTop:-8}}>When a student uses the Registration URL and enters this code, the school-specific discount fee will be applied.</p>
       </div>
-
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
         <Field label="Primary Colour"><input style={{...IS,height:40}} type="color" value={f.primary_color} onChange={set('primary_color')}/></Field>
         <Field label="Accent Colour"><input style={{...IS,height:40}} type="color" value={f.accent_color} onChange={set('accent_color')}/></Field>
       </div>
-
       <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:14,padding:'12px 14px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto',accentColor:'var(--acc)'}}/>
-          <label htmlFor="is_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>School is Active</label>
-        </div>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/>
-          <label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>
-            Registration Active
-            <span style={{fontSize:11,fontWeight:400,color:'var(--m)',marginLeft:6}}>— registration form accepts new students only when checked</span>
-          </label>
-        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto',accentColor:'var(--acc)'}}/><label htmlFor="is_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>School is Active</label></div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/><label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>Registration Active<span style={{fontSize:11,fontWeight:400,color:'var(--m)',marginLeft:6}}>— registration form accepts new students only when checked</span></label></div>
       </div>
-
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code, is_registration_active:f.is_registration_active})}>{f.id?'Save Changes':'Create School'}</button>
@@ -1506,76 +1218,26 @@ function SchoolsTable({ schools, programs, isSuperAdmin, onEdit }:{ schools:Row[
   const [filterCountry, setFilterCountry] = useState('');
   const [filterState,   setFilterState]   = useState('');
   const [filterCity,    setFilterCity]    = useState('');
-
   const countries = [...new Set(schools.map(s=>s.country).filter(Boolean))].sort();
   const states    = [...new Set(schools.filter(s=>!filterCountry||s.country===filterCountry).map(s=>s.state).filter(Boolean))].sort();
   const cities    = [...new Set(schools.filter(s=>(!filterCountry||s.country===filterCountry)&&(!filterState||s.state===filterState)).map(s=>s.city).filter(Boolean))].sort();
-
-  const filtered = schools.filter(s => {
-    const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug);
-    if (filterProgram && prog?.id !== filterProgram) return false;
-    if (filterCountry && s.country !== filterCountry) return false;
-    if (filterState   && s.state   !== filterState)   return false;
-    if (filterCity    && s.city    !== filterCity)     return false;
-    return true;
-  });
-
+  const filtered = schools.filter(s => { const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); if (filterProgram && prog?.id !== filterProgram) return false; if (filterCountry && s.country !== filterCountry) return false; if (filterState && s.state !== filterState) return false; if (filterCity && s.city !== filterCity) return false; return true; });
   return (
     <>
       <div className="table-toolbar" style={{flexWrap:'wrap',gap:8,marginBottom:12}}>
-        <select style={{...SS,width:'auto',minWidth:140}} value={filterProgram} onChange={e=>{setFilterProgram(e.target.value);}}>
-          <option value="">All Programs</option>
-          {programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <select style={{...SS,width:'auto',minWidth:130}} value={filterCountry} onChange={e=>{setFilterCountry(e.target.value);setFilterState('');setFilterCity('');}}>
-          <option value="">All Countries</option>
-          {countries.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
-        <select style={{...SS,width:'auto',minWidth:130}} value={filterState} onChange={e=>{setFilterState(e.target.value);setFilterCity('');}}>
-          <option value="">All States</option>
-          {states.map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
-        <select style={{...SS,width:'auto',minWidth:120}} value={filterCity} onChange={e=>setFilterCity(e.target.value)}>
-          <option value="">All Cities</option>
-          {cities.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
+        <select style={{...SS,width:'auto',minWidth:140}} value={filterProgram} onChange={e=>{setFilterProgram(e.target.value);}}><option value="">All Programs</option>{programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        <select style={{...SS,width:'auto',minWidth:130}} value={filterCountry} onChange={e=>{setFilterCountry(e.target.value);setFilterState('');setFilterCity('');}}><option value="">All Countries</option>{countries.map(c=><option key={c} value={c}>{c}</option>)}</select>
+        <select style={{...SS,width:'auto',minWidth:130}} value={filterState} onChange={e=>{setFilterState(e.target.value);setFilterCity('');}}><option value="">All States</option>{states.map(s=><option key={s} value={s}>{s}</option>)}</select>
+        <select style={{...SS,width:'auto',minWidth:120}} value={filterCity} onChange={e=>setFilterCity(e.target.value)}><option value="">All Cities</option>{cities.map(c=><option key={c} value={c}>{c}</option>)}</select>
         <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {schools.length}</span>
       </div>
       <div className="tbl-wrap"><table>
         <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Dashboard</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
         <tbody>
-          {filtered.length===0
-            ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
-            : filtered.map(s=>{
-              const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug);
-              const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/${s.school_code}`;
-              const basePriceFmt = (() => {
-                if (!prog) return '—';
-                const isIndia = (s.country||'India').toLowerCase()==='india';
-                if (isIndia) { const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null); return inr ? `₹${fmtR(inr)}` : '—'; }
-                const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null);
-                return usd ? `$${fmtR(usd)}` : '—';
-              })();
-              const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR';
-              const schoolPriceFmt = schoolCurrency === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
-              return (
-                <tr key={s.id}>
-                  <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{s.school_code}</code></td>
-                  <td style={{fontWeight:700}}>{s.name}</td>
-                  <td style={{fontSize:12,color:'var(--m)'}}>{s.org_name}</td>
-                  <td style={{fontSize:12}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')||'—'}</td>
-                  <td style={{fontSize:12}}>{prog?.name ?? s.project_slug ?? '—'}</td>
-                  <td style={{fontSize:12,fontWeight:600,color:'var(--acc)'}}>{basePriceFmt}</td>
-                  <td><span className="amt">{schoolPriceFmt}</span></td>
-                  <td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.discount_code || s.school_code?.toUpperCase()}</code></td>
-                  <td><a href={regUrl} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl.replace('https://','')}</a></td>
-                  <td><a href="/school/login" target="_blank" style={{color:'#10b981',fontSize:11,fontWeight:600,textDecoration:'none',whiteSpace:'nowrap'}}>🏫 School Login</a></td>
-                  <td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>
-                  {isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>onEdit(s)}>Edit</button></td>}
-                </tr>
-              );
-            })
-          }
+          {filtered.length===0 ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
+          : filtered.map(s=>{ const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/${s.school_code}`; const basePriceFmt = (() => { if (!prog) return '—'; const isIndia = (s.country||'India').toLowerCase()==='india'; if (isIndia) { const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null); return inr ? `₹${fmtR(inr)}` : '—'; } const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null); return usd ? `$${fmtR(usd)}` : '—'; })(); const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR'; const schoolPriceFmt = schoolCurrency === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
+            return (<tr key={s.id}><td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{s.school_code}</code></td><td style={{fontWeight:700}}>{s.name}</td><td style={{fontSize:12,color:'var(--m)'}}>{s.org_name}</td><td style={{fontSize:12}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')||'—'}</td><td style={{fontSize:12}}>{prog?.name ?? s.project_slug ?? '—'}</td><td style={{fontSize:12,fontWeight:600,color:'var(--acc)'}}>{basePriceFmt}</td><td><span className="amt">{schoolPriceFmt}</span></td><td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.discount_code || s.school_code?.toUpperCase()}</code></td><td><a href={regUrl} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl.replace('https://','')}</a></td><td><a href="/school/login" target="_blank" style={{color:'#10b981',fontSize:11,fontWeight:600,textDecoration:'none',whiteSpace:'nowrap'}}>🏫 School Login</a></td><td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>{isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>onEdit(s)}>Edit</button></td>}</tr>);
+          })}
         </tbody>
       </table></div>
     </>
@@ -1614,32 +1276,23 @@ function UserFormModal({ schools, onClose, onSave }:{ schools:Row[]; onClose:()=
       <Field label="Password *"><input style={IS} type="password" value={f.password} onChange={set('password')} placeholder="Minimum 8 characters"/></Field>
       <Field label="Role *"><select style={SS} value={f.role} onChange={set('role')}><option value="school_admin">School Admin</option><option value="super_admin">Super Admin</option></select></Field>
       {f.role==='school_admin'&&<Field label="Assign to School *"><select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">Select school</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}</select></Field>}
-      {f.role==='school_admin'&&(
-        <div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}>
-          <span style={{color:'var(--acc)',fontWeight:600}}>🏫 School Portal Login URL:</span><br/>
-          <code style={{color:'var(--text)',fontSize:11,wordBreak:'break-all'}}>{(BACKEND||window.location.origin)}/school/login</code>
-          <p style={{margin:'4px 0 0',color:'var(--m)',fontSize:11}}>Share this URL with the school admin so they can log in to their dashboard.</p>
-        </div>
-      )}
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave(f)}>Create Admin User</button>
-      </div>
+      {f.role==='school_admin'&&(<div style={{background:'var(--acc3)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12}}><span style={{color:'var(--acc)',fontWeight:600}}>🏫 School Portal Login URL:</span><br/><code style={{color:'var(--text)',fontSize:11,wordBreak:'break-all'}}>{(BACKEND||window.location.origin)}/school/login</code><p style={{margin:'4px 0 0',color:'var(--m)',fontSize:11}}>Share this URL with the school admin so they can log in to their dashboard.</p></div>)}
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>Create Admin User</button></div>
     </ModalShell>
   );
 }
 
 // ── Integration Form ────────────────────────────────────────────────
 const INT_FIELDS:Record<string,{label:string;key:string;type?:string}[]> = {
-  razorpay:       [{label:'Key ID',key:'rzp_key_id'},{label:'Key Secret',key:'rzp_key_secret',type:'password'},{label:'Webhook Secret',key:'rzp_webhook_secret',type:'password'}],
-  cashfree:       [{label:'App ID',key:'cf_app_id'},{label:'Secret Key',key:'cf_secret',type:'password'},{label:'Mode',key:'cf_mode'}],
-  easebuzz:       [{label:'Key',key:'eb_key'},{label:'Salt',key:'eb_salt',type:'password'},{label:'Env (production/test)',key:'eb_env'}],
-  paypal:         [{label:'Client ID',key:'pp_client_id'},{label:'Client Secret',key:'pp_client_secret',type:'password'},{label:'Mode (live/sandbox)',key:'pp_mode'}],
-  smtp:           [{label:'Host',key:'host'},{label:'Port',key:'port'},{label:'User',key:'user'},{label:'Password',key:'password',type:'password'},{label:'From Email',key:'from_email'},{label:'From Name',key:'from_name'}],
-  sendgrid:       [{label:'API Key',key:'api_key',type:'password'},{label:'From Email',key:'from_email'},{label:'From Name',key:'from_name'}],
-  aws_ses:        [{label:'Region',key:'region'},{label:'Access Key ID',key:'access_key_id'},{label:'Secret Access Key',key:'secret_access_key',type:'password'},{label:'From Email',key:'from_email'}],
-  whatsapp_cloud: [{label:'Phone Number ID',key:'phone_number_id'},{label:'Token',key:'token',type:'password'}],
-  twilio:         [{label:'Account SID',key:'account_sid'},{label:'Auth Token',key:'auth_token',type:'password'},{label:'WhatsApp From Number',key:'whatsapp_from'}],
+  razorpay:[{label:'Key ID',key:'rzp_key_id'},{label:'Key Secret',key:'rzp_key_secret',type:'password'},{label:'Webhook Secret',key:'rzp_webhook_secret',type:'password'}],
+  cashfree:[{label:'App ID',key:'cf_app_id'},{label:'Secret Key',key:'cf_secret',type:'password'},{label:'Mode',key:'cf_mode'}],
+  easebuzz:[{label:'Key',key:'eb_key'},{label:'Salt',key:'eb_salt',type:'password'},{label:'Env (production/test)',key:'eb_env'}],
+  paypal:[{label:'Client ID',key:'pp_client_id'},{label:'Client Secret',key:'pp_client_secret',type:'password'},{label:'Mode (live/sandbox)',key:'pp_mode'}],
+  smtp:[{label:'Host',key:'host'},{label:'Port',key:'port'},{label:'User',key:'user'},{label:'Password',key:'password',type:'password'},{label:'From Email',key:'from_email'},{label:'From Name',key:'from_name'}],
+  sendgrid:[{label:'API Key',key:'api_key',type:'password'},{label:'From Email',key:'from_email'},{label:'From Name',key:'from_name'}],
+  aws_ses:[{label:'Region',key:'region'},{label:'Access Key ID',key:'access_key_id'},{label:'Secret Access Key',key:'secret_access_key',type:'password'},{label:'From Email',key:'from_email'}],
+  whatsapp_cloud:[{label:'Phone Number ID',key:'phone_number_id'},{label:'Token',key:'token',type:'password'}],
+  twilio:[{label:'Account SID',key:'account_sid'},{label:'Auth Token',key:'auth_token',type:'password'},{label:'WhatsApp From Number',key:'whatsapp_from'}],
 };
 
 function IntegrationFormModal({ initial, schools, onClose, onSave }:{ initial:Row; schools:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
@@ -1650,33 +1303,11 @@ function IntegrationFormModal({ initial, schools, onClose, onSave }:{ initial:Ro
   const fields = INT_FIELDS[provider]??[];
   return (
     <ModalShell title={initial.id?'Edit Integration':'Add Integration'} onClose={onClose}>
-      {!initial.id && (
-        <Field label="Provider">
-          <select style={SS} value={provider} onChange={e=>{ setProvider(e.target.value); setConfig({}); }}>
-            <optgroup label="Payment Gateways"><option value="razorpay">Razorpay</option><option value="cashfree">Cashfree</option><option value="easebuzz">Easebuzz</option><option value="paypal">PayPal</option></optgroup>
-            <optgroup label="Email"><option value="smtp">SMTP</option><option value="sendgrid">SendGrid</option><option value="aws_ses">AWS SES</option></optgroup>
-            <optgroup label="WhatsApp"><option value="whatsapp_cloud">WhatsApp Cloud API</option><option value="twilio">Twilio</option></optgroup>
-          </select>
-        </Field>
-      )}
-      <Field label="School (leave blank for global)">
-        <select style={SS} value={schoolId} onChange={e=>setSchoolId(e.target.value)}>
-          <option value="">Global (all schools)</option>
-          {schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Priority (lower = higher priority)">
-        <input style={IS} type="number" value={priority} onChange={e=>setPriority(Number(e.target.value))} placeholder="0"/>
-      </Field>
-      {fields.map(f=>(
-        <Field key={f.key} label={f.label}>
-          <input style={IS} type={f.type??'text'} value={config[f.key]??''} onChange={e=>setConfig(p=>({...p,[f.key]:e.target.value}))} placeholder={f.label}/>
-        </Field>
-      ))}
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
-        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({id:initial.id,provider,school_id:schoolId||null,priority,config,is_active:true})}>{initial.id?'Save Changes':'Save Integration'}</button>
-      </div>
+      {!initial.id && (<Field label="Provider"><select style={SS} value={provider} onChange={e=>{ setProvider(e.target.value); setConfig({}); }}><optgroup label="Payment Gateways"><option value="razorpay">Razorpay</option><option value="cashfree">Cashfree</option><option value="easebuzz">Easebuzz</option><option value="paypal">PayPal</option></optgroup><optgroup label="Email"><option value="smtp">SMTP</option><option value="sendgrid">SendGrid</option><option value="aws_ses">AWS SES</option></optgroup><optgroup label="WhatsApp"><option value="whatsapp_cloud">WhatsApp Cloud API</option><option value="twilio">Twilio</option></optgroup></select></Field>)}
+      <Field label="School (leave blank for global)"><select style={SS} value={schoolId} onChange={e=>setSchoolId(e.target.value)}><option value="">Global (all schools)</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+      <Field label="Priority (lower = higher priority)"><input style={IS} type="number" value={priority} onChange={e=>setPriority(Number(e.target.value))} placeholder="0"/></Field>
+      {fields.map(f=>(<Field key={f.key} label={f.label}><input style={IS} type={f.type??'text'} value={config[f.key]??''} onChange={e=>setConfig(p=>({...p,[f.key]:e.target.value}))} placeholder={f.label}/></Field>))}
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave({id:initial.id,provider,school_id:schoolId||null,priority,config,is_active:true})}>{initial.id?'Save Changes':'Save Integration'}</button></div>
     </ModalShell>
   );
 }
@@ -1688,33 +1319,12 @@ function TriggerFormModal({ initial, schools, templates, onClose, onSave }:{ ini
   const filteredTemplates = templates.filter(t=>t.channel===f.channel);
   return (
     <ModalShell title={f.id?'Edit Trigger':'New Trigger'} onClose={onClose}>
-      <Field label="Event *">
-        <select style={SS} value={f.event_type} onChange={set('event_type')}>
-          <option value="registration.created">Registration Created</option>
-          <option value="payment.paid">Payment Paid</option>
-          <option value="payment.failed">Payment Failed</option>
-          <option value="payment.cancelled">Payment Cancelled</option>
-          <option value="discount.applied">Discount Applied</option>
-        </select>
-      </Field>
-      <Field label="Channel *">
-        <select style={SS} value={f.channel} onChange={set('channel')}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select>
-      </Field>
-      <Field label="Template *">
-        <select style={SS} value={f.template_id} onChange={set('template_id')}>
-          <option value="">Select template</option>
-          {filteredTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        {filteredTemplates.length===0&&<p style={{fontSize:11,color:'var(--orange)',marginTop:4}}>No {f.channel} templates yet. Create one in Message Templates first.</p>}
-      </Field>
-      <Field label="School (blank = all schools)">
-        <select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">All Schools</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-      </Field>
+      <Field label="Event *"><select style={SS} value={f.event_type} onChange={set('event_type')}><option value="registration.created">Registration Created</option><option value="payment.paid">Payment Paid</option><option value="payment.failed">Payment Failed</option><option value="payment.cancelled">Payment Cancelled</option><option value="discount.applied">Discount Applied</option></select></Field>
+      <Field label="Channel *"><select style={SS} value={f.channel} onChange={set('channel')}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select></Field>
+      <Field label="Template *"><select style={SS} value={f.template_id} onChange={set('template_id')}><option value="">Select template</option>{filteredTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>{filteredTemplates.length===0&&<p style={{fontSize:11,color:'var(--orange)',marginTop:4}}>No {f.channel} templates yet. Create one in Message Templates first.</p>}</Field>
+      <Field label="School (blank = all schools)"><select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">All Schools</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><input type="checkbox" id="t_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto'}}/><label htmlFor="t_active" style={{fontSize:13,fontWeight:600}}>Active</label></div>
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
-        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Trigger'}</button>
-      </div>
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Trigger'}</button></div>
     </ModalShell>
   );
 }
@@ -1730,98 +1340,47 @@ function TemplateFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:(
         <Field label="Channel *"><select style={SS} value={f.channel} onChange={set('channel')}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select></Field>
       </div>
       {f.channel==='email'&&<Field label="Subject *"><input style={IS} value={f.subject} onChange={set('subject')} placeholder="Your registration is confirmed — {{school_name}}"/></Field>}
-      <Field label="Message Body *">
-        <textarea style={{...IS,height:160,resize:'vertical'}} value={f.body} onChange={set('body')} placeholder={f.channel==='email'?`Hi {{student_name}},\n\nYour registration for {{school_name}} is confirmed!\n\nAmount: {{amount}}\nTransaction ID: {{txn_id}}\n\nThank you!`:`Hi {{student_name}}! 🎉\nYour registration for {{school_name}} is confirmed.\nAmount: {{amount}} | Txn: {{txn_id}}`}/>
-      </Field>
+      <Field label="Message Body *"><textarea style={{...IS,height:160,resize:'vertical'}} value={f.body} onChange={set('body')} placeholder={f.channel==='email'?`Hi {{student_name}},\n\nYour registration for {{school_name}} is confirmed!\n\nAmount: {{amount}}\nTransaction ID: {{txn_id}}\n\nThank you!`:`Hi {{student_name}}! 🎉\nYour registration for {{school_name}} is confirmed.\nAmount: {{amount}} | Txn: {{txn_id}}`}/></Field>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><input type="checkbox" id="tm_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto'}}/><label htmlFor="tm_active" style={{fontSize:13,fontWeight:600}}>Active</label></div>
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
-        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Template'}</button>
-      </div>
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Template'}</button></div>
     </ModalShell>
   );
 }
 
 // ── Location Master Page ────────────────────────────────────────────
-const COUNTRY_EMOJI: Record<string,string> = {
-  'India':'🇮🇳','United Arab Emirates':'🇦🇪','Saudi Arabia':'🇸🇦','Kuwait':'🇰🇼',
-  'Qatar':'🇶🇦','Bahrain':'🇧🇭','Oman':'🇴🇲','Singapore':'🇸🇬','Malaysia':'🇲🇾',
-  'Indonesia':'🇮🇩','Thailand':'🇹🇭','Philippines':'🇵🇭','Vietnam':'🇻🇳',
-  'Myanmar':'🇲🇲','Cambodia':'🇰🇭','Sri Lanka':'🇱🇰','Nepal':'🇳🇵',
-  'Bangladesh':'🇧🇩','Pakistan':'🇵🇰',
-};
+const COUNTRY_EMOJI: Record<string,string> = { 'India':'🇮🇳','United Arab Emirates':'🇦🇪','Saudi Arabia':'🇸🇦','Kuwait':'🇰🇼','Qatar':'🇶🇦','Bahrain':'🇧🇭','Oman':'🇴🇲','Singapore':'🇸🇬','Malaysia':'🇲🇾','Indonesia':'🇮🇩','Thailand':'🇹🇭','Philippines':'🇵🇭','Vietnam':'🇻🇳','Myanmar':'🇲🇲','Cambodia':'🇰🇭','Sri Lanka':'🇱🇰','Nepal':'🇳🇵','Bangladesh':'🇧🇩','Pakistan':'🇵🇰' };
 
-function LocationFormModal({ initial, existingCountries, existingStates, onClose, onSave }:{
-  initial: Row; existingCountries: string[]; existingStates: string[]; onClose:()=>void; onSave:(d:Row)=>void
-}) {
+function LocationFormModal({ initial, existingCountries, existingStates, onClose, onSave }:{ initial: Row; existingCountries: string[]; existingStates: string[]; onClose:()=>void; onSave:(d:Row)=>void }) {
   const [f,setF] = useState({ id:initial.id??'', country:initial.country??'India', state:initial.state??'', city:initial.city??'', sort_order:initial.sort_order??0 });
   const [addingCountry, setAddingCountry] = useState(false);
   const [newCountry,    setNewCountry]    = useState('');
   const [addingState,   setAddingState]   = useState(false);
   const [newState,      setNewState]      = useState('');
-
   const allCountries = [...new Set([...existingCountries, f.country].filter(Boolean))].sort((a,b)=>{ if(a==='India') return -1; if(b==='India') return 1; return a.localeCompare(b); });
   const statesForCountry = [...new Set([...existingStates, f.state].filter(Boolean))].sort();
-
   const handleAddCountry = () => { if (!newCountry.trim()) return; setF(p=>({...p, country: newCountry.trim(), state:''})); setAddingCountry(false); setNewCountry(''); };
   const handleAddState   = () => { if (!newState.trim()) return; setF(p=>({...p, state: newState.trim()})); setAddingState(false); setNewState(''); };
-
   return (
     <ModalShell title={f.id?'Edit Location':'Add Location'} onClose={onClose}>
       <Field label="Country *">
-        {addingCountry ? (
-          <div style={{display:'flex',gap:6}}>
-            <input style={{...IS,flex:1}} value={newCountry} onChange={e=>setNewCountry(e.target.value)} placeholder="Enter new country name" autoFocus/>
-            <button onClick={handleAddCountry} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button>
-            <button onClick={()=>{setAddingCountry(false);setNewCountry('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button>
-          </div>
-        ) : (
-          <div style={{display:'flex',gap:6}}>
-            <select style={{...SS,flex:1}} value={f.country} onChange={e=>setF(p=>({...p,country:e.target.value,state:''}))}>
-              <option value="">Select Country</option>
-              {allCountries.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-            <button onClick={()=>setAddingCountry(true)} title="Add new country" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button>
-          </div>
-        )}
+        {addingCountry ? <div style={{display:'flex',gap:6}}><input style={{...IS,flex:1}} value={newCountry} onChange={e=>setNewCountry(e.target.value)} placeholder="Enter new country name" autoFocus/><button onClick={handleAddCountry} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button><button onClick={()=>{setAddingCountry(false);setNewCountry('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button></div>
+        : <div style={{display:'flex',gap:6}}><select style={{...SS,flex:1}} value={f.country} onChange={e=>setF(p=>({...p,country:e.target.value,state:''}))}><option value="">Select Country</option>{allCountries.map(c=><option key={c} value={c}>{c}</option>)}</select><button onClick={()=>setAddingCountry(true)} title="Add new country" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button></div>}
       </Field>
       <Field label="State / Region *">
-        {addingState ? (
-          <div style={{display:'flex',gap:6}}>
-            <input style={{...IS,flex:1}} value={newState} onChange={e=>setNewState(e.target.value)} placeholder="Enter new state / region" autoFocus/>
-            <button onClick={handleAddState} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button>
-            <button onClick={()=>{setAddingState(false);setNewState('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button>
-          </div>
-        ) : (
-          <div style={{display:'flex',gap:6}}>
-            <select style={{...SS,flex:1}} value={f.state} onChange={e=>setF(p=>({...p,state:e.target.value}))}>
-              <option value="">Select State</option>
-              {statesForCountry.map(s=><option key={s} value={s}>{s}</option>)}
-            </select>
-            <button onClick={()=>setAddingState(true)} title="Add new state" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button>
-          </div>
-        )}
+        {addingState ? <div style={{display:'flex',gap:6}}><input style={{...IS,flex:1}} value={newState} onChange={e=>setNewState(e.target.value)} placeholder="Enter new state / region" autoFocus/><button onClick={handleAddState} style={{background:'var(--acc)',color:'#fff',border:'none',borderRadius:8,padding:'0 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>Add</button><button onClick={()=>{setAddingState(false);setNewState('');}} style={{background:'var(--bd)',color:'var(--m)',border:'none',borderRadius:8,padding:'0 10px',cursor:'pointer',fontSize:12}}>✕</button></div>
+        : <div style={{display:'flex',gap:6}}><select style={{...SS,flex:1}} value={f.state} onChange={e=>setF(p=>({...p,state:e.target.value}))}><option value="">Select State</option>{statesForCountry.map(s=><option key={s} value={s}>{s}</option>)}</select><button onClick={()=>setAddingState(true)} title="Add new state" style={{background:'var(--acc3)',color:'var(--acc)',border:'1px solid var(--acc)',borderRadius:8,padding:'0 12px',cursor:'pointer',fontWeight:700,fontSize:16,lineHeight:1}}>+</button></div>}
         <p style={{fontSize:10,color:'var(--m)',marginTop:3}}>Click + to add a country/state not in the list.</p>
       </Field>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="City (leave blank to add state only)">
-          <input style={IS} value={f.city} onChange={e=>setF(p=>({...p,city:e.target.value}))} placeholder="New Delhi"/>
-        </Field>
-        <Field label="Sort Order">
-          <input style={IS} type="number" value={f.sort_order} onChange={e=>setF(p=>({...p,sort_order:Number(e.target.value)}))} min={0}/>
-        </Field>
+        <Field label="City (leave blank to add state only)"><input style={IS} value={f.city} onChange={e=>setF(p=>({...p,city:e.target.value}))} placeholder="New Delhi"/></Field>
+        <Field label="Sort Order"><input style={IS} type="number" value={f.sort_order} onChange={e=>setF(p=>({...p,sort_order:Number(e.target.value)}))} min={0}/></Field>
       </div>
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
-        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Add Location'}</button>
-      </div>
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Add Location'}</button></div>
     </ModalShell>
   );
 }
 
-function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
-  rows:Row[]; BACKEND:string; onReload:()=>void; showToast:(t:string,i?:string)=>void
-}) {
+function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[]; BACKEND:string; onReload:()=>void; showToast:(t:string,i?:string)=>void }) {
   const [activeCountry, setActiveCountry] = useState('');
   const [activeState,   setActiveState]   = useState('');
   const [search,        setSearch]        = useState('');
@@ -1829,165 +1388,42 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
   const [modalOpen,     setModalOpen]     = useState(false);
   const [editRow,       setEditRow]       = useState<Row|undefined>();
   const [saving,        setSaving]        = useState(false);
-
   const countries = [...new Set(rows.map(r=>r.country))].sort((a,b)=>{ if(a==='India') return -1; if(b==='India') return 1; return a.localeCompare(b); });
-
   React.useEffect(()=>{ if(!activeCountry && countries.length) setActiveCountry(countries[0]); }, [countries.length]);
-
   const statesInCountry = [...new Set(rows.filter(r=>r.country===activeCountry).map(r=>r.state))].sort();
-
   React.useEffect(()=>{ setActiveState(''); },[activeCountry]);
   React.useEffect(()=>{ if(!activeState && statesInCountry.length) setActiveState(statesInCountry[0]); },[statesInCountry.length, activeCountry]);
-
-  const citiesInState = rows.filter(r=>
-    r.country===activeCountry &&
-    r.state===activeState &&
-    (search==='' || r.city?.toLowerCase().includes(search.toLowerCase()) || r.state?.toLowerCase().includes(search.toLowerCase()))
-  ).sort((a,b)=>(a.sort_order??0)-(b.sort_order??0)||(a.city??'').localeCompare(b.city??''));
-
+  const citiesInState = rows.filter(r=> r.country===activeCountry && r.state===activeState && (search==='' || r.city?.toLowerCase().includes(search.toLowerCase()) || r.state?.toLowerCase().includes(search.toLowerCase()))).sort((a,b)=>(a.sort_order??0)-(b.sort_order??0)||(a.city??'').localeCompare(b.city??''));
   const filteredCountries = countries.filter(c=>c.toLowerCase().includes(countrySearch.toLowerCase()));
-
   const activeCount  = rows.filter(r=>r.is_active).length;
   const countryCount = countries.length;
   const stateCount   = [...new Set(rows.map(r=>r.country+'|'+r.state))].length;
-
-  async function toggleActive(row:Row) {
-    await authFetch(`${BACKEND}/api/admin/location`,{ method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:row.id,is_active:!row.is_active}) });
-    onReload();
-  }
-
-  async function deleteRow(row:Row) {
-    if(!confirm(`Delete "${row.city||row.state}"?`)) return;
-    await authFetch(`${BACKEND}/api/admin/location`,{ method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:row.id}) });
-    showToast('Deleted','✅'); onReload();
-  }
-
-  async function handleSave(d:Row) {
-    setSaving(true);
-    const method = d.id ? 'PATCH' : 'POST';
-    const res = await authFetch(`${BACKEND}/api/admin/location`,{ method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) });
-    const json = await res.json();
-    setSaving(false);
-    if(!res.ok){ showToast(json.error||'Failed','❌'); return; }
-    showToast(d.id?'Updated!':'Added!','✅');
-    setModalOpen(false); setEditRow(undefined);
-    onReload();
-  }
-
+  async function toggleActive(row:Row) { await authFetch(`${BACKEND}/api/admin/location`,{ method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:row.id,is_active:!row.is_active}) }); onReload(); }
+  async function deleteRow(row:Row) { if(!confirm(`Delete "${row.city||row.state}"?`)) return; await authFetch(`${BACKEND}/api/admin/location`,{ method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:row.id}) }); showToast('Deleted','✅'); onReload(); }
+  async function handleSave(d:Row) { setSaving(true); const method = d.id ? 'PATCH' : 'POST'; const res = await authFetch(`${BACKEND}/api/admin/location`,{ method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }); const json = await res.json(); setSaving(false); if(!res.ok){ showToast(json.error||'Failed','❌'); return; } showToast(d.id?'Updated!':'Added!','✅'); setModalOpen(false); setEditRow(undefined); onReload(); }
   return (
     <>
-      <div className="topbar">
-        <div className="topbar-left">
-          <h1>Location <span>Master</span></h1>
-          <p>Countries, states & cities used across all school forms and registration pages</p>
-        </div>
-        <div className="topbar-right">
-          <button className="btn btn-primary" onClick={()=>{setEditRow(undefined);setModalOpen(true);}}>+ Add Location</button>
-        </div>
-      </div>
-
+      <div className="topbar"><div className="topbar-left"><h1>Location <span>Master</span></h1><p>Countries, states & cities used across all school forms and registration pages</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={()=>{setEditRow(undefined);setModalOpen(true);}}>+ Add Location</button></div></div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18}}>
-        {[
-          {label:'Total Entries', value:rows.length,     color:'var(--acc)'},
-          {label:'Active',        value:activeCount,     color:'#4ADE80'},
-          {label:'Countries',     value:countryCount,    color:'#f59e0b'},
-          {label:'States/Regions',value:stateCount,      color:'var(--m)'},
-        ].map(s=>(
-          <div key={s.label} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-            <span style={{fontWeight:800,fontSize:22,color:s.color,fontFamily:'Sora'}}>{s.value}</span>
-            <span style={{fontSize:11,color:'var(--m)',fontWeight:500}}>{s.label}</span>
-          </div>
-        ))}
+        {[{label:'Total Entries',value:rows.length,color:'var(--acc)'},{label:'Active',value:activeCount,color:'#4ADE80'},{label:'Countries',value:countryCount,color:'#f59e0b'},{label:'States/Regions',value:stateCount,color:'var(--m)'}].map(s=>(<div key={s.label} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}><span style={{fontWeight:800,fontSize:22,color:s.color,fontFamily:'Sora'}}>{s.value}</span><span style={{fontSize:11,color:'var(--m)',fontWeight:500}}>{s.label}</span></div>))}
       </div>
-
       <div style={{display:'grid',gridTemplateColumns:'220px 1fr',gap:12,height:'calc(100vh - 300px)',minHeight:0}}>
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <div style={{padding:10,borderBottom:'1px solid var(--bd)'}}>
-            <input placeholder="Search countries…" value={countrySearch} onChange={e=>setCountrySearch(e.target.value)} style={{...IS,padding:'8px 12px',fontSize:12}}/>
-          </div>
+          <div style={{padding:10,borderBottom:'1px solid var(--bd)'}}><input placeholder="Search countries…" value={countrySearch} onChange={e=>setCountrySearch(e.target.value)} style={{...IS,padding:'8px 12px',fontSize:12}}/></div>
           <div style={{flex:1,overflowY:'auto',padding:6}}>
-            {filteredCountries.map(c=>{
-              const cnt = rows.filter(r=>r.country===c).length;
-              const isActive = c===activeCountry;
-              return (
-                <button key={c} onClick={()=>setActiveCountry(c)}
-                  style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 10px',borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',marginBottom:2,background: isActive?'rgba(79,70,229,0.15)':'transparent',borderLeft: isActive?'3px solid var(--acc)':'3px solid transparent',transition:'all .12s'}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{COUNTRY_EMOJI[c]??'🌍'}</span>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:isActive?700:500,color:isActive?'var(--acc)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c}</div>
-                    <div style={{fontSize:10,color:'var(--m2)'}}>{cnt} entries</div>
-                  </div>
-                </button>
-              );
-            })}
+            {filteredCountries.map(c=>{ const cnt = rows.filter(r=>r.country===c).length; const isActive = c===activeCountry; return (<button key={c} onClick={()=>setActiveCountry(c)} style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'9px 10px',borderRadius:8,border:'none',cursor:'pointer',textAlign:'left',marginBottom:2,background: isActive?'rgba(79,70,229,0.15)':'transparent',borderLeft: isActive?'3px solid var(--acc)':'3px solid transparent',transition:'all .12s'}}><span style={{fontSize:18,flexShrink:0}}>{COUNTRY_EMOJI[c]??'🌍'}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:isActive?700:500,color:isActive?'var(--acc)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c}</div><div style={{fontSize:10,color:'var(--m2)'}}>{cnt} entries</div></div></button>); })}
           </div>
         </div>
-
         <div style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <div style={{padding:'14px 18px',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
-            <span style={{fontSize:28}}>{COUNTRY_EMOJI[activeCountry]??'🌍'}</span>
-            <div style={{flex:1}}>
-              <h2 style={{fontFamily:'Sora',fontSize:17,fontWeight:800,margin:0,color:'var(--text)'}}>{activeCountry||'Select a country'}</h2>
-              <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{statesInCountry.length} states · {rows.filter(r=>r.country===activeCountry).length} entries</div>
-            </div>
-            <div style={{position:'relative'}}>
-              <input placeholder="Search cities…" value={search} onChange={e=>setSearch(e.target.value)} style={{...IS,padding:'7px 12px',fontSize:12,width:180}}/>
-            </div>
-          </div>
-
-          <div style={{display:'flex',gap:6,padding:'10px 14px',borderBottom:'1px solid var(--bd)',overflowX:'auto',flexShrink:0,flexWrap:'nowrap'}}>
-            {statesInCountry.map(s=>(
-              <button key={s} onClick={()=>setActiveState(s)}
-                style={{padding:'5px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,background: s===activeState?'var(--acc)':'transparent',borderColor: s===activeState?'var(--acc)':'var(--bd)',color: s===activeState?'#fff':'var(--m)',transition:'all .12s'}}>
-                {s}
-                <span style={{marginLeft:5,fontSize:10,opacity:0.7}}>({rows.filter(r=>r.country===activeCountry&&r.state===s).length})</span>
-              </button>
-            ))}
-          </div>
-
+          <div style={{padding:'14px 18px',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:12,flexShrink:0}}><span style={{fontSize:28}}>{COUNTRY_EMOJI[activeCountry]??'🌍'}</span><div style={{flex:1}}><h2 style={{fontFamily:'Sora',fontSize:17,fontWeight:800,margin:0,color:'var(--text)'}}>{activeCountry||'Select a country'}</h2><div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{statesInCountry.length} states · {rows.filter(r=>r.country===activeCountry).length} entries</div></div><div style={{position:'relative'}}><input placeholder="Search cities…" value={search} onChange={e=>setSearch(e.target.value)} style={{...IS,padding:'7px 12px',fontSize:12,width:180}}/></div></div>
+          <div style={{display:'flex',gap:6,padding:'10px 14px',borderBottom:'1px solid var(--bd)',overflowX:'auto',flexShrink:0,flexWrap:'nowrap'}}>{statesInCountry.map(s=>(<button key={s} onClick={()=>setActiveState(s)} style={{padding:'5px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:11,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,background: s===activeState?'var(--acc)':'transparent',borderColor: s===activeState?'var(--acc)':'var(--bd)',color: s===activeState?'#fff':'var(--m)',transition:'all .12s'}}>{s}<span style={{marginLeft:5,fontSize:10,opacity:0.7}}>({rows.filter(r=>r.country===activeCountry&&r.state===s).length})</span></button>))}</div>
           <div style={{flex:1,overflowY:'auto',padding:14}}>
-            {citiesInState.length===0 ? (
-              <div style={{textAlign:'center',padding:'48px 0',color:'var(--m2)',fontSize:13}}>
-                {activeState ? `No entries for ${activeState}. Add cities above.` : 'Select a state tab above.'}
-              </div>
-            ) : (
-              <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                {citiesInState.map(row=>(
-                  <div key={row.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:9,border:'1px solid var(--bd)',background: row.is_active?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.01)',opacity: row.is_active?1:0.5,transition:'all .12s'}}>
-                    <span style={{fontFamily:'monospace',fontSize:11,color:'var(--m2)',width:22,textAlign:'center',flexShrink:0}}>{row.sort_order}</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:14,color:'var(--text)'}}>{row.city||<em style={{color:'var(--m)',fontStyle:'normal',fontSize:12}}>(state-level entry)</em>}</div>
-                      <div style={{fontSize:11,color:'var(--m)',marginTop:1}}>{row.state}{row.country!==activeCountry?` · ${row.country}`:''}</div>
-                    </div>
-                    <button onClick={()=>toggleActive(row)} title={row.is_active?'Deactivate':'Activate'}
-                      style={{background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1,color:row.is_active?'#4ADE80':'rgba(255,255,255,0.2)',flexShrink:0}}>
-                      {row.is_active?'●':'○'}
-                    </button>
-                    <button onClick={()=>{setEditRow(row);setModalOpen(true);}}
-                      style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--m)',flexShrink:0}}>
-                      Edit
-                    </button>
-                    <button onClick={()=>deleteRow(row)}
-                      style={{background:'var(--red2,rgba(239,68,68,0.08))',border:'1px solid rgba(239,68,68,0.15)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--red,#ef4444)',flexShrink:0}}>
-                      Delete
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            {citiesInState.length===0 ? <div style={{textAlign:'center',padding:'48px 0',color:'var(--m2)',fontSize:13}}>{activeState ? `No entries for ${activeState}. Add cities above.` : 'Select a state tab above.'}</div>
+            : <div style={{display:'flex',flexDirection:'column',gap:5}}>{citiesInState.map(row=>(<div key={row.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:9,border:'1px solid var(--bd)',background: row.is_active?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.01)',opacity: row.is_active?1:0.5,transition:'all .12s'}}><span style={{fontFamily:'monospace',fontSize:11,color:'var(--m2)',width:22,textAlign:'center',flexShrink:0}}>{row.sort_order}</span><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:14,color:'var(--text)'}}>{row.city||<em style={{color:'var(--m)',fontStyle:'normal',fontSize:12}}>(state-level entry)</em>}</div><div style={{fontSize:11,color:'var(--m)',marginTop:1}}>{row.state}{row.country!==activeCountry?` · ${row.country}`:''}</div></div><button onClick={()=>toggleActive(row)} title={row.is_active?'Deactivate':'Activate'} style={{background:'none',border:'none',cursor:'pointer',fontSize:18,lineHeight:1,color:row.is_active?'#4ADE80':'rgba(255,255,255,0.2)',flexShrink:0}}>{row.is_active?'●':'○'}</button><button onClick={()=>{setEditRow(row);setModalOpen(true);}} style={{background:'var(--card)',border:'1px solid var(--bd)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--m)',flexShrink:0}}>Edit</button><button onClick={()=>deleteRow(row)} style={{background:'var(--red2,rgba(239,68,68,0.08))',border:'1px solid rgba(239,68,68,0.15)',borderRadius:6,padding:'5px 10px',cursor:'pointer',fontSize:11,color:'var(--red,#ef4444)',flexShrink:0}}>Delete</button></div>))}</div>}
           </div>
         </div>
       </div>
-
-      {modalOpen&&(
-        <LocationFormModal
-          initial={editRow ?? {country: activeCountry, state: activeState}}
-          existingCountries={countries}
-          existingStates={statesInCountry}
-          onClose={()=>{setModalOpen(false);setEditRow(undefined);}}
-          onSave={handleSave}
-        />
-      )}
+      {modalOpen&&(<LocationFormModal initial={editRow ?? {country: activeCountry, state: activeState}} existingCountries={countries} existingStates={statesInCountry} onClose={()=>{setModalOpen(false);setEditRow(undefined);}} onSave={handleSave}/>)}
     </>
   );
 }
