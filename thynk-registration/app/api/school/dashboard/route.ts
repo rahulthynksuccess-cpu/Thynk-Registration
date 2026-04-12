@@ -8,7 +8,6 @@ export async function GET(req: NextRequest) {
 
   const service = createServiceClient();
 
-  // Get school(s) this user has access to
   const { data: roleRows } = await service
     .from('admin_roles')
     .select('role, school_id, schools(id, school_code, name, org_name, city, state, country, is_active, project_slug)')
@@ -25,7 +24,6 @@ export async function GET(req: NextRequest) {
   const schoolId = schoolRole?.school_id;
   const school   = (schoolRole as any)?.schools;
 
-  // Fetch all registrations for this school
   let query = service
     .from('registrations')
     .select(`
@@ -44,7 +42,6 @@ export async function GET(req: NextRequest) {
   const { data: rows, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Flatten rows
   const flat = (rows ?? []).map((r: any) => {
     const payment = r.payments?.[0] ?? {};
     return {
@@ -70,7 +67,6 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // ── Aggregations ──────────────────────────────────────────────────
   const total    = flat.length;
   const paid     = flat.filter(r => r.payment_status === 'paid');
   const unpaid   = flat.filter(r => r.payment_status !== 'paid');
@@ -78,39 +74,36 @@ export async function GET(req: NextRequest) {
   const failed   = flat.filter(r => ['failed','cancelled'].includes(r.payment_status ?? ''));
   const totalRev = paid.reduce((s, r) => s + (r.final_amount ?? 0), 0);
 
-  // Class-wise counts — ALL registrations (not just paid)
-  const byClass: Record<string, { total: number; paid: number; unpaid: number }> = {};
-  flat.forEach(r => {
+  // ── All breakdowns: PAID registrations only ──────────────────────
+
+  // Class-wise — paid only
+  const byClass: Record<string, number> = {};
+  paid.forEach(r => {
     const cls = r.class_grade || 'Unknown';
-    if (!byClass[cls]) byClass[cls] = { total: 0, paid: 0, unpaid: 0 };
-    byClass[cls].total++;
-    if (r.payment_status === 'paid') byClass[cls].paid++;
-    else byClass[cls].unpaid++;
+    byClass[cls] = (byClass[cls] ?? 0) + 1;
   });
 
-  // Gender-wise counts — ALL registrations (not just paid)
-  const byGender: Record<string, { total: number; paid: number }> = {};
-  flat.forEach(r => {
+  // Gender-wise — paid only
+  const byGender: Record<string, number> = {};
+  paid.forEach(r => {
     const g = r.gender || 'Unknown';
-    if (!byGender[g]) byGender[g] = { total: 0, paid: 0 };
-    byGender[g].total++;
-    if (r.payment_status === 'paid') byGender[g].paid++;
+    byGender[g] = (byGender[g] ?? 0) + 1;
   });
 
-  // Class × Gender cross-tab — ALL registrations
+  // Class × Gender matrix — paid only
   const crossTab: Record<string, Record<string, number>> = {};
-  flat.forEach(r => {
+  paid.forEach(r => {
     const cls = r.class_grade || 'Unknown';
     const g   = r.gender      || 'Unknown';
     if (!crossTab[cls]) crossTab[cls] = {};
     crossTab[cls][g] = (crossTab[cls][g] ?? 0) + 1;
   });
 
-  // Daily registrations (last 30 days)
+  // Daily chart (last 30 days) — total + paid lines
   const now = new Date();
   const dailyMap: Record<string, { total: number; paid: number }> = {};
   for (let i = 29; i >= 0; i--) {
-    const d  = new Date(now);
+    const d = new Date(now);
     d.setDate(d.getDate() - i);
     dailyMap[d.toISOString().slice(0, 10)] = { total: 0, paid: 0 };
   }
