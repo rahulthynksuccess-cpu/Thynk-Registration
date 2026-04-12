@@ -35,11 +35,8 @@ interface SchoolData {
 
 type PageStep = 'loading' | 'blocked' | 'details' | 'payment' | 'success';
 
-function detectIsIndia() {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return tz === 'Asia/Calcutta' || tz === 'Asia/Kolkata';
-  } catch { return true; }
+function isIndianCountry(country: string): boolean {
+  return !country || country.toLowerCase() === 'india';
 }
 
 export default function LockedSchoolPage({
@@ -63,10 +60,6 @@ export default function LockedSchoolPage({
     parentName: '', contactPhone: '', contactEmail: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setIsIndia(detectIsIndia());
-  }, []);
 
   // Load school from API
   useEffect(() => {
@@ -98,9 +91,10 @@ export default function LockedSchoolPage({
 
         setSchool(s);
 
-        // Detect currency from school country
-        const country = (s.country || '').toLowerCase();
-        if (country && country !== 'india') setIsIndia(false);
+        // ── AUTHORITATIVE: use school's country to determine currency & gateway ──
+        // School country is set by admin when creating the school.
+        // International schools (non-India) must use PayPal + USD.
+        setIsIndia(isIndianCountry(s.country));
 
         // Pick pricing
         const activePricing = (s.pricing || []).find(p => p.is_active) ?? s.pricing?.[0] ?? null;

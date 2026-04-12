@@ -138,7 +138,6 @@ export default function OpenRegistrationPage({
       <StudentOpenFlow
         projectSlug={projectSlug}
         programName={programName}
-        isIndia={isIndia}
         paymentError={paymentError}
         onBack={() => setMode('choose')}
       />
@@ -237,13 +236,11 @@ export default function OpenRegistrationPage({
 function StudentOpenFlow({
   projectSlug,
   programName,
-  isIndia,
   paymentError,
   onBack,
 }: {
   projectSlug: string;
   programName: string;
-  isIndia: boolean;
   paymentError?: boolean;
   onBack: () => void;
 }) {
@@ -253,6 +250,10 @@ function StudentOpenFlow({
   const [country, setCountry] = useState('India');
   const [state, setState]     = useState('');
   const [city, setCity]       = useState('');
+
+  // ── AUTHORITATIVE: derive isIndia from user-selected country ──────
+  // International students selecting a non-India country must use PayPal + USD.
+  const isIndia = !country || country === 'India';
 
   // Schools
   const [schools, setSchools]         = useState<SchoolOption[]>([]);

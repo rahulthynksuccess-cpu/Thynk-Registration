@@ -2,6 +2,8 @@
 import { authFetch } from '@/lib/supabase/client';
 import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
 import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithApproval';
+import { SchoolLogPanel } from '@/components/admin/SchoolLogPanel';
+import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -30,6 +32,11 @@ const NAV = [
   { section:'Integrations' },
   { id:'_integrations', icon:'⚙️',  label:'Payment & Email', href:'/admin/integrations' },
   { id:'_triggers',     icon:'🔔', label:'Message Triggers', href:'/admin/message-triggers' },
+  { section:'Logs' },
+  { id:'logs_schools',  icon:'🏫', label:'School Logs'       },
+  { id:'logs_students', icon:'👨‍🎓', label:'Student Logs'      },
+  { id:'logs_email',    icon:'📧', label:'Email Logs'        },
+  { id:'logs_whatsapp', icon:'💬', label:'WhatsApp Logs'     },
   { section:'Settings' },
   { id:'_settings',     icon:'📍', label:'Settings & Locations', href:'/admin/settings' },
   { section:'Tools' },
@@ -60,6 +67,16 @@ export default function AdminDashboard() {
   const [triggers,     setTriggers]     = useState<Row[]>([]);
   const [templates,    setTemplates]    = useState<Row[]>([]);
   const [locations,    setLocations]    = useState<Row[]>([]);
+
+  // Logs state
+  const [logSchools,         setLogSchools]         = useState<Row[]>([]);
+  const [logSelectedSchool,  setLogSelectedSchool]  = useState<Row|null>(null);
+  const [logAllStudents,     setLogAllStudents]      = useState<Row[]>([]);
+  const [logSelectedStudent, setLogSelectedStudent] = useState<Row|null>(null);
+  const [logEmailRows,       setLogEmailRows]        = useState<Row[]>([]);
+  const [logWaRows,          setLogWaRows]           = useState<Row[]>([]);
+  const [logEmailLoading,    setLogEmailLoading]     = useState(false);
+  const [logWaLoading,       setLogWaLoading]        = useState(false);
 
   // Form modals
   const [programForm,     setProgramForm]     = useState<Row|null>(null);
@@ -130,7 +147,6 @@ export default function AdminDashboard() {
     if (!user) return;
     if (activePage === 'overview')     loadPrograms();
    if (activePage === 'reporting')  { loadPrograms(); loadSchools(); }
-    if (activePage === 'students')     loadPrograms();
     if (activePage === 'programs')     loadPrograms();
     if (activePage === 'schools')      loadSchools();
     if (activePage === 'discounts')    loadDiscounts();
@@ -139,6 +155,18 @@ export default function AdminDashboard() {
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')    loadTemplates();
     if (activePage === 'locations')    loadLocations();
+    if (activePage === 'logs_schools' || activePage === 'logs_students' || activePage === 'logs_email' || activePage === 'logs_whatsapp') {
+      loadSchools();
+      api('/api/admin/registrations?limit=1000').then((d: any) => setLogAllStudents((d.rows??[]).filter((r:Row)=>r.student_name?.trim())));
+    }
+    if (activePage === 'logs_email') {
+      setLogEmailLoading(true);
+      api('/api/admin/notification-logs?channel=email&limit=200').then((d:any)=>{ setLogEmailRows(d.logs??[]); setLogEmailLoading(false); }).catch(()=>setLogEmailLoading(false));
+    }
+    if (activePage === 'logs_whatsapp') {
+      setLogWaLoading(true);
+      api('/api/admin/notification-logs?channel=whatsapp&limit=200').then((d:any)=>{ setLogWaRows(d.logs??[]); setLogWaLoading(false); }).catch(()=>setLogWaLoading(false));
+    }
   }, [activePage, user]);
 
   function showToast(text:string, icon='') {
@@ -346,7 +374,7 @@ export default function AdminDashboard() {
           {/* Students */}
           <div className={`page${activePage==='students'?' active':''}`}>
             <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{allRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
-            <StudentsTable rows={allRows} programs={programs} onRowClick={setModal} />
+            <StudentsTable rows={allRows} onRowClick={setModal} />
           </div>
 
           {/* Trends */}
@@ -556,6 +584,125 @@ export default function AdminDashboard() {
             </table></div>
           </div>
 
+          {/* ── LOGS: SCHOOLS ─────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_schools'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>School <span>Logs</span></h1><p>Activity, registrations, email & WhatsApp logs per school</p></div>
+            </div>
+            {activePage==='logs_schools' && (
+              <div style={{padding:'0 0 24px'}}>
+                <div style={{marginBottom:16}}>
+                  <select
+                    style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:280}}
+                    value={logSelectedSchool?.id??''}
+                    onChange={e=>setLogSelectedSchool(schools.find(s=>s.id===e.target.value)??null)}
+                  >
+                    <option value="">— Select a school —</option>
+                    {schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
+                  </select>
+                </div>
+                {logSelectedSchool ? (
+                  <SchoolLogPanel
+                    schoolId={logSelectedSchool.id}
+                    schoolCode={logSelectedSchool.school_code}
+                    authHeaders={authHeaders}
+                    BACKEND={BACKEND}
+                  />
+                ) : (
+                  <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a school above to view its logs.</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── LOGS: STUDENTS ────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_students'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>Student <span>Logs</span></h1><p>Email & WhatsApp notification logs per student registration</p></div>
+            </div>
+            {activePage==='logs_students' && (
+              <div style={{padding:'0 0 24px'}}>
+                <div style={{marginBottom:16}}>
+                  <select
+                    style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:340}}
+                    value={logSelectedStudent?.id??''}
+                    onChange={e=>setLogSelectedStudent(logAllStudents.find(s=>s.id===e.target.value)??null)}
+                  >
+                    <option value="">— Select a student —</option>
+                    {logAllStudents.map(s=><option key={s.id} value={s.id}>{s.student_name} · {s.parent_email||s.parent_phone||''} ({s.school_code||''})</option>)}
+                  </select>
+                </div>
+                {logSelectedStudent ? (
+                  <StudentLogPanel
+                    registrationId={logSelectedStudent.id}
+                    studentEmail={logSelectedStudent.parent_email??''}
+                    studentPhone={logSelectedStudent.parent_phone??''}
+                    authHeaders={authHeaders}
+                    BACKEND={BACKEND}
+                  />
+                ) : (
+                  <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a student above to view notification logs.</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── LOGS: EMAIL ───────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_email'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>Email <span>Trigger Logs</span></h1><p>All outbound email notifications (latest 200)</p></div>
+              <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogEmailLoading(true);api('/api/admin/notification-logs?channel=email&limit=200').then((d:any)=>{setLogEmailRows(d.logs??[]);setLogEmailLoading(false);}).catch(()=>setLogEmailLoading(false));}}>🔄 Refresh</button></div>
+            </div>
+            <div className="tbl-wrap"><table>
+              <thead><tr><th>Time</th><th>Event</th><th>Recipient</th><th>School</th><th>Student</th><th>Status</th></tr></thead>
+              <tbody>
+                {logEmailLoading
+                  ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
+                  : logEmailRows.length===0
+                    ? <tr><td colSpan={6} className="table-empty">No email logs found.</td></tr>
+                    : logEmailRows.map((r,i)=>(
+                      <tr key={r.id??i}>
+                        <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
+                        <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
+                        <td style={{fontSize:12}}>{r.recipient??r.to_email??'—'}</td>
+                        <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
+                        <td style={{fontSize:12}}>{r.student_name??'—'}</td>
+                        <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
+                      </tr>
+                    ))
+                }
+              </tbody>
+            </table></div>
+          </div>
+
+          {/* ── LOGS: WHATSAPP ────────────────────────────────────────── */}
+          <div className={`page${activePage==='logs_whatsapp'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>WhatsApp <span>Trigger Logs</span></h1><p>All outbound WhatsApp notifications (latest 200)</p></div>
+              <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogWaLoading(true);api('/api/admin/notification-logs?channel=whatsapp&limit=200').then((d:any)=>{setLogWaRows(d.logs??[]);setLogWaLoading(false);}).catch(()=>setLogWaLoading(false));}}>🔄 Refresh</button></div>
+            </div>
+            <div className="tbl-wrap"><table>
+              <thead><tr><th>Time</th><th>Event</th><th>Phone</th><th>School</th><th>Student</th><th>Status</th></tr></thead>
+              <tbody>
+                {logWaLoading
+                  ? <tr><td colSpan={6} className="table-empty">Loading…</td></tr>
+                  : logWaRows.length===0
+                    ? <tr><td colSpan={6} className="table-empty">No WhatsApp logs found.</td></tr>
+                    : logWaRows.map((r,i)=>(
+                      <tr key={r.id??i}>
+                        <td style={{fontSize:11,color:'var(--m)',whiteSpace:'nowrap'}}>{r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : '—'}</td>
+                        <td><code style={{background:'rgba(37,211,102,0.12)',color:'#25d366',padding:'2px 6px',borderRadius:4,fontSize:11}}>{r.event_type??'—'}</code></td>
+                        <td style={{fontSize:12}}>{r.recipient??r.to_phone??'—'}</td>
+                        <td style={{fontSize:12,color:'var(--m)'}}>{r.school_code??r.schools?.school_code??'—'}</td>
+                        <td style={{fontSize:12}}>{r.student_name??'—'}</td>
+                        <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status??'—'}</span></td>
+                      </tr>
+                    ))
+                }
+              </tbody>
+            </table></div>
+          </div>
+
           {/* ── TEMPLATES ────────────────────────────────────────────── */}
           <div className={`page${activePage==='templates'?' active':''}`}>
             <div className="topbar">
@@ -679,7 +826,6 @@ function getSchoolName(r: Row): string {
 function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; programs: Row[]; schools: Row[] }) {
   const [timelineDays,  setTimelineDays]  = useState(-1);
   const [filterProgram, setFilterProgram] = useState('');
-  const rpChartsRef = useRef<Record<string, any>>({});
 
   // ── Step 1: apply program + timeline filter to get working rows ──
   const base        = filterProgram ? allRows.filter(r => r.program_name === filterProgram) : allRows;
@@ -777,102 +923,6 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
     const sr  = paidRows.filter(r => getSchoolName(r) === s);
     return { name: s, students: sr.length, rev: sr.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
   }).sort((a, b) => b.students - a.students).slice(0, 10);
-
-  // ── 11. City-wise → paid registrations ───────────────────────────
-  const citySet = [...new Set(paidRows.map(r => r.city).filter(Boolean))];
-  const cityStats = citySet.map(c => {
-    const cr = paidRows.filter(r => r.city === c);
-    return { city: c, students: cr.length, rev: cr.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
-  }).sort((a, b) => b.students - a.students).slice(0, 15);
-
-  // ── 12. Daily timeline → all registrations (for timeline chart) ───
-  const now = new Date();
-  const timelineLabels: string[] = [];
-  const timelineTotals: number[] = [];
-  const timelinePaid: number[] = [];
-  const timelineRevenue: number[] = [];
-  const tDays = timelineDays <= 0 ? 30 : timelineDays;
-  for (let i = tDays - 1; i >= 0; i--) {
-    const d = new Date(now); d.setDate(d.getDate() - i);
-    const ds = d.toISOString().slice(0, 10);
-    timelineLabels.push(d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
-    const day = rows.filter(r => r.created_at?.slice(0, 10) === ds);
-    timelineTotals.push(day.length);
-    timelinePaid.push(day.filter(r => r.payment_status === 'paid').length);
-    timelineRevenue.push(day.filter(r => r.payment_status === 'paid').reduce((s: number, r: Row) => s + (r.final_amount ?? 0), 0));
-  }
-
-  // ── Chart rendering ───────────────────────────────────────────────
-  const dcRp = (id: string) => { if (rpChartsRef.current[id]) { rpChartsRef.current[id].destroy(); delete rpChartsRef.current[id]; } };
-
-  useEffect(() => {
-    if (!(window as any).Chart) return;
-    const C = (window as any).Chart;
-    const GW_COLORS_MAP: Record<string, string> = { razorpay: '#4f46e5', cashfree: '#10b981', easebuzz: '#f59e0b', paypal: '#0070ba', stripe: '#635bff' };
-    const FALLBACK_COLORS = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899'];
-
-    // Gateway donut - paid count share
-    dcRp('rpGwDonut');
-    if (gatewayStats.length > 0) {
-      const ctxGD = (document.getElementById('rpChartGwDonut') as HTMLCanvasElement)?.getContext('2d');
-      if (ctxGD) rpChartsRef.current.rpGwDonut = new C(ctxGD, {
-        type: 'doughnut',
-        data: {
-          labels: gatewayStats.map(g => g.gw),
-          datasets: [{ data: gatewayStats.map(g => g.paid), backgroundColor: gatewayStats.map((g, i) => GW_COLORS_MAP[g.gw] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]), borderWidth: 3, borderColor: 'var(--card)', hoverOffset: 8 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } } }, cutout: '62%' }
-      });
-    }
-
-    // Gateway bar - revenue
-    dcRp('rpGwBar');
-    if (gatewayStats.length > 0) {
-      const ctxGB = (document.getElementById('rpChartGwBar') as HTMLCanvasElement)?.getContext('2d');
-      if (ctxGB) rpChartsRef.current.rpGwBar = new C(ctxGB, {
-        type: 'bar',
-        data: {
-          labels: gatewayStats.map(g => g.gw),
-          datasets: [
-            { label: 'Revenue (₹)', data: gatewayStats.map(g => g.rev / 100), backgroundColor: gatewayStats.map((g, i) => (GW_COLORS_MAP[g.gw] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]) + 'cc'), borderRadius: 8, borderSkipped: false, yAxisID: 'y' },
-            { label: 'Paid Count', data: gatewayStats.map(g => g.paid), backgroundColor: 'rgba(16,185,129,0.2)', borderColor: '#10b981', borderWidth: 2, borderRadius: 6, borderSkipped: false, yAxisID: 'y2', type: 'line' as any, tension: 0.3, pointRadius: 5, pointHoverRadius: 7 }
-          ]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, position: 'left', ticks: { callback: (v: number) => '₹' + v.toLocaleString('en-IN') } }, y2: { beginAtZero: true, position: 'right', grid: { display: false }, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
-      });
-    }
-
-    // City bar - top 15 cities
-    dcRp('rpCityBar');
-    if (cityStats.length > 0) {
-      const ctxCB = (document.getElementById('rpChartCityBar') as HTMLCanvasElement)?.getContext('2d');
-      if (ctxCB) rpChartsRef.current.rpCityBar = new C(ctxCB, {
-        type: 'bar',
-        data: {
-          labels: cityStats.map(c => c.city),
-          datasets: [{ label: 'Paid Students', data: cityStats.map(c => c.students), backgroundColor: cityStats.map((_, i) => FALLBACK_COLORS[i % FALLBACK_COLORS.length] + 'cc'), borderRadius: 6, borderSkipped: false }]
-        },
-        options: { indexAxis: 'y' as any, responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true }, y: { grid: { display: false } } } }
-      });
-    }
-
-    // Timeline chart
-    dcRp('rpTimeline');
-    const ctxTL = (document.getElementById('rpChartTimeline') as HTMLCanvasElement)?.getContext('2d');
-    if (ctxTL) rpChartsRef.current.rpTimeline = new C(ctxTL, {
-      data: {
-        labels: timelineLabels,
-        datasets: [
-          { type: 'bar' as any, label: 'Total Registrations', data: timelineTotals, backgroundColor: 'rgba(79,70,229,0.15)', borderColor: '#4f46e5', borderWidth: 1.5, borderRadius: 6, yAxisID: 'y' },
-          { type: 'bar' as any, label: 'Paid', data: timelinePaid, backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 6, yAxisID: 'y' },
-          { type: 'line' as any, label: 'Revenue', data: timelineRevenue, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 2.5, pointRadius: 3, fill: true, tension: 0.4, yAxisID: 'y2' }
-        ]
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, position: 'left', ticks: { stepSize: 1 } }, y2: { beginAtZero: true, position: 'right', grid: { display: false }, ticks: { callback: (v: number) => '₹' + fmt(v / 100) } }, x: { grid: { display: false } } } }
-    });
-
-    return () => { ['rpGwDonut','rpGwBar','rpCityBar','rpTimeline'].forEach(dcRp); };
-  }, [gatewayStats, cityStats, timelineLabels, timelineTotals, timelinePaid, timelineRevenue]);
 
   // ── Helpers ───────────────────────────────────────────────────────
   const maxOf = (arr: number[]) => Math.max(...arr, 1);
@@ -1160,8 +1210,7 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
 
       {/* ── 8: Payment Mode Breakdown ── */}
       <Section title="Payment Mode Breakdown" note="Attempts = all · Revenue = paid only">
-        {/* Gateway KPI cards */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           {gatewayStats.map((g, i) => {
             const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4'];
             const color  = GW_COLORS[g.gw] ?? COLORS[i % COLORS.length];
@@ -1176,19 +1225,6 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
           })}
           {gatewayStats.length === 0 && <div style={{ color: 'var(--m2)', fontSize: 13, padding: '20px' }}>No payment data</div>}
         </div>
-        {/* Gateway Charts Row */}
-        {gatewayStats.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 20 }}>
-            <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>🍩 Gateway Share (Paid)</div>
-              <div style={{ height: 240 }}><canvas id="rpChartGwDonut" /></div>
-            </div>
-            <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>💰 Gateway Revenue vs Paid Count</div>
-              <div style={{ height: 240 }}><canvas id="rpChartGwBar" /></div>
-            </div>
-          </div>
-        )}
         <div className="tbl-wrap">
           <table>
             <thead>
@@ -1217,67 +1253,6 @@ function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; program
             </tbody>
           </table>
         </div>
-      </Section>
-
-      {/* ── 8b: Registration Timeline Chart ── */}
-      <Section title="Registration Timeline" note="All registrations over selected period">
-        <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20, marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em' }}>📅 Daily Registrations + Revenue Over Time</div>
-            <span style={{ fontSize: 10, background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>
-              {timelineDays === 0 ? 'Today' : timelineDays === -1 ? 'Current Year (last 30d view)' : `Last ${timelineDays} days`}
-            </span>
-          </div>
-          <div style={{ height: 300 }}><canvas id="rpChartTimeline" /></div>
-        </div>
-      </Section>
-
-      {/* ── 8c: City-wise Breakup ── */}
-      <Section title="City-wise Breakup" note="Paid registrations only · Top 15 cities">
-        {cityStats.length === 0
-          ? <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--m2)', fontSize: 13 }}>No paid registrations yet</div>
-          : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 8 }}>
-              {/* Chart */}
-              <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>📊 Students by City</div>
-                <div style={{ height: Math.max(240, cityStats.length * 28) }}><canvas id="rpChartCityBar" /></div>
-              </div>
-              {/* Table */}
-              <div style={{ background: 'var(--card)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20, overflowY: 'auto', maxHeight: 500 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>🏙️ City Revenue Table</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--m)', fontWeight: 600, borderBottom: '1.5px solid var(--bd)' }}>#</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--m)', fontWeight: 600, borderBottom: '1.5px solid var(--bd)' }}>City</th>
-                      <th style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--m)', fontWeight: 600, borderBottom: '1.5px solid var(--bd)' }}>Students</th>
-                      <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--m)', fontWeight: 600, borderBottom: '1.5px solid var(--bd)' }}>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cityStats.map((c, i) => (
-                      <tr key={c.city} style={{ borderBottom: '1px solid var(--bd)', background: i < 3 ? 'rgba(79,70,229,0.04)' : 'transparent' }}>
-                        <td style={{ padding: '7px 8px', color: 'var(--m2)', fontWeight: i < 3 ? 800 : 400 }}>
-                          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
-                        </td>
-                        <td style={{ padding: '7px 8px', fontWeight: 600, color: 'var(--text)' }}>{c.city}</td>
-                        <td style={{ padding: '7px 8px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                            <div style={{ width: 60, background: 'rgba(79,70,229,0.1)', borderRadius: 3, height: 5, overflow: 'hidden' }}>
-                              <div style={{ width: `${Math.round(c.students / cityStats[0].students * 100)}%`, height: '100%', background: '#4f46e5', borderRadius: 3 }} />
-                            </div>
-                            <span style={{ color: '#10b981', fontWeight: 700 }}>{c.students}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#f59e0b', fontFamily: 'Sora' }}>₹{fmtAmt(c.rev)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
       </Section>
 
       {/* ── 9 & 10: Top 10 Schools ── */}
@@ -1483,7 +1458,7 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
   const countryData = LOCATION_DATA[f.country] ?? LOCATION_DATA['Other'];
   const stateList = Object.keys(countryData.states);
   const cityList = f.state ? (countryData.states[f.state] ?? []) : [];
-  const regUrl = selProgram ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/${f.school_code||'[schoolcode]'}` : '';
+  const regUrl = selProgram ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/?school=${f.school_code||'[schoolcode]'}` : '';
   const basePriceDisplay = (() => { if (!selProgram) return null; if (isIndianCountry(f.country)) { const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null); return inr ? { label:`₹${fmtR(inr)}`, raw: String(inr/100) } : null; } else { const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null); return usd ? { label:`$${fmtR(usd)}`, raw: String(usd/100) } : null; } })();
   useEffect(() => { if (basePriceDisplay?.raw && !f.id) { setF(p => ({...p, school_price: basePriceDisplay.raw})); } }, [f.project_id, f.country]);
   return (
@@ -1578,7 +1553,7 @@ function SchoolsTable({ schools, programs, isSuperAdmin, onEdit }:{ schools:Row[
         <thead><tr><th>Code</th><th>School Name</th><th>Organisation</th><th>City / State</th><th>Program</th><th>Base Price</th><th>School Price</th><th>Discount Code</th><th>Registration URL</th><th>Dashboard</th><th>Status</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
         <tbody>
           {filtered.length===0 ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
-          : filtered.map(s=>{ const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/${s.school_code}`; const basePriceFmt = (() => { if (!prog) return '—'; const isIndia = (s.country||'India').toLowerCase()==='india'; if (isIndia) { const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null); return inr ? `₹${fmtR(inr)}` : '—'; } const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null); return usd ? `$${fmtR(usd)}` : '—'; })(); const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR'; const schoolPriceFmt = schoolCurrency === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
+          : filtered.map(s=>{ const prog = programs.find(p=>p.id===s.project_id) ?? programs.find(p=>p.slug===s.project_slug); const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug??''}/?school=${s.school_code}`; const basePriceFmt = (() => { if (!prog) return '—'; const isIndia = (s.country||'India').toLowerCase()==='india'; if (isIndia) { const inr = prog.base_amount_inr ?? (prog.currency==='INR' ? prog.base_amount : null); return inr ? `₹${fmtR(inr)}` : '—'; } const usd = prog.base_amount_usd ?? (prog.currency==='USD' ? prog.base_amount : null); return usd ? `$${fmtR(usd)}` : '—'; })(); const schoolCurrency = s.pricing?.[0]?.currency ?? 'INR'; const schoolPriceFmt = schoolCurrency === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount??0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount??0)}`;
             return (<tr key={s.id}><td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{s.school_code}</code></td><td style={{fontWeight:700}}>{s.name}</td><td style={{fontSize:12,color:'var(--m)'}}>{s.org_name}</td><td style={{fontSize:12}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')||'—'}</td><td style={{fontSize:12}}>{prog?.name ?? s.project_slug ?? '—'}</td><td style={{fontSize:12,fontWeight:600,color:'var(--acc)'}}>{basePriceFmt}</td><td><span className="amt">{schoolPriceFmt}</span></td><td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:11}}>{s.discount_code || s.school_code?.toUpperCase()}</code></td><td><a href={regUrl} target="_blank" style={{color:'var(--acc)',fontSize:11,textDecoration:'none'}} onClick={e=>e.stopPropagation()}>🔗 {regUrl.replace('https://','')}</a></td><td><a href="/school/login" target="_blank" style={{color:'#10b981',fontSize:11,fontWeight:600,textDecoration:'none',whiteSpace:'nowrap'}}>🏫 School Login</a></td><td><span className={`badge ${s.is_active?'badge-paid':'badge-cancelled'}`}>{s.is_active?'Active':'Inactive'}</span></td>{isSuperAdmin&&<td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>onEdit(s)}>Edit</button></td>}</tr>);
           })}
         </tbody>
@@ -1772,106 +1747,26 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
 }
 
 // ── Table components ────────────────────────────────────────────────
-function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row[]; onRowClick:(r:Row)=>void }) {
-  const [search,  setSearch]  = useState('');
-  const [status,  setStatus]  = useState('');
-  const [gateway, setGateway] = useState('');
-  const [program, setProgram] = useState('');
-  const [country, setCountry] = useState('');
-  const [state,   setState]   = useState('');
-  const [city,    setCity]    = useState('');
-  const [school,  setSchool]  = useState('');
-  const [cls,     setCls]     = useState('');
-  const [gender,  setGender]  = useState('');
-
-  // Derive unique lists from data
-  const statuses  = [...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
-  const gateways  = [...new Set(rows.map(r=>r.gateway).filter(Boolean))];
-  const countries = [...new Set(rows.map(r=>r.country).filter(Boolean))].sort();
-  const classes   = [...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
-
-  // States filtered by selected country
-  const statesForCountry = [...new Set(
-    rows.filter(r=>!country||r.country===country).map(r=>r.state).filter(Boolean)
-  )].sort();
-
-  // Cities filtered by selected country+state
-  const citiesForState = [...new Set(
-    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)).map(r=>r.city).filter(Boolean)
-  )].sort();
-
-  // Schools filtered by current country+state+city selection
-  const schoolsFiltered = [...new Set(
-    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)&&(!city||r.city===city))
-      .map(r=>r.school_name??r.parent_school).filter(Boolean)
-  )].sort();
-
-  // Reset dependent filters when parent changes
-  const handleCountryChange = (v:string) => { setCountry(v); setState(''); setCity(''); setSchool(''); };
-  const handleStateChange   = (v:string) => { setState(v);   setCity(''); setSchool(''); };
-  const handleCityChange    = (v:string) => { setCity(v);    setSchool(''); };
-
-  const filtered = rows.filter(r => {
-    const hay = [r.student_name,r.parent_name,r.contact_phone,r.contact_email,r.parent_school,r.city,r.gateway_txn_id,r.school_name].join(' ').toLowerCase();
-    const schoolName = r.school_name??r.parent_school??'';
-    return (
-      (!search  || hay.includes(search.toLowerCase())) &&
-      (!status  || r.payment_status===status) &&
-      (!gateway || r.gateway===gateway) &&
-      (!program || r.program_name===program) &&
-      (!country || r.country===country) &&
-      (!state   || r.state===state) &&
-      (!city    || r.city===city) &&
-      (!school  || schoolName===school) &&
-      (!cls     || r.class_grade===cls) &&
-      (!gender  || r.gender===gender)
-    );
-  });
-
+function StudentsTable({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>void }) {
+  const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [gateway,setGateway]=useState('');const [city,setCity]=useState('');const [cls,setCls]=useState('');const [gender,setGender]=useState('');
+  const statuses=[...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
+  const gateways=[...new Set(rows.map(r=>r.gateway).filter(Boolean))];
+  const cities=[...new Set(rows.map(r=>r.city).filter(Boolean))].sort();
+  const classes=[...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
+  const filtered=rows.filter(r=>{const hay=[r.student_name,r.parent_name,r.contact_phone,r.contact_email,r.parent_school,r.city,r.gateway_txn_id].join(' ').toLowerCase();return(!search||hay.includes(search.toLowerCase()))&&(!status||r.payment_status===status)&&(!gateway||r.gateway===gateway)&&(!city||r.city===city)&&(!cls||r.class_grade===cls)&&(!gender||r.gender===gender);});
   return (<>
     <div className="table-toolbar">
       <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)}/>
-      <select value={status}  onChange={e=>setStatus(e.target.value)}>
-        <option value="">All Status</option>
-        {statuses.map(s=><option key={s}>{s}</option>)}
-      </select>
-      <select value={gateway} onChange={e=>setGateway(e.target.value)}>
-        <option value="">All Gateways</option>
-        {gateways.map(g=><option key={g}>{g}</option>)}
-      </select>
-      <select value={program} onChange={e=>setProgram(e.target.value)}>
-        <option value="">All Programs</option>
-        {programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
-      </select>
-      <select value={country} onChange={e=>handleCountryChange(e.target.value)}>
-        <option value="">All Countries</option>
-        {countries.map(c=><option key={c}>{c}</option>)}
-      </select>
-      <select value={state} onChange={e=>handleStateChange(e.target.value)} disabled={!country&&statesForCountry.length===0}>
-        <option value="">All States</option>
-        {statesForCountry.map(s=><option key={s}>{s}</option>)}
-      </select>
-      <select value={city} onChange={e=>handleCityChange(e.target.value)} disabled={citiesForState.length===0}>
-        <option value="">All Cities</option>
-        {citiesForState.map(c=><option key={c}>{c}</option>)}
-      </select>
-      <select value={school} onChange={e=>setSchool(e.target.value)}>
-        <option value="">All Schools</option>
-        {schoolsFiltered.map(s=><option key={s}>{s}</option>)}
-      </select>
-      <select value={cls} onChange={e=>setCls(e.target.value)}>
-        <option value="">All Classes</option>
-        {classes.map(c=><option key={c}>{c}</option>)}
-      </select>
-      <select value={gender} onChange={e=>setGender(e.target.value)}>
-        <option value="">All Gender</option>
-        {['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}
-      </select>
+      <select value={status}  onChange={e=>setStatus(e.target.value)}>  <option value="">All Status</option>   {statuses.map(s=><option key={s}>{s}</option>)}</select>
+      <select value={gateway} onChange={e=>setGateway(e.target.value)}><option value="">All Gateways</option>{gateways.map(g=><option key={g}>{g}</option>)}</select>
+      <select value={city}    onChange={e=>setCity(e.target.value)}>    <option value="">All Cities</option>   {cities.map(c=><option key={c}>{c}</option>)}</select>
+      <select value={cls}     onChange={e=>setCls(e.target.value)}>     <option value="">All Classes</option>  {classes.map(c=><option key={c}>{c}</option>)}</select>
+      <select value={gender}  onChange={e=>setGender(e.target.value)}>  <option value="">All Gender</option>   {['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}</select>
       <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {rows.length}</span>
     </div>
     <div className="tbl-wrap"><table>
-      <thead><tr>{['#','Date','Status','Student','Gender','Class','Program','Country','School','City','Parent','Phone','Gateway','Amount','Discount'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-      <tbody>{filtered.length===0?<tr><td colSpan={15} className="table-empty">No records found</td></tr>:filtered.map((r,i)=>(
+      <thead><tr>{['#','Date','Status','Student','Gender','Class','School','City','Parent','Phone','Gateway','Amount','Discount'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+      <tbody>{filtered.length===0?<tr><td colSpan={13} className="table-empty">No records found</td></tr>:filtered.map((r,i)=>(
         <tr key={r.id} onClick={()=>onRowClick(r)}>
           <td style={{color:'var(--m2)',fontSize:11}}>{i+1}</td>
           <td style={{color:'var(--m)',fontSize:11}}>{r.created_at?.slice(0,10)}</td>
@@ -1879,8 +1774,6 @@ function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row
           <td><div style={{fontWeight:700}}>{r.student_name}</div></td>
           <td><span style={{fontSize:11,padding:'2px 8px',borderRadius:6,fontWeight:600,background:r.gender==='Male'?'#eff6ff':r.gender==='Female'?'#fdf2f8':'var(--bg)',color:r.gender==='Male'?'#2563eb':r.gender==='Female'?'#db2777':'var(--m)'}}>{r.gender??'—'}</span></td>
           <td><span style={{fontSize:11,background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontWeight:600}}>{r.class_grade??'—'}</span></td>
-          <td><span style={{fontSize:11,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',padding:'2px 8px',borderRadius:6,fontWeight:600,whiteSpace:'nowrap'}}>{r.program_name??'—'}</span></td>
-          <td style={{fontSize:12,whiteSpace:'nowrap'}}>{r.country??'—'}</td>
           <td style={{fontSize:12}}>{r.school_name??r.parent_school??'—'}</td>
           <td style={{fontSize:12}}>{r.city??'—'}</td>
           <td style={{fontSize:12}}>{r.parent_name??'—'}</td>
