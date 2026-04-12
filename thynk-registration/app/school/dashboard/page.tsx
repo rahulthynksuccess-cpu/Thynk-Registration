@@ -31,46 +31,40 @@ function Badge({ status }: { status: string }) {
   return <span style={{ background:bg, color:fg, borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{status ?? '—'}</span>;
 }
 
-function ClassBreakdownCard({ byClass }: { byClass: Record<string, { total:number; paid:number; unpaid:number }> }) {
+// byClass = { 'Grade 1': 5, 'Grade 2': 3 } — paid counts only
+function ClassBreakdownCard({ byClass, totalPaid }: { byClass: Record<string, number>; totalPaid: number }) {
   const classes = Object.keys(byClass).sort();
+  const maxCount = Math.max(...classes.map(c => byClass[c]), 1);
   return (
-    <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:20, display:'flex', flexDirection:'column', gap:0 }}>
+    <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:20 }}>
       <div style={{ fontWeight:700, fontSize:14, marginBottom:16, color:'var(--text)', display:'flex', alignItems:'center', gap:8 }}>
-        📚 Class-wise Breakdown
-        <span style={{ fontSize:10, background:'rgba(79,70,229,0.1)', color:'var(--acc)', padding:'2px 8px', borderRadius:20, fontWeight:600, marginLeft:'auto' }}>All registrations</span>
+        📚 Class-wise Paid
+        <span style={{ fontSize:10, background:'rgba(16,185,129,0.1)', color:'#10b981', padding:'2px 8px', borderRadius:20, fontWeight:600, marginLeft:'auto' }}>Paid only</span>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:10, maxHeight:320, overflowY:'auto' }}>
+        {classes.length === 0 && <p style={{ color:'var(--m)', fontSize:13 }}>No paid registrations yet.</p>}
         {classes.map(cls => {
-          const { total, paid, unpaid } = byClass[cls];
-          const paidPct = total > 0 ? Math.round((paid / total) * 100) : 0;
+          const count = byClass[cls];
+          const pct   = Math.round((count / maxCount) * 100);
+          const share = totalPaid > 0 ? Math.round((count / totalPaid) * 100) : 0;
           return (
-            <div key={cls} style={{ display:'flex', flexDirection:'column', gap:4 }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                <span style={{ background:'var(--acc3)', color:'var(--acc)', padding:'2px 10px', borderRadius:6, fontSize:11, fontWeight:700, flexShrink:0, minWidth:70, textAlign:'center' }}>{cls}</span>
-                <div style={{ flex:1, display:'flex', alignItems:'center', gap:4 }}>
-                  <div style={{ flex:1, height:10, borderRadius:5, overflow:'hidden', background:'rgba(239,68,68,0.15)', display:'flex', minWidth:60 }}>
-                    <div style={{ width:`${paidPct}%`, height:'100%', background:'#10b981', borderRadius:'5px 0 0 5px', flexShrink:0 }} />
-                  </div>
-                </div>
-                <div style={{ display:'flex', gap:8, flexShrink:0, fontSize:11 }}>
-                  <span style={{ color:'#10b981', fontWeight:700 }}>{paid}✓</span>
-                  <span style={{ color:'#ef4444', fontWeight:600 }}>{unpaid}✗</span>
-                  <span style={{ color:'var(--m)', fontWeight:600 }}>/{total}</span>
-                </div>
+            <div key={cls} style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ background:'var(--acc3)', color:'var(--acc)', padding:'2px 10px', borderRadius:6, fontSize:11, fontWeight:700, flexShrink:0, minWidth:72, textAlign:'center' }}>{cls}</span>
+              <div style={{ flex:1, height:10, borderRadius:5, overflow:'hidden', background:'var(--bd)' }}>
+                <div style={{ width:`${pct}%`, height:'100%', background:'#10b981', borderRadius:5 }} />
               </div>
+              <span style={{ fontSize:12, fontWeight:800, color:'#10b981', minWidth:20, textAlign:'right' }}>{count}</span>
+              <span style={{ fontSize:10, color:'var(--m)', minWidth:32 }}>{share}%</span>
             </div>
           );
         })}
-      </div>
-      <div style={{ display:'flex', gap:16, marginTop:14, paddingTop:12, borderTop:'1px solid var(--bd)', fontSize:11, color:'var(--m)' }}>
-        <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10, height:10, borderRadius:2, background:'#10b981', display:'inline-block' }}/> Paid</span>
-        <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10, height:10, borderRadius:2, background:'rgba(239,68,68,0.4)', display:'inline-block' }}/> Not Paid</span>
       </div>
     </div>
   );
 }
 
-function GenderBreakdownCard({ byGender }: { byGender: Record<string, { total:number; paid:number }> }) {
+// byGender = { 'Male': 8, 'Female': 6 } — paid counts only
+function GenderBreakdownCard({ byGender, totalPaid }: { byGender: Record<string, number>; totalPaid: number }) {
   const GC: Record<string, { fg:string; bg:string; icon:string }> = {
     Male:    { fg:'#2563eb', bg:'#eff6ff', icon:'👦' },
     Female:  { fg:'#db2777', bg:'#fdf2f8', icon:'👧' },
@@ -78,29 +72,24 @@ function GenderBreakdownCard({ byGender }: { byGender: Record<string, { total:nu
     Unknown: { fg:'#64748b', bg:'#f1f5f9', icon:'❓' },
   };
   const genders = Object.keys(byGender);
-  const totalAll = genders.reduce((s, g) => s + byGender[g].total, 0);
   return (
     <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:20 }}>
       <div style={{ fontWeight:700, fontSize:14, marginBottom:16, color:'var(--text)', display:'flex', alignItems:'center', gap:8 }}>
-        ⚧ Gender-wise Breakdown
-        <span style={{ fontSize:10, background:'rgba(236,72,153,0.1)', color:'#db2777', padding:'2px 8px', borderRadius:20, fontWeight:600, marginLeft:'auto' }}>All registrations</span>
+        ⚧ Gender-wise Paid
+        <span style={{ fontSize:10, background:'rgba(16,185,129,0.1)', color:'#10b981', padding:'2px 8px', borderRadius:20, fontWeight:600, marginLeft:'auto' }}>Paid only</span>
       </div>
-      <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+      <div style={{ display:'flex', gap:10 }}>
+        {genders.length === 0 && <p style={{ color:'var(--m)', fontSize:13 }}>No paid registrations yet.</p>}
         {genders.map(g => {
           const { fg, bg, icon } = GC[g] ?? { fg:'#64748b', bg:'#f1f5f9', icon:'❓' };
-          const { total, paid } = byGender[g];
-          const pct = totalAll > 0 ? Math.round((total / totalAll) * 100) : 0;
-          const paidPct = total > 0 ? Math.round((paid / total) * 100) : 0;
+          const count = byGender[g];
+          const pct   = totalPaid > 0 ? Math.round((count / totalPaid) * 100) : 0;
           return (
-            <div key={g} style={{ flex:1, background:bg, border:`1.5px solid ${fg}33`, borderRadius:12, padding:'14px 12px', textAlign:'center' }}>
-              <div style={{ fontSize:22 }}>{icon}</div>
+            <div key={g} style={{ flex:1, background:bg, border:`1.5px solid ${fg}33`, borderRadius:12, padding:'16px 12px', textAlign:'center' }}>
+              <div style={{ fontSize:24 }}>{icon}</div>
               <div style={{ fontSize:11, fontWeight:600, color:'var(--m)', marginTop:4 }}>{g}</div>
-              <div style={{ fontSize:24, fontWeight:800, fontFamily:'Sora', color:fg, margin:'4px 0 2px' }}>{total}</div>
-              <div style={{ fontSize:10, color:'var(--m)', marginBottom:6 }}>{pct}% of total</div>
-              <div style={{ height:5, borderRadius:3, overflow:'hidden', background:'rgba(0,0,0,0.08)' }}>
-                <div style={{ width:`${paidPct}%`, height:'100%', background:'#10b981' }} />
-              </div>
-              <div style={{ fontSize:10, color:'#10b981', fontWeight:700, marginTop:3 }}>{paid} paid ({paidPct}%)</div>
+              <div style={{ fontSize:28, fontWeight:800, fontFamily:'Sora', color:fg, margin:'6px 0 2px' }}>{count}</div>
+              <div style={{ fontSize:11, color:'var(--m)' }}>{pct}% of paid</div>
             </div>
           );
         })}
@@ -109,6 +98,7 @@ function GenderBreakdownCard({ byGender }: { byGender: Record<string, { total:nu
   );
 }
 
+// crossTab values are paid counts only
 function CrossTabCard({ crossTab }: { crossTab: Record<string, Record<string, number>> }) {
   const sortedClasses = Object.keys(crossTab).sort();
   const allGenders    = [...new Set(sortedClasses.flatMap(c => Object.keys(crossTab[c])))].sort();
@@ -117,66 +107,69 @@ function CrossTabCard({ crossTab }: { crossTab: Record<string, Record<string, nu
     <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:20 }}>
       <div style={{ fontWeight:700, fontSize:14, marginBottom:16, color:'var(--text)', display:'flex', alignItems:'center', gap:8 }}>
         📊 Class × Gender Matrix
-        <span style={{ fontSize:10, background:'rgba(6,182,212,0.1)', color:'#06b6d4', padding:'2px 8px', borderRadius:20, fontWeight:600, marginLeft:'auto' }}>All registrations</span>
+        <span style={{ fontSize:10, background:'rgba(16,185,129,0.1)', color:'#10b981', padding:'2px 8px', borderRadius:20, fontWeight:600, marginLeft:'auto' }}>Paid only</span>
       </div>
-      <div style={{ overflowX:'auto' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign:'left', padding:'8px 12px', color:'var(--m)', fontWeight:600, fontSize:11, borderBottom:'2px solid var(--bd)' }}>Class</th>
-              {allGenders.map(g => (
-                <th key={g} style={{ textAlign:'center', padding:'8px 12px', color: GC[g] ?? 'var(--m)', fontWeight:700, fontSize:11, borderBottom:'2px solid var(--bd)' }}>{g}</th>
-              ))}
-              <th style={{ textAlign:'center', padding:'8px 12px', color:'var(--acc)', fontWeight:700, fontSize:11, borderBottom:'2px solid var(--bd)' }}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedClasses.map((cls, i) => {
-              const rowData  = crossTab[cls];
-              const rowTotal = allGenders.reduce((s, g) => s + (Number(rowData[g]) || 0), 0);
-              return (
-                <tr key={cls} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', borderBottom:'1px solid var(--bd)' }}>
-                  <td style={{ padding:'8px 12px', fontWeight:700, color:'var(--acc)' }}>
-                    <span style={{ background:'var(--acc3)', color:'var(--acc)', padding:'2px 8px', borderRadius:5 }}>{cls}</span>
-                  </td>
-                  {allGenders.map(g => (
-                    <td key={g} style={{ padding:'8px 12px', textAlign:'center', fontWeight: rowData[g] ? 700 : 400, color: rowData[g] ? 'var(--text)' : 'var(--m2)', fontSize:13 }}>
-                      {Number(rowData[g] ?? 0) || '—'}
+      {sortedClasses.length === 0 && <p style={{ color:'var(--m)', fontSize:13 }}>No paid registrations yet.</p>}
+      {sortedClasses.length > 0 && (
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign:'left', padding:'8px 12px', color:'var(--m)', fontWeight:600, fontSize:11, borderBottom:'2px solid var(--bd)' }}>Class</th>
+                {allGenders.map(g => (
+                  <th key={g} style={{ textAlign:'center', padding:'8px 12px', color: GC[g] ?? 'var(--m)', fontWeight:700, fontSize:11, borderBottom:'2px solid var(--bd)' }}>{g}</th>
+                ))}
+                <th style={{ textAlign:'center', padding:'8px 12px', color:'#10b981', fontWeight:700, fontSize:11, borderBottom:'2px solid var(--bd)' }}>Total Paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedClasses.map((cls, i) => {
+                const rowData  = crossTab[cls];
+                const rowTotal = allGenders.reduce((s, g) => s + (Number(rowData[g]) || 0), 0);
+                return (
+                  <tr key={cls} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.01)', borderBottom:'1px solid var(--bd)' }}>
+                    <td style={{ padding:'8px 12px' }}>
+                      <span style={{ background:'var(--acc3)', color:'var(--acc)', padding:'2px 8px', borderRadius:5, fontWeight:700, fontSize:12 }}>{cls}</span>
                     </td>
-                  ))}
-                  <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:800, color:'var(--acc)', fontSize:14 }}>{rowTotal}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ background:'rgba(79,70,229,0.06)', borderTop:'2px solid var(--bd)' }}>
-              <td style={{ padding:'8px 12px', fontWeight:800, color:'var(--m)', fontSize:11 }}>TOTAL</td>
-              {allGenders.map(g => {
-                const colTotal = sortedClasses.reduce((s, c) => s + (Number(crossTab[c][g]) || 0), 0);
-                return <td key={g} style={{ padding:'8px 12px', textAlign:'center', fontWeight:800, color:'var(--text)' }}>{colTotal}</td>;
+                    {allGenders.map(g => (
+                      <td key={g} style={{ padding:'8px 12px', textAlign:'center', fontWeight: rowData[g] ? 700 : 400, color: rowData[g] ? 'var(--text)' : 'var(--m2)', fontSize:13 }}>
+                        {Number(rowData[g] ?? 0) || '—'}
+                      </td>
+                    ))}
+                    <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:800, color:'#10b981', fontSize:14 }}>{rowTotal}</td>
+                  </tr>
+                );
               })}
-              <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:900, color:'var(--acc)', fontSize:15 }}>
-                {sortedClasses.reduce((s, c) => s + allGenders.reduce((ss, g) => ss + (Number(crossTab[c][g]) || 0), 0), 0)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </tbody>
+            <tfoot>
+              <tr style={{ background:'rgba(16,185,129,0.06)', borderTop:'2px solid var(--bd)' }}>
+                <td style={{ padding:'8px 12px', fontWeight:800, color:'var(--m)', fontSize:11 }}>TOTAL PAID</td>
+                {allGenders.map(g => {
+                  const colTotal = sortedClasses.reduce((s, c) => s + (Number(crossTab[c][g]) || 0), 0);
+                  return <td key={g} style={{ padding:'8px 12px', textAlign:'center', fontWeight:800, color:'var(--text)' }}>{colTotal}</td>;
+                })}
+                <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:900, color:'#10b981', fontSize:15 }}>
+                  {sortedClasses.reduce((s, c) => s + allGenders.reduce((ss, g) => ss + (Number(crossTab[c][g]) || 0), 0), 0)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function SchoolDashboard() {
-  const router   = useRouter();
-  const [user,   setUser]   = useState<any>(null);
-  const [data,   setData]   = useState<any>(null);
-  const [loading,setLoading]= useState(true);
-  const [tab,    setTab]    = useState<'overview' | 'students'>('overview');
-  const [studentTab, setStudentTab] = useState<'paid' | 'pending'>('paid');
-  const [search, setSearch] = useState('');
+  const router    = useRouter();
+  const [user,    setUser]    = useState<any>(null);
+  const [data,    setData]    = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab,     setTab]     = useState<'overview' | 'students'>('overview');
+  const [studentTab,  setStudentTab]  = useState<'paid' | 'pending'>('paid');
+  const [search,      setSearch]      = useState('');
   const [classFilter, setClassFilter] = useState('');
-  const [toast,  setToast]  = useState('');
+  const [toast,   setToast]   = useState('');
   const chartsRef = useRef<Record<string, any>>({});
   const toastRef  = useRef<any>();
 
@@ -191,9 +184,9 @@ export default function SchoolDashboard() {
     try {
       const res  = await authFetch(`${BACKEND}/api/school/dashboard`);
       if (res.status === 401) { router.push('/school/login'); return; }
-      if (res.status === 403) { showToast('Access denied — no school linked to this account'); return; }
+      if (res.status === 403) { showToast('Access denied — account not linked to a school'); setLoading(false); return; }
       const json = await res.json();
-      if (json.error) { showToast(json.error); return; }
+      if (json.error) { showToast(json.error); setLoading(false); return; }
       setData(json);
     } catch (e: any) {
       showToast('Failed to load: ' + e.message);
@@ -243,13 +236,13 @@ export default function SchoolDashboard() {
 
     dc('status');
     const stats    = data.stats;
-    const colorMap: Record<string, string> = { paid:'#10b981', pending:'#f59e0b', failed:'#ef4444', cancelled:'#94a3b8' };
-    const sLabels  = ['paid','pending','failed','cancelled'];
-    const sValues  = [stats.paid, stats.pending, stats.failed, stats.total - stats.paid - stats.pending - stats.failed];
+    const sLabels  = ['Paid','Pending','Failed'];
+    const sValues  = [stats.paid, stats.pending, stats.failed];
+    const sColors  = ['#10b981','#f59e0b','#ef4444'];
     const ctx2 = (document.getElementById('chartStatus') as HTMLCanvasElement)?.getContext('2d');
     if (ctx2) chartsRef.current.status = new C(ctx2, {
       type: 'doughnut',
-      data: { labels:sLabels, datasets:[{ data:sValues, backgroundColor:sLabels.map(l => colorMap[l] ?? '#94a3b8'), borderWidth:3, borderColor:'#fff', hoverOffset:8 }] },
+      data: { labels:sLabels, datasets:[{ data:sValues, backgroundColor:sColors, borderWidth:3, borderColor:'#fff', hoverOffset:8 }] },
       options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } }, cutout:'65%' },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,20 +270,18 @@ export default function SchoolDashboard() {
     </div>
   );
 
-  // Show error state if no data loaded
   if (!data) return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)' }}>
       <div style={{ textAlign:'center', maxWidth:400 }}>
         <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
         <p style={{ color:'var(--text)', fontSize:16, fontWeight:700, marginBottom:8 }}>Could not load dashboard</p>
-        <p style={{ color:'var(--m)', fontSize:13, marginBottom:20 }}>Your account may not be linked to a school yet. Please contact your administrator.</p>
+        <p style={{ color:'var(--m)', fontSize:13, marginBottom:20 }}>Your account may not be linked to a school. Please contact your administrator.</p>
         <button onClick={doLogout} style={{ background:'var(--red2)', color:'var(--red)', border:'none', borderRadius:8, padding:'8px 18px', fontSize:13, fontWeight:600, cursor:'pointer' }}>Sign Out</button>
       </div>
     </div>
   );
 
   const { stats, school, byClass, byGender, crossTab } = data;
-
   const TABS = [
     { id:'overview', icon:'🏠', label:'Overview'     },
     { id:'students', icon:'👨‍🎓', label:'All Students' },
@@ -308,13 +299,12 @@ export default function SchoolDashboard() {
 
       <div style={{ minHeight:'100vh', background:'var(--bg)', fontFamily:'DM Sans,sans-serif' }}>
 
-        {/* Header */}
         <header style={{ background:'var(--card)', borderBottom:'1.5px solid var(--bd)', padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between', height:60, position:'sticky', top:0, zIndex:100 }}>
           <div style={{ display:'flex', alignItems:'center', gap:12 }}>
             <span style={{ fontSize:26 }}>🏫</span>
             <div>
               <div style={{ fontWeight:800, fontSize:16, color:'var(--text)', lineHeight:1.2 }}>{school?.name ?? 'School Dashboard'}</div>
-              <div style={{ fontSize:11, color:'var(--m)', lineHeight:1 }}>{school?.org_name ?? ''}{school?.city ? ` · ${school.city}` : ''}</div>
+              <div style={{ fontSize:11, color:'var(--m)' }}>{school?.org_name ?? ''}{school?.city ? ` · ${school.city}` : ''}</div>
             </div>
           </div>
           <div style={{ display:'flex', gap:10, alignItems:'center' }}>
@@ -325,27 +315,19 @@ export default function SchoolDashboard() {
 
         <div style={{ display:'flex', minHeight:'calc(100vh - 60px)' }}>
 
-          {/* Sidebar */}
           <aside style={{ width:200, background:'var(--card)', borderRight:'1.5px solid var(--bd)', padding:'20px 12px', flexShrink:0 }}>
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id as any)}
-                style={{
-                  width:'100%', textAlign:'left', border:'none', borderRadius:10,
-                  padding:'10px 12px', marginBottom:4, cursor:'pointer', fontSize:13, fontWeight:600,
-                  display:'flex', alignItems:'center', gap:8,
-                  background: tab === t.id ? 'var(--acc)' : 'transparent',
-                  color:      tab === t.id ? '#fff'       : 'var(--text)',
-                }}
+                style={{ width:'100%', textAlign:'left', border:'none', borderRadius:10, padding:'10px 12px', marginBottom:4, cursor:'pointer', fontSize:13, fontWeight:600, display:'flex', alignItems:'center', gap:8, background: tab === t.id ? 'var(--acc)' : 'transparent', color: tab === t.id ? '#fff' : 'var(--text)' }}
               >
                 <span>{t.icon}</span>{t.label}
               </button>
             ))}
           </aside>
 
-          {/* Main */}
           <main style={{ flex:1, padding:'24px', overflowY:'auto' }}>
 
-            {/* ── OVERVIEW ─────────────────────────────────────── */}
+            {/* ── OVERVIEW ── */}
             {tab === 'overview' && (
               <div>
                 <h2 style={{ margin:'0 0 20px', fontSize:22, fontWeight:800, color:'var(--text)' }}>
@@ -354,10 +336,10 @@ export default function SchoolDashboard() {
                 </h2>
 
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:16, marginBottom:24 }}>
-                  <StatCard icon="👨‍🎓" label="Total Registered"  value={stats?.total   ?? 0} color="var(--acc)" />
-                  <StatCard icon="✅"  label="Paid"               value={stats?.paid    ?? 0} color="#10b981"   sub={`₹${fmtR(stats?.totalRev ?? 0)} collected`} />
-                  <StatCard icon="⏳"  label="Not Paid"           value={stats?.unpaid  ?? 0} color="#f59e0b"   />
-                  <StatCard icon="❌"  label="Failed / Cancelled" value={stats?.failed  ?? 0} color="#ef4444"   />
+                  <StatCard icon="✅"  label="Paid Students"      value={stats?.paid    ?? 0} color="#10b981" sub={`₹${fmtR(stats?.totalRev ?? 0)} collected`} />
+                  <StatCard icon="⏳"  label="Pending Payment"    value={stats?.unpaid  ?? 0} color="#f59e0b" />
+                  <StatCard icon="👨‍🎓" label="Total Registered"   value={stats?.total   ?? 0} color="var(--acc)" />
+                  <StatCard icon="❌"  label="Failed / Cancelled" value={stats?.failed  ?? 0} color="#ef4444" />
                   <StatCard icon="💰"  label="Total Revenue"      value={`₹${fmtR(stats?.totalRev ?? 0)}`} color="#8b5cf6" />
                   <StatCard icon="📈"  label="Conversion"
                     value={stats?.total ? `${Math.round((stats.paid / stats.total) * 100)}%` : '—'}
@@ -377,8 +359,8 @@ export default function SchoolDashboard() {
                 </div>
 
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:24 }}>
-                  {byClass  && <ClassBreakdownCard byClass={byClass} />}
-                  {byGender && <GenderBreakdownCard byGender={byGender} />}
+                  {byClass  && <ClassBreakdownCard  byClass={byClass}   totalPaid={stats?.paid ?? 0} />}
+                  {byGender && <GenderBreakdownCard byGender={byGender} totalPaid={stats?.paid ?? 0} />}
                 </div>
                 {crossTab && (
                   <div style={{ marginBottom:24 }}>
@@ -388,41 +370,29 @@ export default function SchoolDashboard() {
               </div>
             )}
 
-            {/* ── ALL STUDENTS ─────────────────────────────────── */}
+            {/* ── ALL STUDENTS ── */}
             {tab === 'students' && (
               <div>
                 <h2 style={{ margin:'0 0 16px', fontSize:22, fontWeight:800, color:'var(--text)' }}>All Students</h2>
 
-                {/* Paid / Pending sub-tabs */}
-                <div style={{ display:'flex', gap:8, marginBottom:20, borderBottom:'2px solid var(--bd)', paddingBottom:0 }}>
+                <div style={{ display:'flex', gap:8, marginBottom:20, borderBottom:'2px solid var(--bd)' }}>
                   {([
                     { id:'paid',    label:'✅ Paid Students',      count: paidRows.length,    color:'#10b981' },
                     { id:'pending', label:'⏳ Pending / Not Paid', count: pendingRows.length, color:'#f59e0b' },
                   ] as const).map(st => (
                     <button key={st.id} onClick={() => { setStudentTab(st.id); setSearch(''); setClassFilter(''); }}
-                      style={{
-                        padding:'10px 20px', border:'none', cursor:'pointer', fontSize:13, fontWeight:700,
-                        background:'transparent', borderBottom:`3px solid ${studentTab === st.id ? st.color : 'transparent'}`,
-                        color: studentTab === st.id ? st.color : 'var(--m)',
-                        marginBottom:-2, transition:'all .12s',
-                      }}
+                      style={{ padding:'10px 20px', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, background:'transparent', borderBottom:`3px solid ${studentTab === st.id ? st.color : 'transparent'}`, color: studentTab === st.id ? st.color : 'var(--m)', marginBottom:-2, transition:'all .12s' }}
                     >
                       {st.label}
-                      <span style={{
-                        marginLeft:8, background: studentTab === st.id ? st.color : 'var(--bd)',
-                        color:'#fff', borderRadius:20, fontSize:10, padding:'1px 7px', fontWeight:800,
-                      }}>
+                      <span style={{ marginLeft:8, background: studentTab === st.id ? st.color : 'var(--bd)', color:'#fff', borderRadius:20, fontSize:10, padding:'1px 7px', fontWeight:800 }}>
                         {st.count}
                       </span>
                     </button>
                   ))}
                 </div>
 
-                {/* Filters */}
                 <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' }}>
-                  <input
-                    placeholder="Search name, phone, email…"
-                    value={search} onChange={e => setSearch(e.target.value)}
+                  <input placeholder="Search name, phone, email…" value={search} onChange={e => setSearch(e.target.value)}
                     style={{ flex:1, minWidth:200, border:'1.5px solid var(--bd)', borderRadius:10, padding:'9px 14px', fontSize:13, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--card)' }}
                   />
                   <select value={classFilter} onChange={e => setClassFilter(e.target.value)}
@@ -448,7 +418,7 @@ export default function SchoolDashboard() {
                       <tbody>
                         {filteredRows.length === 0 ? (
                           <tr><td colSpan={10} style={{ padding:'40px', textAlign:'center', color:'var(--m)' }}>
-                            {studentTab === 'paid' ? '🎉 No paid students yet' : '🎉 No pending students'}
+                            {studentTab === 'paid' ? 'No paid students yet' : 'No pending students'}
                           </td></tr>
                         ) : filteredRows.map((r, i) => (
                           <tr key={r.id} style={{ borderBottom:'1px solid var(--bd)' }}>
