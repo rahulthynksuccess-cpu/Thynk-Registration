@@ -675,7 +675,7 @@ function filterByTimeline(rows: Row[], days: number): Row[] {
 }
 
 function ReportingPage({ allRows, programs }: { allRows: Row[]; programs: Row[] }) {
-  const [timelineDays,  setTimelineDays]  = useState(30);
+  const [timelineDays,  setTimelineDays]  = useState(-1);
   const [filterProgram, setFilterProgram] = useState('');
 
   // FIX: filter by program_name (not project_id which doesn't exist in flattened rows)
