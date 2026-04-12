@@ -11,7 +11,7 @@ async function requireAdmin(req: NextRequest) {
 
 // We store platform settings as a special row in integration_configs
 // provider = 'platform_settings', school_id = null (global)
-export async function GET() {
+export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();

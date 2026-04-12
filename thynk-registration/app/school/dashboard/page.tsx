@@ -448,13 +448,13 @@ export default function SchoolDashboard() {
                         <tbody>
                           {sortedClasses.map(cls => {
                             const rowData = crossTab[cls];
-                            const rowTotal = Object.values(rowData).reduce((s: number, v: any) => s + v, 0);
+                            const rowTotal: number = (Object.values(rowData) as number[]).reduce((s: number, v) => s + (Number(v) || 0), 0);
                             return (
                               <tr key={cls} style={{borderBottom:'1px solid var(--bd)'}}>
                                 <td style={{padding:'10px 12px',fontWeight:700,color:'var(--acc)'}}>{cls}</td>
                                 {allGenders.map(g => (
                                   <td key={g} style={{padding:'10px 12px',textAlign:'center',fontWeight: rowData[g] ? 600 : 400, color: rowData[g] ? 'var(--text)' : 'var(--m)'}}>
-                                    {rowData[g] ?? 0}
+                                    {Number(rowData[g] ?? 0)}
                                   </td>
                                 ))}
                                 <td style={{padding:'10px 12px',textAlign:'center',fontWeight:800,color:'var(--acc)'}}>{rowTotal}</td>
@@ -466,11 +466,11 @@ export default function SchoolDashboard() {
                           <tr style={{borderTop:'2px solid var(--bd)',background:'var(--acc3)'}}>
                             <td style={{padding:'10px 12px',fontWeight:800,color:'var(--text)'}}>Total</td>
                             {allGenders.map(g => {
-                              const colTotal = sortedClasses.reduce((s, c) => s + (crossTab[c][g] ?? 0), 0);
+                              const colTotal = sortedClasses.reduce((s, c) => s + (Number(crossTab[c][g]) || 0), 0);
                               return <td key={g} style={{padding:'10px 12px',textAlign:'center',fontWeight:800,color:'var(--text)'}}>{colTotal}</td>;
                             })}
                             <td style={{padding:'10px 12px',textAlign:'center',fontWeight:800,color:'var(--acc)'}}>
-                              {sortedClasses.reduce((s, c) => s + Object.values(crossTab[c]).reduce((ss: number, v: any) => ss + v, 0), 0)}
+                              {sortedClasses.reduce((s: number, c) => s + Number(Object.values(crossTab[c]).reduce((ss: number, v) => ss + (Number(v) || 0), 0)), 0)}
                             </td>
                           </tr>
                         </tfoot>

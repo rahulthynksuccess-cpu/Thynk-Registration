@@ -1,4 +1,5 @@
 'use client';
+import { authFetch } from '@/lib/supabase/client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -1431,8 +1432,8 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
   const stateCount   = [...new Set(rows.map(r=>r.country+'|'+r.state))].length;
 
   async function toggleActive(row:Row) {
-    await fetch(`${BACKEND}/api/admin/location`,{
-      credentials:'include',method:'PATCH',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},
+    await authFetch(`${BACKEND}/api/admin/location`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:row.id,is_active:!row.is_active}),
     });
     onReload();
@@ -1440,8 +1441,8 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
 
   async function deleteRow(row:Row) {
     if(!confirm(`Delete "${row.city||row.state}"?`)) return;
-    await fetch(`${BACKEND}/api/admin/location`,{
-      credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},
+    await authFetch(`${BACKEND}/api/admin/location`,{
+      method:'DELETE',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:row.id}),
     });
     showToast('Deleted','✅'); onReload();
@@ -1450,8 +1451,8 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{
   async function handleSave(d:Row) {
     setSaving(true);
     const method = d.id ? 'PATCH' : 'POST';
-    const res = await fetch(`${BACKEND}/api/admin/location`,{
-      credentials:'include',method, headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},
+    const res = await authFetch(`${BACKEND}/api/admin/location`,{
+      method, headers:{'Content-Type':'application/json'},
       body: JSON.stringify(d),
     });
     const json = await res.json();
