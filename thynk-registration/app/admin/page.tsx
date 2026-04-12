@@ -130,6 +130,7 @@ export default function AdminDashboard() {
     if (!user) return;
     if (activePage === 'overview')     loadPrograms();
    if (activePage === 'reporting')  { loadPrograms(); loadSchools(); }
+    if (activePage === 'students')     loadPrograms();
     if (activePage === 'programs')     loadPrograms();
     if (activePage === 'schools')      loadSchools();
     if (activePage === 'discounts')    loadDiscounts();
@@ -345,7 +346,7 @@ export default function AdminDashboard() {
           {/* Students */}
           <div className={`page${activePage==='students'?' active':''}`}>
             <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{allRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
-            <StudentsTable rows={allRows} onRowClick={setModal} />
+            <StudentsTable rows={allRows} programs={programs} onRowClick={setModal} />
           </div>
 
           {/* Trends */}
@@ -1771,26 +1772,106 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
 }
 
 // ── Table components ────────────────────────────────────────────────
-function StudentsTable({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>void }) {
-  const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [gateway,setGateway]=useState('');const [city,setCity]=useState('');const [cls,setCls]=useState('');const [gender,setGender]=useState('');
-  const statuses=[...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
-  const gateways=[...new Set(rows.map(r=>r.gateway).filter(Boolean))];
-  const cities=[...new Set(rows.map(r=>r.city).filter(Boolean))].sort();
-  const classes=[...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
-  const filtered=rows.filter(r=>{const hay=[r.student_name,r.parent_name,r.contact_phone,r.contact_email,r.parent_school,r.city,r.gateway_txn_id].join(' ').toLowerCase();return(!search||hay.includes(search.toLowerCase()))&&(!status||r.payment_status===status)&&(!gateway||r.gateway===gateway)&&(!city||r.city===city)&&(!cls||r.class_grade===cls)&&(!gender||r.gender===gender);});
+function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row[]; onRowClick:(r:Row)=>void }) {
+  const [search,  setSearch]  = useState('');
+  const [status,  setStatus]  = useState('');
+  const [gateway, setGateway] = useState('');
+  const [program, setProgram] = useState('');
+  const [country, setCountry] = useState('');
+  const [state,   setState]   = useState('');
+  const [city,    setCity]    = useState('');
+  const [school,  setSchool]  = useState('');
+  const [cls,     setCls]     = useState('');
+  const [gender,  setGender]  = useState('');
+
+  // Derive unique lists from data
+  const statuses  = [...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
+  const gateways  = [...new Set(rows.map(r=>r.gateway).filter(Boolean))];
+  const countries = [...new Set(rows.map(r=>r.country).filter(Boolean))].sort();
+  const classes   = [...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
+
+  // States filtered by selected country
+  const statesForCountry = [...new Set(
+    rows.filter(r=>!country||r.country===country).map(r=>r.state).filter(Boolean)
+  )].sort();
+
+  // Cities filtered by selected country+state
+  const citiesForState = [...new Set(
+    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)).map(r=>r.city).filter(Boolean)
+  )].sort();
+
+  // Schools filtered by current country+state+city selection
+  const schoolsFiltered = [...new Set(
+    rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)&&(!city||r.city===city))
+      .map(r=>r.school_name??r.parent_school).filter(Boolean)
+  )].sort();
+
+  // Reset dependent filters when parent changes
+  const handleCountryChange = (v:string) => { setCountry(v); setState(''); setCity(''); setSchool(''); };
+  const handleStateChange   = (v:string) => { setState(v);   setCity(''); setSchool(''); };
+  const handleCityChange    = (v:string) => { setCity(v);    setSchool(''); };
+
+  const filtered = rows.filter(r => {
+    const hay = [r.student_name,r.parent_name,r.contact_phone,r.contact_email,r.parent_school,r.city,r.gateway_txn_id,r.school_name].join(' ').toLowerCase();
+    const schoolName = r.school_name??r.parent_school??'';
+    return (
+      (!search  || hay.includes(search.toLowerCase())) &&
+      (!status  || r.payment_status===status) &&
+      (!gateway || r.gateway===gateway) &&
+      (!program || r.program_name===program) &&
+      (!country || r.country===country) &&
+      (!state   || r.state===state) &&
+      (!city    || r.city===city) &&
+      (!school  || schoolName===school) &&
+      (!cls     || r.class_grade===cls) &&
+      (!gender  || r.gender===gender)
+    );
+  });
+
   return (<>
     <div className="table-toolbar">
       <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)}/>
-      <select value={status}  onChange={e=>setStatus(e.target.value)}>  <option value="">All Status</option>   {statuses.map(s=><option key={s}>{s}</option>)}</select>
-      <select value={gateway} onChange={e=>setGateway(e.target.value)}><option value="">All Gateways</option>{gateways.map(g=><option key={g}>{g}</option>)}</select>
-      <select value={city}    onChange={e=>setCity(e.target.value)}>    <option value="">All Cities</option>   {cities.map(c=><option key={c}>{c}</option>)}</select>
-      <select value={cls}     onChange={e=>setCls(e.target.value)}>     <option value="">All Classes</option>  {classes.map(c=><option key={c}>{c}</option>)}</select>
-      <select value={gender}  onChange={e=>setGender(e.target.value)}>  <option value="">All Gender</option>   {['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}</select>
+      <select value={status}  onChange={e=>setStatus(e.target.value)}>
+        <option value="">All Status</option>
+        {statuses.map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={gateway} onChange={e=>setGateway(e.target.value)}>
+        <option value="">All Gateways</option>
+        {gateways.map(g=><option key={g}>{g}</option>)}
+      </select>
+      <select value={program} onChange={e=>setProgram(e.target.value)}>
+        <option value="">All Programs</option>
+        {programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+      </select>
+      <select value={country} onChange={e=>handleCountryChange(e.target.value)}>
+        <option value="">All Countries</option>
+        {countries.map(c=><option key={c}>{c}</option>)}
+      </select>
+      <select value={state} onChange={e=>handleStateChange(e.target.value)} disabled={!country&&statesForCountry.length===0}>
+        <option value="">All States</option>
+        {statesForCountry.map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={city} onChange={e=>handleCityChange(e.target.value)} disabled={citiesForState.length===0}>
+        <option value="">All Cities</option>
+        {citiesForState.map(c=><option key={c}>{c}</option>)}
+      </select>
+      <select value={school} onChange={e=>setSchool(e.target.value)}>
+        <option value="">All Schools</option>
+        {schoolsFiltered.map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={cls} onChange={e=>setCls(e.target.value)}>
+        <option value="">All Classes</option>
+        {classes.map(c=><option key={c}>{c}</option>)}
+      </select>
+      <select value={gender} onChange={e=>setGender(e.target.value)}>
+        <option value="">All Gender</option>
+        {['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}
+      </select>
       <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {rows.length}</span>
     </div>
     <div className="tbl-wrap"><table>
-      <thead><tr>{['#','Date','Status','Student','Gender','Class','School','City','Parent','Phone','Gateway','Amount','Discount'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-      <tbody>{filtered.length===0?<tr><td colSpan={13} className="table-empty">No records found</td></tr>:filtered.map((r,i)=>(
+      <thead><tr>{['#','Date','Status','Student','Gender','Class','Program','Country','School','City','Parent','Phone','Gateway','Amount','Discount'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+      <tbody>{filtered.length===0?<tr><td colSpan={15} className="table-empty">No records found</td></tr>:filtered.map((r,i)=>(
         <tr key={r.id} onClick={()=>onRowClick(r)}>
           <td style={{color:'var(--m2)',fontSize:11}}>{i+1}</td>
           <td style={{color:'var(--m)',fontSize:11}}>{r.created_at?.slice(0,10)}</td>
@@ -1798,6 +1879,8 @@ function StudentsTable({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>vo
           <td><div style={{fontWeight:700}}>{r.student_name}</div></td>
           <td><span style={{fontSize:11,padding:'2px 8px',borderRadius:6,fontWeight:600,background:r.gender==='Male'?'#eff6ff':r.gender==='Female'?'#fdf2f8':'var(--bg)',color:r.gender==='Male'?'#2563eb':r.gender==='Female'?'#db2777':'var(--m)'}}>{r.gender??'—'}</span></td>
           <td><span style={{fontSize:11,background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontWeight:600}}>{r.class_grade??'—'}</span></td>
+          <td><span style={{fontSize:11,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',padding:'2px 8px',borderRadius:6,fontWeight:600,whiteSpace:'nowrap'}}>{r.program_name??'—'}</span></td>
+          <td style={{fontSize:12,whiteSpace:'nowrap'}}>{r.country??'—'}</td>
           <td style={{fontSize:12}}>{r.school_name??r.parent_school??'—'}</td>
           <td style={{fontSize:12}}>{r.city??'—'}</td>
           <td style={{fontSize:12}}>{r.parent_name??'—'}</td>
