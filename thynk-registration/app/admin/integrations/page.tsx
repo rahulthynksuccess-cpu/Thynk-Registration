@@ -1,369 +1,283 @@
 'use client';
-import { authFetch } from '@/lib/supabase/client';
 export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { authFetch } from '@/lib/supabase/client';
 
-// ── Types ────────────────────────────────────────────────────────────────────
 type Row = Record<string, any>;
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 
-const inp: React.CSSProperties = {
-  width:'100%', padding:'10px 14px', border:'1.5px solid var(--bd)',
-  borderRadius:9, fontSize:13, fontFamily:'DM Sans,sans-serif',
-  color:'var(--text)', background:'var(--card)', outline:'none',
-  boxSizing:'border-box' as const,
-};
-const lbl: React.CSSProperties = {
-  display:'block', fontSize:11, fontWeight:700, letterSpacing:'1px',
-  textTransform:'uppercase' as const, color:'var(--m)', marginBottom:6,
-  fontFamily:'DM Sans,sans-serif',
-};
-const btn = (active=false, color='var(--acc)'): React.CSSProperties => ({
-  display:'flex', alignItems:'center', gap:8, padding:'10px 20px',
-  borderRadius:10, border:`1.5px solid ${active ? color : 'var(--bd)'}`,
-  background: active ? color+'20' : 'var(--card)',
-  color: active ? color : 'var(--text)',
-  fontFamily:'DM Sans,sans-serif', fontSize:13, fontWeight:700, cursor:'pointer',
-});
+const inp: React.CSSProperties = { width:'100%', padding:'10px 14px', border:'1.5px solid var(--bd)', borderRadius:9, fontSize:13, fontFamily:'DM Sans,sans-serif', color:'var(--text)', background:'var(--card)', outline:'none', boxSizing:'border-box' as const };
+const lbl: React.CSSProperties = { display:'block', fontSize:11, fontWeight:700, letterSpacing:'1px', textTransform:'uppercase' as const, color:'var(--m)', marginBottom:6, fontFamily:'DM Sans,sans-serif' };
 
-// ── Gateway / Provider metadata ──────────────────────────────────────────────
-const GATEWAY_META: Record<string,{
-  name:string; logo:string; color:string; bg:string;
-  description:string; domestic:boolean; international:boolean;
-  fields:Array<{key:string; label:string; hint:string; secret?:boolean}>;
-  docs:string;
-}> = {
-  razorpay: {
-    name:'Razorpay', logo:'💙', color:'#3395FF', bg:'rgba(51,149,255,.08)',
-    description:"India's most popular gateway. Cards, UPI, netbanking, wallets.",
-    domestic:true, international:false,
-    fields:[
-      {key:'key_id',     label:'Key ID',     hint:'Starts with rzp_live_ or rzp_test_'},
-      {key:'key_secret', label:'Key Secret', hint:'From Razorpay Dashboard → API Keys', secret:true},
-    ],
-    docs:'https://razorpay.com/docs/payments/dashboard/account-access/api-key/',
-  },
-  cashfree: {
-    name:'Cashfree', logo:'💚', color:'#00C853', bg:'rgba(0,200,83,.08)',
-    description:'Fast settlement, UPI AutoPay & subscriptions. Good for recurring billing.',
-    domestic:true, international:false,
-    fields:[
-      {key:'key_id',     label:'App ID',     hint:'From Cashfree Dashboard → Credentials'},
-      {key:'key_secret', label:'Secret Key', hint:'From Cashfree Dashboard → Credentials', secret:true},
-    ],
-    docs:'https://docs.cashfree.com/docs/getting-started',
-  },
-  easebuzz: {
-    name:'Easebuzz', logo:'🟠', color:'#FF6600', bg:'rgba(255,102,0,.08)',
-    description:'Cost-effective with low MDR. Popular with EdTech platforms.',
-    domestic:true, international:false,
-    fields:[
-      {key:'key_id',     label:'Merchant Key', hint:'Easebuzz Dashboard → Settings → API Keys'},
-      {key:'key_secret', label:'Salt',          hint:'Easebuzz salt for hash generation', secret:true},
-    ],
-    docs:'https://docs.easebuzz.in/payments',
-  },
-  paypal: {
-    name:'PayPal', logo:'🌐', color:'#003087', bg:'rgba(0,48,135,.08)',
-    description:'International payments (USD/AED/SAR). Best for overseas schools.',
-    domestic:false, international:true,
-    fields:[
-      {key:'key_id',     label:'Client ID',     hint:'PayPal Developer Dashboard → Apps'},
-      {key:'key_secret', label:'Client Secret', hint:'PayPal Developer Dashboard → Apps', secret:true},
-    ],
-    docs:'https://developer.paypal.com/api/rest/',
-  },
-  smtp: {
-    name:'Gmail SMTP', logo:'📧', color:'#EA4335', bg:'rgba(234,67,53,.08)',
-    description:'Send confirmation emails via Gmail using an App Password.',
-    domestic:false, international:false,
-    fields:[
-      {key:'from_name',  label:'Sender Name',  hint:'e.g. Thynk Registration'},
-      {key:'from_email', label:'From Email',   hint:'e.g. noreply@yourdomain.com'},
-      {key:'smtp_host',  label:'SMTP Host',    hint:'smtp.gmail.com'},
-      {key:'smtp_port',  label:'SMTP Port',    hint:'587'},
-      {key:'smtp_user',  label:'Gmail Address',hint:'your@gmail.com'},
-      {key:'smtp_pass',  label:'App Password', hint:'16-char Google App Password', secret:true},
-    ],
-    docs:'https://support.google.com/accounts/answer/185833',
-  },
-  whatsapp_cloud: {
-    name:'Meta WhatsApp', logo:'💬', color:'#25D366', bg:'rgba(37,211,102,.08)',
-    description:'Send WhatsApp messages to parents on registration & payment events.',
-    domestic:false, international:false,
-    fields:[
-      {key:'access_token',   label:'Access Token',   hint:'Permanent System User token from Meta'},
-      {key:'phone_number_id',label:'Phone Number ID', hint:'Meta → WhatsApp → API Setup'},
-    ],
-    docs:'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
-  },
-  twilio: {
-    name:'Twilio WhatsApp', logo:'🔴', color:'#F22F46', bg:'rgba(242,47,70,.08)',
-    description:'Twilio WhatsApp sandbox & production for international setups.',
-    domestic:false, international:false,
-    fields:[
-      {key:'account_sid', label:'Account SID',  hint:'Twilio Console → Account Info'},
-      {key:'auth_token',  label:'Auth Token',   hint:'Twilio Console → Account Info', secret:true},
-      {key:'from_number', label:'From Number',  hint:'whatsapp:+14155238886'},
-    ],
-    docs:'https://www.twilio.com/docs/whatsapp',
-  },
+// ── Payment Gateway metadata ─────────────────────────────────────────────────
+const GATEWAY_META: Record<string,{name:string;logo:string;color:string;bg:string;description:string;domestic:boolean;international:boolean;fields:Array<{key:string;label:string;hint:string;secret?:boolean}>;docs:string;}> = {
+  razorpay:{ name:'Razorpay', logo:'💙', color:'#3395FF', bg:'rgba(51,149,255,.08)', description:"India's most popular gateway. Cards, UPI, netbanking, wallets.", domestic:true, international:false, fields:[{key:'key_id',label:'Key ID',hint:'Starts with rzp_live_ or rzp_test_'},{key:'key_secret',label:'Key Secret',hint:'Razorpay Dashboard → API Keys',secret:true}], docs:'https://razorpay.com/docs/payments/dashboard/account-access/api-key/' },
+  cashfree:{ name:'Cashfree', logo:'💚', color:'#00C853', bg:'rgba(0,200,83,.08)', description:'Fast settlement, UPI AutoPay & subscriptions.', domestic:true, international:false, fields:[{key:'key_id',label:'App ID',hint:'Cashfree Dashboard → Credentials'},{key:'key_secret',label:'Secret Key',hint:'Cashfree Dashboard → Credentials',secret:true}], docs:'https://docs.cashfree.com/docs/getting-started' },
+  easebuzz:{ name:'Easebuzz', logo:'🟠', color:'#FF6600', bg:'rgba(255,102,0,.08)', description:'Cost-effective with low MDR. Popular with EdTech platforms.', domestic:true, international:false, fields:[{key:'key_id',label:'Merchant Key',hint:'Easebuzz Dashboard → Settings → API Keys'},{key:'key_secret',label:'Salt',hint:'Your Easebuzz salt for hash generation',secret:true}], docs:'https://docs.easebuzz.in/payments' },
+  paypal:{ name:'PayPal', logo:'🌐', color:'#003087', bg:'rgba(0,48,135,.08)', description:'International payments (USD/AED/SAR). Best for overseas schools.', domestic:false, international:true, fields:[{key:'key_id',label:'Client ID',hint:'PayPal Developer Dashboard → Apps'},{key:'key_secret',label:'Client Secret',hint:'PayPal Developer Dashboard → Apps',secret:true}], docs:'https://developer.paypal.com/api/rest/' },
 };
+interface GatewayState { id:string; enabled:boolean; priority:number; key_id:string; key_secret:string; mode:'live'|'test'; db_id?:string; }
 
-// ── Secret Field ─────────────────────────────────────────────────────────────
-function SecretField({label,hint,value,onChange}:{label:string;hint:string;value:string;onChange:(v:string)=>void}) {
-  const [show,setShow] = useState(false);
-  return (
-    <div>
-      <label style={lbl}>{label}</label>
-      <div style={{position:'relative'}}>
-        <input type={show?'text':'password'} value={value} onChange={e=>onChange(e.target.value)}
-          placeholder={hint}
-          style={{...inp, paddingRight:40, fontFamily:show?'monospace':'DM Sans,sans-serif', fontSize:12}} />
-        <button type="button" onClick={()=>setShow(!show)}
-          style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>
-          {show ? '🙈' : '👁️'}
-        </button>
-      </div>
-      <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{hint}</p>
-    </div>
-  );
+// ── WhatsApp providers ───────────────────────────────────────────────────────
+const WA_PROVIDERS = {
+  thynkcomm:{ label:'ThynkComm', badge:'⚡ Recommended', badgeColor:'#166534', badgeBg:'rgba(22,101,52,0.1)', iconBg:'linear-gradient(135deg,#1ab8a8,#0e8a7d)', icon:'💬', description:'Use your ThynkComm deployment as the WhatsApp channel. Authenticate with API Key + Secret from ThynkComm → Integrations.', docsUrl:'https://thynkcom.vercel.app', color:'#1ab8a8', colorBg:'rgba(26,184,168,0.08)', colorBorder:'rgba(26,184,168,0.3)' },
+  meta:{ label:'Meta Cloud API', badge:'Direct', badgeColor:'#1d4ed8', badgeBg:'rgba(29,78,216,0.1)', iconBg:'linear-gradient(135deg,#1877F2,#0d47a1)', icon:'🔵', description:'Connect directly to Meta WhatsApp Business Cloud API with your Access Token and Phone Number ID.', docsUrl:'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started', color:'#1877F2', colorBg:'rgba(24,119,242,0.08)', colorBorder:'rgba(24,119,242,0.3)' },
+  twilio:{ label:'Twilio', badge:'International', badgeColor:'#6B21A8', badgeBg:'rgba(107,33,168,0.1)', iconBg:'linear-gradient(135deg,#F22F46,#a51829)', icon:'🔴', description:'Twilio WhatsApp sandbox and production. Best for international SMS+WhatsApp hybrid setups.', docsUrl:'https://www.twilio.com/docs/whatsapp', color:'#F22F46', colorBg:'rgba(242,47,70,0.08)', colorBorder:'rgba(242,47,70,0.3)' },
+} as const;
+type WaProvider = keyof typeof WA_PROVIDERS;
+interface WaSettings { provider:WaProvider; enabled:boolean; tcUrl:string; tcApiKey:string; tcApiSecret:string; metaToken:string; metaPhoneId:string; accountSid:string; authToken:string; fromNumber:string; }
+const WA_DEFAULTS:WaSettings = { provider:'thynkcomm', enabled:false, tcUrl:'', tcApiKey:'', tcApiSecret:'', metaToken:'', metaPhoneId:'', accountSid:'', authToken:'', fromNumber:'' };
+
+function useToast() {
+  const [toast,setToast] = useState('');
+  const ref = useRef<ReturnType<typeof setTimeout>|null>(null);
+  function show(msg:string){ setToast(msg); if(ref.current) clearTimeout(ref.current); ref.current=setTimeout(()=>setToast(''),3500); }
+  return {toast,show};
 }
 
-// ── Integration Card ─────────────────────────────────────────────────────────
-function IntegCard({provider,cfg,onEdit,onToggle}:{provider:string;cfg?:Row;onEdit:()=>void;onToggle:()=>void}) {
-  const meta = GATEWAY_META[provider];
-  if (!meta) return null;
-  const isActive = cfg?.is_active;
-  const isConfigured = !!(cfg?.config && Object.keys(cfg.config).length > 0);
+function SecretField({label,hint,value,onChange}:{label:string;hint:string;value:string;onChange:(v:string)=>void}) {
+  const [show,setShow]=useState(false);
+  return (<div><label style={lbl}>{label}</label><div style={{position:'relative'}}><input type={show?'text':'password'} value={value} onChange={e=>onChange(e.target.value)} placeholder={hint} style={{...inp,paddingRight:40,fontFamily:show?'monospace':'DM Sans,sans-serif',fontSize:12}}/><button type="button" onClick={()=>setShow(!show)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{show?'🙈':'👁️'}</button></div><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{hint}</p></div>);
+}
 
+function GatewayCard({gw,onUpdate,onMoveUp,onMoveDown,isFirst,isLast}:{gw:GatewayState;onUpdate:(id:string,patch:Partial<GatewayState>)=>void;onMoveUp:()=>void;onMoveDown:()=>void;isFirst:boolean;isLast:boolean}) {
+  const [expanded,setExpanded]=useState(false);
+  const meta=GATEWAY_META[gw.id]; if(!meta) return null;
+  const isConfigured=!!(gw.key_id&&gw.key_secret);
   return (
-    <div style={{
-      background:'var(--card)', border:`1.5px solid ${isActive ? meta.color+'40' : 'var(--bd)'}`,
-      borderRadius:14, overflow:'hidden', transition:'border-color .2s',
-    }}>
-      <div style={{display:'flex',alignItems:'center',gap:12,padding:'16px 18px',background:isActive?meta.bg:'transparent'}}>
-        <span style={{fontSize:26,flexShrink:0}}>{meta.logo}</span>
+    <div style={{background:'var(--card)',border:`1.5px solid ${gw.enabled?meta.color+'40':'var(--bd)'}`,borderRadius:14,overflow:'hidden',transition:'border-color .2s'}}>
+      <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',background:gw.enabled?meta.bg:'transparent',cursor:'pointer'}} onClick={()=>setExpanded(!expanded)}>
+        <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0}}>
+          <button onClick={e=>{e.stopPropagation();onMoveUp();}} disabled={isFirst} style={{padding:'1px 3px',border:'none',background:'transparent',cursor:isFirst?'default':'pointer',opacity:isFirst?0.2:0.7,fontSize:10}}>▲</button>
+          <button onClick={e=>{e.stopPropagation();onMoveDown();}} disabled={isLast} style={{padding:'1px 3px',border:'none',background:'transparent',cursor:isLast?'default':'pointer',opacity:isLast?0.2:0.7,fontSize:10}}>▼</button>
+        </div>
+        <span style={{fontSize:14,color:'var(--m)',flexShrink:0,cursor:'grab',userSelect:'none'}}>⠿</span>
+        <div style={{width:22,height:22,borderRadius:'50%',background:gw.enabled?meta.color:'var(--bd)',color:gw.enabled?'#fff':'var(--m)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{gw.priority}</div>
+        <span style={{fontSize:20,flexShrink:0}}>{meta.logo}</span>
         <div style={{flex:1}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:3}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}}>
             <span style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,color:'var(--text)'}}>{meta.name}</span>
-            {meta.domestic && <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(16,185,129,.1)',color:'#15803d',fontFamily:'DM Sans,sans-serif'}}>Domestic</span>}
-            {meta.international && <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(59,130,246,.1)',color:'#1d4ed8',fontFamily:'DM Sans,sans-serif'}}>International</span>}
-            {isConfigured
-              ? <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(16,185,129,.1)',color:'#15803d',fontFamily:'DM Sans,sans-serif'}}>✓ Configured</span>
-              : <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(239,68,68,.1)',color:'#dc2626',fontFamily:'DM Sans,sans-serif'}}>Not set up</span>}
+            {meta.domestic&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(16,185,129,.1)',color:'#15803d'}}>Domestic</span>}
+            {meta.international&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(59,130,246,.1)',color:'#1d4ed8'}}>International</span>}
+            {isConfigured?<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(16,185,129,.1)',color:'#15803d'}}>✓ Keys set</span>:<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:'rgba(239,68,68,.1)',color:'#dc2626'}}>⚠ Not configured</span>}
           </div>
           <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)'}}>{meta.description}</div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-          <div onClick={onToggle}
-            style={{width:40,height:22,borderRadius:11,background:isActive?meta.color:'var(--bd)',position:'relative',cursor:'pointer',transition:'background .2s'}}>
-            <div style={{width:16,height:16,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:isActive?21:3,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
-          </div>
-          <button onClick={onEdit} style={{padding:'6px 14px',borderRadius:8,border:'1.5px solid var(--bd)',background:'var(--card)',color:'var(--acc)',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-            {isConfigured ? 'Edit' : 'Set Up'}
-          </button>
+        <div onClick={e=>e.stopPropagation()} style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:gw.enabled?meta.color:'var(--m)',fontWeight:600}}>{gw.enabled?'Active':'Off'}</span>
+          <div onClick={()=>onUpdate(gw.id,{enabled:!gw.enabled})} style={{width:40,height:22,borderRadius:11,background:gw.enabled?meta.color:'var(--bd)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}><div style={{width:16,height:16,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:gw.enabled?21:3,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/></div>
         </div>
+        <span style={{fontSize:11,color:'var(--m)',transform:expanded?'rotate(180deg)':'none',transition:'transform .2s',flexShrink:0}}>▼</span>
       </div>
+      {expanded&&(
+        <div style={{padding:20,borderTop:'1.5px solid var(--bd)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,padding:'10px 14px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
+            <span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:'var(--m)'}}>Mode:</span>
+            {(['test','live'] as const).map(m=>(<button key={m} onClick={()=>onUpdate(gw.id,{mode:m})} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 14px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,background:gw.mode===m?(m==='live'?'#B8860B':'var(--text)'):'transparent',color:gw.mode===m?'#fff':'var(--m)'}}>{m==='live'?'🌐 Live':'🧪 Test / Sandbox'}</button>))}
+            {gw.mode==='live'&&<span style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--red)',fontWeight:600}}>⚠ Real money — double-check keys</span>}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+            {meta.fields.map(f=>f.secret?<SecretField key={f.key} label={f.label} hint={f.hint} value={(gw as any)[f.key]||''} onChange={v=>onUpdate(gw.id,{[f.key]:v} as any)}/>:(<div key={f.key}><label style={lbl}>{f.label}</label><input type="text" value={(gw as any)[f.key]||''} onChange={e=>onUpdate(gw.id,{[f.key]:e.target.value} as any)} placeholder={f.hint} style={inp}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{f.hint}</p></div>))}
+          </div>
+          <div style={{marginTop:14}}><a href={meta.docs} target="_blank" rel="noreferrer" style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:meta.color,textDecoration:'none',fontWeight:600}}>📖 {meta.name} API docs →</a></div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Edit Modal ───────────────────────────────────────────────────────────────
-function EditModal({provider,cfg,onClose,onSave}:{provider:string;cfg?:Row;onClose:()=>void;onSave:(d:Row)=>void}) {
-  const meta = GATEWAY_META[provider];
-  const initConfig = cfg?.config ?? {};
-  const [config,setConfig] = useState<Record<string,string>>(
-    Object.fromEntries(meta.fields.map(f=>[f.key, initConfig[f.key]??'']))
-  );
-  const [mode,setMode] = useState<'live'|'test'>(cfg?.config?.mode??'test');
+function WhatsAppTab({showToast}:{showToast:(m:string)=>void}) {
+  const [wa,setWa]=useState<WaSettings>(WA_DEFAULTS);
+  const [testing,setTesting]=useState(false);
+  const [testPhone,setTestPhone]=useState('');
+  const [testMsg,setTestMsg]=useState('Hello from Thynk Registration! Your WhatsApp integration is working. 🎉');
+  const [testResult,setTestResult]=useState<{ok:boolean;msg:string;hint?:string;warning?:string;raw?:any}|null>(null);
+  const [showSecret,setShowSecret]=useState(false);
+  const [showToken,setShowToken]=useState(false);
+  const [showRaw,setShowRaw]=useState(false);
+  const [saving,setSaving]=useState(false);
 
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-      <div style={{background:'var(--card)',borderRadius:18,width:'100%',maxWidth:560,maxHeight:'90vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,.2)'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 24px',borderBottom:'1.5px solid var(--bd)',position:'sticky',top:0,background:'var(--card)',zIndex:1}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <span style={{fontSize:24}}>{meta.logo}</span>
-            <div>
-              <div style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:16,color:'var(--text)'}}>{meta.name} Settings</div>
-              <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)'}}>
-                <a href={meta.docs} target="_blank" rel="noreferrer" style={{color:'var(--acc)',textDecoration:'none'}}>📖 View Docs →</a>
-              </div>
-            </div>
-          </div>
-          <button onClick={onClose} style={{border:'none',background:'none',cursor:'pointer',color:'var(--m)',fontSize:20}}>✕</button>
-        </div>
-        <div style={{padding:24,display:'flex',flexDirection:'column',gap:16}}>
-          {/* Mode toggle — only for payment gateways */}
-          {['razorpay','cashfree','easebuzz','paypal'].includes(provider) && (
-            <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
-              <span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:'var(--m)'}}>Mode:</span>
-              {(['test','live'] as const).map(m=>(
-                <button key={m} onClick={()=>setMode(m)}
-                  style={{display:'flex',alignItems:'center',gap:5,padding:'6px 14px',borderRadius:8,border:'none',cursor:'pointer',
-                    fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,
-                    background:mode===m?(m==='live'?'#B8860B':'var(--text)'):'transparent',
-                    color:mode===m?'#fff':'var(--m)'}}>
-                  {m==='live'?'🌐 Live':'🧪 Test / Sandbox'}
-                </button>
-              ))}
-              {mode==='live'&&<span style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--red)',fontWeight:600}}>⚠ Real money — double-check keys</span>}
-            </div>
-          )}
-          <div style={{display:'grid',gridTemplateColumns:meta.fields.length>2?'1fr 1fr':'1fr',gap:14}}>
-            {meta.fields.map(f=> f.secret
-              ? <SecretField key={f.key} label={f.label} hint={f.hint} value={config[f.key]??''} onChange={v=>setConfig(p=>({...p,[f.key]:v}))}/>
-              : (
-                <div key={f.key}>
-                  <label style={lbl}>{f.label}</label>
-                  <input type="text" value={config[f.key]??''} onChange={e=>setConfig(p=>({...p,[f.key]:e.target.value}))} placeholder={f.hint} style={inp}/>
-                  <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{f.hint}</p>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-        <div style={{padding:'16px 24px',borderTop:'1.5px solid var(--bd)',display:'flex',justifyContent:'flex-end',gap:10}}>
-          <button onClick={onClose} style={{padding:'9px 20px',borderRadius:9,border:'1.5px solid var(--bd)',background:'var(--card)',fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,cursor:'pointer',color:'var(--m)'}}>Cancel</button>
-          <button onClick={()=>onSave({
-            provider, config:{...config,mode},
-            is_active: cfg?.is_active ?? false,
-            priority: cfg?.priority ?? 1,
-            ...(cfg?.id ? {id:cfg.id} : {}),
-          })} style={{padding:'9px 22px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif'}}>
-            Save Settings
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Page ────────────────────────────────────────────────────────────────
-export default function IntegrationsPage() {
-  const [tab,    setTab]    = useState<'payments'|'email'|'whatsapp'>('payments');
-  const [intgs,  setIntgs]  = useState<Row[]>([]);
-  const [modal,  setModal]  = useState<{provider:string;cfg?:Row}|null>(null);
-  const [toast,  setToast]  = useState('');
-  const toastRef = useRef<any>();
-
-  function showToast(msg:string) {
-    setToast(msg); clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(()=>setToast(''),3000);
-  }
-
-  const load = useCallback(async()=>{
-    const r = await authFetch(`${BACKEND}/api/admin/integrations`);
-    const d = await r.json();
-    setIntgs(d.integrations??[]);
+  useEffect(()=>{
+    authFetch(`${BACKEND}/api/admin/settings`).then(r=>r.ok?r.json():null).then(d=>{if(d?.whatsapp_settings)setWa(p=>({...WA_DEFAULTS,...d.whatsapp_settings}));}).catch(()=>{});
   },[]);
 
-  useEffect(()=>{ load(); },[load]);
+  const set=(patch:Partial<WaSettings>)=>setWa(p=>({...p,...patch}));
 
-  async function handleToggle(provider:string) {
-    const cfg = intgs.find(i=>i.provider===provider);
-    if (!cfg) return;
-    await authFetch(`${BACKEND}/api/admin/integrations`,{
-      method:'PATCH',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({id:cfg.id,is_active:!cfg.is_active}),
-    });
-    load();
-  }
+  const save=async()=>{
+    setSaving(true);
+    try{const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({whatsapp_settings:wa})});if(res.ok)showToast('✅ WhatsApp settings saved!');else showToast('❌ Save failed');}catch{showToast('❌ Save failed');}
+    setSaving(false);
+  };
 
-  async function handleSave(data:Row) {
-    const method = data.id ? 'PATCH' : 'POST';
-    const res = await authFetch(`${BACKEND}/api/admin/integrations`,{
-      method,
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(data),
-    });
-    if (res.ok) { showToast('✅ Integration saved!'); load(); setModal(null); }
-    else { const e = await res.json(); showToast('❌ '+e.error); }
-  }
+  const normalisePhone=(raw:string)=>{let d=raw.replace(/\D/g,'');if(d.length===10&&d[0]!=='0')d='91'+d;if(d.length===11&&d[0]==='0')d='91'+d.slice(1);return d;};
+  const isConfigured=()=>{if(wa.provider==='thynkcomm')return!!(wa.tcUrl&&wa.tcApiKey&&wa.tcApiSecret);if(wa.provider==='meta')return!!(wa.metaToken&&wa.metaPhoneId);if(wa.provider==='twilio')return!!(wa.accountSid&&wa.authToken&&wa.fromNumber);return false;};
 
-  const TABS = [
-    {k:'payments' as const, icon:'💳', label:'Payment Gateways', providers:['razorpay','cashfree','easebuzz','paypal']},
-    {k:'email'    as const, icon:'📧', label:'Email',            providers:['smtp']},
-    {k:'whatsapp' as const, icon:'💬', label:'WhatsApp',         providers:['whatsapp_cloud','twilio']},
-  ];
-  const activeTab = TABS.find(t=>t.k===tab)!;
-  const activeCount = intgs.filter(i=>i.is_active).length;
+  const sendTest=async()=>{
+    const ph=testPhone.trim();if(!ph){showToast('❌ Enter a test phone number');return;}if(!isConfigured()){showToast('❌ Configure and save credentials first');return;}
+    const toNorm=normalisePhone(ph);if(toNorm.length<10||toNorm.length>15){setTestResult({ok:false,msg:`"${ph}" doesn't look like a valid phone number.`,hint:'Use country code + number without +, e.g. 919876543210. Indian 10-digit numbers are auto-prefixed.'});return;}
+    setTesting(true);setTestResult(null);setShowRaw(false);
+    try{
+      let res:Response;
+      if(wa.provider==='thynkcomm'){const url=wa.tcUrl.replace(/\/$/,'')+'/api/send-message';res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-api-key':wa.tcApiKey,'x-api-secret':wa.tcApiSecret},body:JSON.stringify({to:toNorm,message:testMsg})});}
+      else if(wa.provider==='meta'){res=await fetch(`https://graph.facebook.com/v19.0/${wa.metaPhoneId}/messages`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${wa.metaToken}`},body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to:toNorm,type:'text',text:{preview_url:false,body:testMsg}})});}
+      else{const creds=btoa(`${wa.accountSid}:${wa.authToken}`);const from=wa.fromNumber.startsWith('whatsapp:')?wa.fromNumber:`whatsapp:${wa.fromNumber}`;res=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${wa.accountSid}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${creds}`,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({From:from,To:`whatsapp:${toNorm}`,Body:testMsg})});}
+      let data:any={};const ct=res.headers.get('content-type')||''
+      if(ct.includes('application/json')){data=await res.json();}else{const text=await res.text().catch(()=>'');if(!res.ok){setTestResult({ok:false,msg:`Server returned non-JSON (HTTP ${res.status}).`,hint:wa.provider==='thynkcomm'?`Check ThynkComm URL: ${wa.tcUrl}.`:`Status: ${res.status}.`,raw:{status:res.status,body:text.slice(0,300)}});setTesting(false);return;}}
+      if(!res.ok){const errMsg=data.error||data.message||data.error_description||'Unknown error';setTestResult({ok:false,msg:errMsg,hint:data.hint||data.more_info||'',raw:data});showToast('❌ Send failed');}
+      else{const warning=data.warning||(wa.provider==='meta'?'Message accepted. If recipient has not messaged you in 24h, use a Template for first-contact sends.':undefined);setTestResult({ok:true,msg:`Message accepted ✓ → to: ${toNorm} (id: ${data.messageId||data.messages?.[0]?.id||data.sid||'n/a'})`,warning,raw:data});showToast('✅ Message queued for delivery');}
+    }catch(e:any){setTestResult({ok:false,msg:'Network error: '+e.message,hint:'Check that your ThynkComm URL is correct and accessible.'});}
+    setTesting(false);
+  };
+
+  const prov=WA_PROVIDERS[wa.provider];
+  const provs=Object.entries(WA_PROVIDERS) as [WaProvider,typeof WA_PROVIDERS[WaProvider]][];
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:20}}>
+      {/* Provider selector */}
+      <div style={{background:'var(--card)',borderRadius:16,border:'1.5px solid var(--bd)',padding:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+          <div><div style={{fontSize:15,fontWeight:700,color:'var(--text)',fontFamily:'DM Sans,sans-serif'}}>WhatsApp Provider</div><div style={{fontSize:12,color:'var(--m)',fontFamily:'DM Sans,sans-serif',marginTop:2}}>Choose how Thynk Registration sends WhatsApp messages to parents</div></div>
+          <div style={{display:'flex',alignItems:'center',gap:10}}><span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:wa.enabled?'#15803d':'var(--m)'}}>{wa.enabled?'Enabled':'Disabled'}</span><div onClick={()=>set({enabled:!wa.enabled})} style={{width:44,height:24,borderRadius:12,background:wa.enabled?'#22C55E':'var(--bd)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}><div style={{width:18,height:18,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:wa.enabled?23:3,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/></div></div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+          {provs.map(([id,meta])=>{const selected=wa.provider===id;return(<button key={id} onClick={()=>set({provider:id})} style={{padding:'16px 14px',borderRadius:12,border:`2px solid ${selected?meta.color:'var(--bd)'}`,background:selected?meta.colorBg:'var(--bg)',cursor:'pointer',textAlign:'left',transition:'all .15s',outline:'none'}}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}><div style={{width:36,height:36,borderRadius:10,background:meta.iconBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{meta.icon}</div>{selected&&<div style={{width:16,height:16,borderRadius:'50%',background:meta.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#fff'}}>✓</div>}</div><div style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,color:'var(--text)',marginBottom:4}}>{meta.label}</div><div style={{display:'inline-block',fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:100,background:meta.badgeBg,color:meta.badgeColor,marginBottom:6}}>{meta.badge}</div><div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',lineHeight:1.4}}>{meta.description}</div></button>);})}
+        </div>
+      </div>
+      {/* Credentials */}
+      <div style={{background:'var(--card)',borderRadius:16,border:`1.5px solid ${prov.colorBorder}`,padding:24}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}><div style={{width:40,height:40,borderRadius:12,background:prov.iconBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>{prov.icon}</div><div><div style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:15,color:'var(--text)'}}>{prov.label} Credentials</div><div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:isConfigured()?'#15803d':'var(--red)',marginTop:1}}>{isConfigured()?'✓ All credentials provided':'⚠ Missing required credentials'}</div></div></div>
+          <a href={prov.docsUrl} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',gap:5,padding:'7px 14px',borderRadius:8,border:`1.5px solid ${prov.colorBorder}`,background:prov.colorBg,fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,color:prov.color,textDecoration:'none'}}>🔗 {wa.provider==='thynkcomm'?'Open ThynkComm':'View Docs'}</a>
+        </div>
+        {wa.provider==='thynkcomm'&&(<>
+          <div style={{padding:'14px 16px',borderRadius:12,background:'rgba(26,184,168,0.07)',border:'1px solid rgba(26,184,168,0.2)',marginBottom:20}}>
+            <div style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:'#1ab8a8',marginBottom:8}}>⚡ How to get your ThynkComm API Key</div>
+            <ol style={{margin:0,paddingLeft:18,display:'flex',flexDirection:'column',gap:4}}>{['Open your ThynkComm dashboard (e.g. thynkcom.vercel.app)','Go to Integrations → Other Apps tab','Click "+ New Integration Key" → fill in name (e.g. "Thynk Registration")','Select permissions: Send Messages ✓','Click Generate Key — copy the API Key and Secret Key','Paste both below along with your ThynkComm URL'].map((s,i)=><li key={i} style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--text)',lineHeight:1.5}}>{s}</li>)}</ol>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div><label style={lbl}>ThynkComm URL *</label><input value={wa.tcUrl} onChange={e=>set({tcUrl:e.target.value})} placeholder="https://thynkcom.vercel.app" style={inp}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>Your Vercel deployment URL — no trailing slash.</p></div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+              <div><label style={lbl}>API Key *</label><input value={wa.tcApiKey} onChange={e=>set({tcApiKey:e.target.value})} placeholder="tk_XXXXXXXXXXXXXXXX" style={{...inp,fontFamily:'monospace',fontSize:12}}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>Starts with tk_ — from ThynkComm Integrations</p></div>
+              <div><label style={lbl}>API Secret *</label><div style={{position:'relative'}}><input type={showSecret?'text':'password'} value={wa.tcApiSecret} onChange={e=>set({tcApiSecret:e.target.value})} placeholder="sk_live_xxxxxxxx" style={{...inp,paddingRight:40,fontFamily:'monospace',fontSize:12}}/><button type="button" onClick={()=>setShowSecret(!showSecret)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showSecret?'🙈':'👁️'}</button></div><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>Starts with sk_live_ — shown once at creation</p></div>
+            </div>
+            <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg)',border:'1.5px solid var(--bd)'}}>
+              <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,color:'var(--m)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.07em'}}>Request ThynkComm receives</div>
+              <code style={{fontFamily:'monospace',fontSize:11,color:'var(--text)',lineHeight:1.8,display:'block'}}><span style={{color:'#1ab8a8'}}>POST</span> {wa.tcUrl||'https://thynkcom.vercel.app'}/api/send-message<br/>x-api-key: {wa.tcApiKey?wa.tcApiKey.slice(0,10)+'••••':'<api-key>'}<br/>x-api-secret: {wa.tcApiSecret?wa.tcApiSecret.slice(0,12)+'••••':'<secret>'}<br/>{'{ "to": "919876543210", "message": "..." }'}</code>
+            </div>
+          </div>
+        </>)}
+        {wa.provider==='meta'&&(<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <div style={{gridColumn:'1 / -1'}}><label style={lbl}>Access Token *</label><div style={{position:'relative'}}><input type={showToken?'text':'password'} value={wa.metaToken} onChange={e=>set({metaToken:e.target.value})} placeholder="EAAxxxxxxxx…" style={{...inp,paddingRight:40,fontFamily:'monospace',fontSize:12}}/><button type="button" onClick={()=>setShowToken(!showToken)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showToken?'🙈':'👁️'}</button></div><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--red)',margin:'4px 0 0'}}>⚠ Use a permanent System User token — temporary tokens expire in 24 hours.</p></div>
+          <div><label style={lbl}>Phone Number ID *</label><input value={wa.metaPhoneId} onChange={e=>set({metaPhoneId:e.target.value})} placeholder="1234567890" style={inp}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>Meta → WhatsApp → API Setup → Phone Number ID</p></div>
+        </div>)}
+        {wa.provider==='twilio'&&(<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <div><label style={lbl}>Account SID *</label><input value={wa.accountSid} onChange={e=>set({accountSid:e.target.value})} placeholder="ACxxxxxxxxxxxxxxxx" style={inp}/></div>
+          <SecretField label="Auth Token *" hint="Twilio Console → Account Info" value={wa.authToken} onChange={v=>set({authToken:v})}/>
+          <div style={{gridColumn:'1 / -1'}}><label style={lbl}>WhatsApp From Number *</label><input value={wa.fromNumber} onChange={e=>set({fromNumber:e.target.value})} placeholder="whatsapp:+14155238886" style={inp}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>Include the whatsapp: prefix. Use your approved sender number.</p></div>
+        </div>)}
+      </div>
+      {/* Test */}
+      <div style={{background:'var(--card)',borderRadius:16,border:'1.5px solid var(--bd)',padding:24}}>
+        <div style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,color:'var(--text)',marginBottom:4}}>📤 Send a Test Message</div>
+        <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginBottom:16}}>Verify the integration is working before going live</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:14,marginBottom:14}}>
+          <div><label style={lbl}>Phone Number *</label><input value={testPhone} onChange={e=>setTestPhone(e.target.value)} placeholder="919876543210" style={inp}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:testPhone&&normalisePhone(testPhone).length>=10?'#15803d':'var(--m)',margin:'4px 0 0'}}>{testPhone?`Will send to: ${normalisePhone(testPhone)||'⚠ invalid'}`:'Country code + number, no +. Indian 10-digit auto-prefixed.'}</p></div>
+          <div><label style={lbl}>Message</label><input value={testMsg} onChange={e=>setTestMsg(e.target.value)} style={inp}/></div>
+        </div>
+        {testResult&&(<div style={{marginBottom:14,display:'flex',flexDirection:'column',gap:8}}>
+          <div style={{padding:'12px 16px',borderRadius:10,background:testResult.ok?'rgba(16,185,129,.07)':'rgba(239,68,68,.07)',border:`1px solid ${testResult.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'}`,display:'flex',gap:10}}><span style={{flexShrink:0}}>{testResult.ok?'✅':'❌'}</span><span style={{fontFamily:'monospace',fontSize:12,color:testResult.ok?'#15803d':'var(--red)',wordBreak:'break-all'}}>{testResult.msg}</span></div>
+          {testResult.hint&&<div style={{padding:'10px 14px',borderRadius:8,background:'rgba(184,134,11,.07)',border:'1px solid rgba(184,134,11,.2)',fontFamily:'DM Sans,sans-serif',fontSize:12,color:'#92610A'}}>🔧 <strong>Fix:</strong> {testResult.hint}</div>}
+          {testResult.warning&&<div style={{padding:'10px 14px',borderRadius:8,background:'var(--orange2)',border:'1px solid var(--orange)',fontFamily:'DM Sans,sans-serif',fontSize:12,color:'var(--orange)'}}>⚠️ {testResult.warning}</div>}
+          {testResult.raw&&<div><button onClick={()=>setShowRaw(v=>!v)} style={{background:'none',border:'none',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',padding:0}}>{showRaw?'▲ Hide':'▼ Show'} raw API response</button>{showRaw&&<pre style={{marginTop:6,padding:'10px 12px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:8,fontFamily:'monospace',fontSize:11,overflow:'auto',maxHeight:160}}>{JSON.stringify(testResult.raw,null,2)}</pre>}</div>}
+        </div>)}
+        <button onClick={sendTest} disabled={testing||!isConfigured()} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 22px',borderRadius:9,background:isConfigured()?'#15803d':'var(--bd)',border:'none',color:isConfigured()?'#fff':'var(--m)',cursor:testing||!isConfigured()?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:testing?0.7:1}}>{testing?'⏳ Sending…':'📤 Send Test Message'}</button>
+      </div>
+      <div style={{display:'flex',justifyContent:'flex-end'}}><button onClick={save} disabled={saving} style={{display:'flex',alignItems:'center',gap:8,padding:'11px 28px',borderRadius:10,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:14,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>{saving?'⏳ Saving…':'💾 Save WhatsApp Settings'}</button></div>
+    </div>
+  );
+}
+
+function EmailTab({showToast}:{showToast:(m:string)=>void}) {
+  const [email,setEmail]=useState({fromName:'Thynk Registration',fromEmail:'',smtpHost:'smtp.gmail.com',smtpPort:'587',smtpUser:'',smtpPass:'',enabled:false});
+  const [showPass,setShowPass]=useState(false);
+  const [saving,setSaving]=useState(false);
+  useEffect(()=>{authFetch(`${BACKEND}/api/admin/settings`).then(r=>r.ok?r.json():null).then(d=>{if(d?.email_settings)setEmail(p=>({...p,...d.email_settings}));}).catch(()=>{});}, []);
+  const save=async()=>{setSaving(true);try{const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email_settings:email})});if(res.ok)showToast('✅ Email settings saved!');else showToast('❌ Save failed');}catch{showToast('❌ Save failed');}setSaving(false);};
+  return (
+    <div style={{background:'var(--card)',borderRadius:16,border:'1.5px solid var(--bd)',padding:28}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div><div style={{fontSize:16,fontWeight:700,color:'var(--text)',fontFamily:'Sora,sans-serif'}}>Gmail SMTP</div><div style={{fontSize:13,color:'var(--m)',fontFamily:'DM Sans,sans-serif',marginTop:2}}>Send confirmation & payment emails via Gmail using an App Password</div></div>
+        <button onClick={()=>setEmail(p=>({...p,enabled:!p.enabled}))} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid var(--bd)',background:email.enabled?'var(--text)':'var(--bg)',color:email.enabled?'#fff':'var(--m)',fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,cursor:'pointer'}}>{email.enabled?'✓ Enabled':'Disabled'}</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+        {[{k:'fromName',l:'Sender Name',ph:'Thynk Registration'},{k:'fromEmail',l:'From Email',ph:'noreply@yourdomain.com'},{k:'smtpHost',l:'SMTP Host',ph:'smtp.gmail.com'},{k:'smtpPort',l:'SMTP Port',ph:'587'},{k:'smtpUser',l:'Gmail Address',ph:'your@gmail.com'}].map(f=>(<div key={f.k}><label style={lbl}>{f.l}</label><input value={(email as any)[f.k]} onChange={e=>setEmail(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph} style={inp}/></div>))}
+        <div><label style={lbl}>App Password</label><div style={{position:'relative'}}><input type={showPass?'text':'password'} value={email.smtpPass} onChange={e=>setEmail(p=>({...p,smtpPass:e.target.value}))} placeholder="xxxx xxxx xxxx xxxx" style={{...inp,paddingRight:40}}/><button type="button" onClick={()=>setShowPass(!showPass)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button></div><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}><a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer" style={{color:'var(--acc)'}}>How to create a Gmail App Password →</a></p></div>
+      </div>
+      <button onClick={save} disabled={saving} style={{marginTop:20,display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>{saving?'⏳ Saving…':'💾 Save Email Settings'}</button>
+    </div>
+  );
+}
+
+export default function IntegrationsPage() {
+  const {toast,show:showToast}=useToast();
+  const [tab,setTab]=useState<'payments'|'email'|'whatsapp'>('payments');
+  const [gateways,setGateways]=useState<GatewayState[]>([]);
+  const [loadingGW,setLoadingGW]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const dragIdx=useRef<number|null>(null);
+  const dragOverIdx=useRef<number|null>(null);
+  const [dragActive,setDragActive]=useState<number|null>(null);
+
+  const loadGateways=useCallback(async()=>{
+    try{const r=await authFetch(`${BACKEND}/api/admin/integrations`);const d=await r.json();const rows:Row[]=d.integrations??[];
+    const gwList:GatewayState[]=Object.keys(GATEWAY_META).map((id,i)=>{const row=rows.find(r=>r.provider===id);return{id,enabled:row?.is_active??false,priority:row?.config?.priority??(i+1),key_id:row?.config?.key_id??'',key_secret:row?.config?.key_secret??'',mode:row?.config?.mode??'test',db_id:row?.id};});
+    gwList.sort((a,b)=>a.priority-b.priority);setGateways(gwList);}catch{}setLoadingGW(false);
+  },[]);
+  useEffect(()=>{loadGateways();},[loadGateways]);
+
+  const updateGateway=(id:string,patch:Partial<GatewayState>)=>setGateways(p=>p.map(g=>g.id===id?{...g,...patch}:g));
+  const moveGateway=(idx:number,dir:-1|1)=>{setGateways(p=>{const arr=[...p],s=idx+dir;if(s<0||s>=arr.length)return arr;[arr[idx],arr[s]]=[arr[s],arr[idx]];return arr.map((g,i)=>({...g,priority:i+1}));});};
+  const onDragStart=(idx:number)=>{dragIdx.current=idx;setDragActive(idx);};
+  const onDragOver=(e:React.DragEvent,idx:number)=>{e.preventDefault();dragOverIdx.current=idx;};
+  const onDrop=()=>{const from=dragIdx.current,to=dragOverIdx.current;if(from!==null&&to!==null&&from!==to){setGateways(p=>{const arr=[...p];const[moved]=arr.splice(from,1);arr.splice(to,0,moved);return arr.map((g,i)=>({...g,priority:i+1}));});}dragIdx.current=null;dragOverIdx.current=null;setDragActive(null);};
+
+  const saveGateways=async()=>{
+    setSaving(true);
+    try{await Promise.all(gateways.map(gw=>authFetch(`${BACKEND}/api/admin/integrations`,{method:gw.db_id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...(gw.db_id?{id:gw.db_id}:{}),provider:gw.id,is_active:gw.enabled,priority:gw.priority,config:{key_id:gw.key_id,key_secret:gw.key_secret,mode:gw.mode,priority:gw.priority}})})));showToast('✅ Payment gateways saved!');loadGateways();}
+    catch{showToast('❌ Save failed');}setSaving(false);
+  };
+
+  const enabledCount=gateways.filter(g=>g.enabled&&g.key_id).length;
+  const TABS=[{k:'payments' as const,icon:'💳',label:'Payment Gateways',badge:enabledCount>0?String(enabledCount):null},{k:'email' as const,icon:'📧',label:'Email / SMTP',badge:null},{k:'whatsapp' as const,icon:'💬',label:'WhatsApp',badge:null}];
 
   return (
     <div style={{minHeight:'100vh',background:'var(--bg)',fontFamily:'DM Sans,sans-serif'}}>
-      {toast && (
-        <div style={{position:'fixed',top:16,right:16,background:'#1e293b',color:'#fff',borderRadius:10,padding:'10px 18px',fontSize:13,fontWeight:600,zIndex:9999,boxShadow:'0 4px 20px rgba(0,0,0,.2)'}}>
-          {toast}
-        </div>
-      )}
-
+      {toast&&<div style={{position:'fixed',top:16,right:16,background:'#1e293b',color:'#fff',borderRadius:10,padding:'10px 18px',fontSize:13,fontWeight:600,zIndex:9999,boxShadow:'0 4px 20px rgba(0,0,0,.2)'}}>{toast}</div>}
       <div style={{maxWidth:900,margin:'0 auto',padding:'32px 24px'}}>
-        {/* Header */}
-        <div style={{marginBottom:28}}>
-          <h1 style={{fontFamily:'Sora,sans-serif',fontSize:26,fontWeight:800,color:'var(--text)',margin:'0 0 4px'}}>
-            Integrations <span style={{color:'var(--acc)'}}>Setup</span>
-          </h1>
-          <p style={{fontSize:13,color:'var(--m)',margin:0}}>
-            Payment gateways, email & WhatsApp — {activeCount} active integration{activeCount!==1?'s':''}
-          </p>
-        </div>
-
-        {/* Tab bar */}
+        <div style={{marginBottom:28}}><h1 style={{fontFamily:'Sora,sans-serif',fontSize:26,fontWeight:800,color:'var(--text)',margin:'0 0 4px'}}>Integrations <span style={{color:'var(--acc)'}}>Setup</span></h1><p style={{fontSize:13,color:'var(--m)',margin:0}}>Payment gateways, email & WhatsApp — configure all external services</p></div>
         <div style={{display:'flex',gap:8,marginBottom:24,flexWrap:'wrap'}}>
-          {TABS.map(t=>{
-            const tabCount = intgs.filter(i=>t.providers.includes(i.provider)&&i.is_active).length;
-            return (
-              <button key={t.k} onClick={()=>setTab(t.k)} style={btn(tab===t.k)}>
-                {t.icon} {t.label}
-                {tabCount>0 && <span style={{padding:'1px 7px',borderRadius:100,background:'var(--acc)',color:'#fff',fontSize:10,fontWeight:700}}>{tabCount}</span>}
-              </button>
-            );
-          })}
+          {TABS.map(t=>(<button key={t.k} onClick={()=>setTab(t.k)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px',borderRadius:10,border:`1.5px solid ${tab===t.k?'var(--acc)':'var(--bd)'}`,background:tab===t.k?'var(--acc3)':'var(--card)',color:tab===t.k?'var(--acc)':'var(--text)',fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,cursor:'pointer'}}>{t.icon} {t.label}{t.badge&&<span style={{padding:'1px 7px',borderRadius:100,background:'var(--acc)',color:'#fff',fontSize:10,fontWeight:700}}>{t.badge}</span>}</button>))}
         </div>
-
-        {/* Payment Gateways — drag priority info */}
-        {tab==='payments' && (
-          <div style={{marginBottom:16,padding:'12px 16px',background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:12,display:'flex',alignItems:'center',gap:10}}>
-            <span style={{fontSize:16}}>💳</span>
-            <div>
-              <div style={{fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,color:'var(--text)'}}>
-                {activeCount===0 ? 'No gateways active — students cannot make payments' : `${intgs.filter(i=>i.is_active&&['razorpay','cashfree','easebuzz','paypal'].includes(i.provider)).length} gateway(s) active`}
-              </div>
-              <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginTop:2}}>
-                Priority is set per-school in Schools → Edit School → Gateway Sequence.
-              </div>
+        {tab==='payments'&&(
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20,padding:'12px 16px',background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:12}}>
+              <span style={{fontSize:16}}>💳</span>
+              <div style={{flex:1}}><div style={{fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,color:'var(--text)'}}>{enabledCount===0?'No gateways active — students cannot make payments':`${enabledCount} gateway${enabledCount>1?'s':''} active`}</div><div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginTop:2}}>Drag ⠿ or use ▲▼ to reorder. Priority 1 = shown first at checkout.</div></div>
+              <button onClick={saveGateways} disabled={saving} style={{display:'flex',alignItems:'center',gap:7,padding:'9px 22px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.6:1}}>{saving?'⏳ Saving…':'💾 Save Order & Config'}</button>
             </div>
+            {loadingGW?<div style={{textAlign:'center',padding:40,color:'var(--m)'}}>Loading gateway configuration…</div>:(
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {gateways.map((gw,i)=>(<div key={gw.id} draggable onDragStart={()=>onDragStart(i)} onDragOver={e=>onDragOver(e,i)} onDrop={onDrop} onDragEnd={()=>{dragIdx.current=null;setDragActive(null);}} style={{opacity:dragActive===i?0.45:1,transition:'opacity .15s',outline:dragOverIdx.current===i&&dragActive!==i?'2px dashed var(--acc)':'none',borderRadius:14}}><GatewayCard gw={gw} onUpdate={updateGateway} onMoveUp={()=>moveGateway(i,-1)} onMoveDown={()=>moveGateway(i,1)} isFirst={i===0} isLast={i===gateways.length-1}/></div>))}
+              </div>
+            )}
+            {enabledCount>1&&(<div style={{marginTop:20,padding:'16px 20px',background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:12}}><div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',color:'var(--m)',marginBottom:12}}>Checkout preview — students see gateways in this order</div><div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{gateways.filter(g=>g.enabled&&g.key_id).map((gw,i)=>{const m=GATEWAY_META[gw.id];return(<div key={gw.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 14px',borderRadius:9,border:`1.5px solid ${m.color}30`,background:m.bg}}><span style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',fontWeight:700}}>{i+1}</span><span style={{fontSize:16}}>{m.logo}</span><span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:'var(--text)'}}>{m.name}</span><span style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:gw.mode==='live'?'var(--red)':'var(--m)',fontWeight:600}}>{gw.mode}</span></div>);})}</div></div>)}
           </div>
         )}
-
-        {/* Cards */}
-        <div style={{display:'flex',flexDirection:'column',gap:12}}>
-          {activeTab.providers.map(provider=>(
-            <IntegCard
-              key={provider}
-              provider={provider}
-              cfg={intgs.find(i=>i.provider===provider)}
-              onEdit={()=>setModal({provider, cfg:intgs.find(i=>i.provider===provider)})}
-              onToggle={()=>handleToggle(provider)}
-            />
-          ))}
-        </div>
-
-        {/* Back link */}
-        <div style={{marginTop:24}}>
-          <a href="/admin" style={{fontFamily:'DM Sans,sans-serif',fontSize:13,color:'var(--acc)',textDecoration:'none',fontWeight:600}}>← Back to Admin Dashboard</a>
-        </div>
+        {tab==='email'&&<EmailTab showToast={showToast}/>}
+        {tab==='whatsapp'&&<WhatsAppTab showToast={showToast}/>}
+        <div style={{marginTop:24}}><a href="/admin" style={{fontFamily:'DM Sans,sans-serif',fontSize:13,color:'var(--acc)',textDecoration:'none',fontWeight:600}}>← Back to Admin Dashboard</a></div>
       </div>
-
-      {modal && (
-        <EditModal
-          provider={modal.provider}
-          cfg={modal.cfg}
-          onClose={()=>setModal(null)}
-          onSave={handleSave}
-        />
-      )}
     </div>
   );
 }
