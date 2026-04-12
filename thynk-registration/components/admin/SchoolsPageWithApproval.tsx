@@ -63,10 +63,7 @@ export function SchoolsPageWithApproval({
   const [tab, setTab] = useState<'queue' | 'approved'>('queue');
 
   // Schools not yet approved go to the queue
-  const pendingSchools    = schools.filter(s => s.status && s.status !== 'approved');
-  // Only truly pending_approval ones need urgent attention (badge count)
-  const pendingApprovalCount = schools.filter(s => s.status === 'pending_approval').length;
-  const registeredCount      = schools.filter(s => s.status === 'registered').length;
+  const pendingSchools  = schools.filter(s => s.status && s.status !== 'approved');
   // Schools that are approved OR have no status column yet (legacy rows before migration)
   const approvedSchools = schools.filter(s => s.status === 'approved' || !s.status);
 
@@ -89,14 +86,9 @@ export function SchoolsPageWithApproval({
         <div className="topbar-left">
           <h1>Schools <span>Management</span></h1>
           <p>
-            {pendingApprovalCount > 0 && (
-              <span style={{ color: '#ef4444', fontWeight: 700, marginRight: 8 }}>
-                🔴 {pendingApprovalCount} need{pendingApprovalCount === 1 ? 's' : ''} approval
-              </span>
-            )}
-            {registeredCount > 0 && (
+            {pendingSchools.length > 0 && (
               <span style={{ color: '#f59e0b', fontWeight: 700, marginRight: 12 }}>
-                · ⚠️ {registeredCount} newly registered
+                ⚠️ {pendingSchools.length} pending approval
               </span>
             )}
             {approvedSchools.length} approved school{approvedSchools.length !== 1 ? 's' : ''}
@@ -105,22 +97,13 @@ export function SchoolsPageWithApproval({
         <div className="topbar-right">
           <div style={{ display: 'flex', gap: 6 }}>
             <button style={TAB(tab === 'queue')} onClick={() => setTab('queue')}>
-              {pendingApprovalCount > 0 && (
+              {pendingSchools.length > 0 && (
                 <span style={{
                   background: '#ef4444', color: '#fff', borderRadius: 20,
                   fontSize: 10, fontWeight: 800, padding: '1px 6px',
                   marginRight: 6, display: 'inline-block',
                 }}>
-                  {pendingApprovalCount}
-                </span>
-              )}
-              {registeredCount > 0 && pendingApprovalCount === 0 && (
-                <span style={{
-                  background: '#f59e0b', color: '#fff', borderRadius: 20,
-                  fontSize: 10, fontWeight: 800, padding: '1px 6px',
-                  marginRight: 6, display: 'inline-block',
-                }}>
-                  {registeredCount}
+                  {pendingSchools.length}
                 </span>
               )}
               Approval Queue

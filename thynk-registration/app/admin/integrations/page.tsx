@@ -202,147 +202,19 @@ function EmailTab({showToast}:{showToast:(m:string)=>void}) {
   const [email,setEmail]=useState({fromName:'Thynk Registration',fromEmail:'',smtpHost:'smtp.gmail.com',smtpPort:'587',smtpUser:'',smtpPass:'',enabled:false});
   const [showPass,setShowPass]=useState(false);
   const [saving,setSaving]=useState(false);
-  // SMTP test state
-  const [testTo,setTestTo]=useState('');
-  const [testing,setTesting]=useState(false);
-  const [testResult,setTestResult]=useState<{ok:boolean;msg:string;hint?:string}|null>(null);
-
   useEffect(()=>{authFetch(`${BACKEND}/api/admin/settings`).then(r=>r.ok?r.json():null).then(d=>{if(d?.email_settings)setEmail(p=>({...p,...d.email_settings}));}).catch(()=>{});}, []);
   const save=async()=>{setSaving(true);try{const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email_settings:email})});if(res.ok)showToast('✅ Email settings saved!');else showToast('❌ Save failed');}catch{showToast('❌ Save failed');}setSaving(false);};
-
-  const isConfigured = !!(email.smtpHost && email.smtpUser && email.smtpPass && email.fromEmail);
-
-  const sendTest = async () => {
-    if (!testTo.trim()) { showToast('❌ Enter a recipient email address'); return; }
-    if (!isConfigured)  { showToast('❌ Fill in and save SMTP credentials first'); return; }
-    setTesting(true); setTestResult(null);
-    try {
-      const res = await authFetch(`${BACKEND}/api/admin/integrations/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: 'smtp',
-          to: testTo.trim(),
-          config: {
-            host: email.smtpHost,
-            port: parseInt(email.smtpPort) || 587,
-            user: email.smtpUser,
-            password: email.smtpPass,
-            from_email: email.fromEmail,
-            from_name: email.fromName,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setTestResult({ ok: true, msg: `✅ Test email sent to ${testTo}` });
-        showToast('✅ Test email delivered!');
-      } else {
-        const errMsg = data.error || 'Unknown error';
-        const hint = errMsg.includes('535') || errMsg.includes('auth')
-          ? 'Authentication failed — check your Gmail App Password. Normal Gmail passwords do not work; you need an App Password.'
-          : errMsg.includes('ECONNREFUSED') || errMsg.includes('connect')
-          ? 'Could not connect to SMTP server. Check host and port.'
-          : errMsg.includes('534') || errMsg.includes('less secure')
-          ? 'Enable 2FA on your Google account and use an App Password.'
-          : undefined;
-        setTestResult({ ok: false, msg: errMsg, hint });
-        showToast('❌ Test failed');
-      }
-    } catch (e: any) {
-      setTestResult({ ok: false, msg: 'Network error: ' + e.message });
-      showToast('❌ Test failed');
-    }
-    setTesting(false);
-  };
-
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:16}}>
-      {/* Config card */}
-      <div style={{background:'var(--card)',borderRadius:16,border:'1.5px solid var(--bd)',padding:28}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <div>
-            <div style={{fontSize:16,fontWeight:700,color:'var(--text)',fontFamily:'Sora,sans-serif'}}>Gmail SMTP</div>
-            <div style={{fontSize:13,color:'var(--m)',fontFamily:'DM Sans,sans-serif',marginTop:2}}>Send confirmation & payment emails via Gmail using an App Password</div>
-          </div>
-          <button onClick={()=>setEmail(p=>({...p,enabled:!p.enabled}))} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid var(--bd)',background:email.enabled?'var(--text)':'var(--bg)',color:email.enabled?'#fff':'var(--m)',fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,cursor:'pointer'}}>
-            {email.enabled?'✓ Enabled':'Disabled'}
-          </button>
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-          {[{k:'fromName',l:'Sender Name',ph:'Thynk Registration'},{k:'fromEmail',l:'From Email',ph:'noreply@yourdomain.com'},{k:'smtpHost',l:'SMTP Host',ph:'smtp.gmail.com'},{k:'smtpPort',l:'SMTP Port',ph:'587'},{k:'smtpUser',l:'Gmail Address',ph:'your@gmail.com'}].map(f=>(<div key={f.k}><label style={lbl}>{f.l}</label><input value={(email as any)[f.k]} onChange={e=>setEmail(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph} style={inp}/></div>))}
-          <div>
-            <label style={lbl}>App Password</label>
-            <div style={{position:'relative'}}>
-              <input type={showPass?'text':'password'} value={email.smtpPass} onChange={e=>setEmail(p=>({...p,smtpPass:e.target.value}))} placeholder="xxxx xxxx xxxx xxxx" style={{...inp,paddingRight:40}}/>
-              <button type="button" onClick={()=>setShowPass(!showPass)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button>
-            </div>
-            <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>
-              <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer" style={{color:'var(--acc)'}}>How to create a Gmail App Password →</a>
-            </p>
-          </div>
-        </div>
-        <div style={{display:'flex',gap:10,marginTop:20,alignItems:'center'}}>
-          <button onClick={save} disabled={saving} style={{display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>
-            {saving?'⏳ Saving…':'💾 Save Email Settings'}
-          </button>
-          {!isConfigured && <span style={{fontSize:11,color:'var(--m)',fontFamily:'DM Sans,sans-serif'}}>⚠ Fill all fields before testing</span>}
-        </div>
+    <div style={{background:'var(--card)',borderRadius:16,border:'1.5px solid var(--bd)',padding:28}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div><div style={{fontSize:16,fontWeight:700,color:'var(--text)',fontFamily:'Sora,sans-serif'}}>Gmail SMTP</div><div style={{fontSize:13,color:'var(--m)',fontFamily:'DM Sans,sans-serif',marginTop:2}}>Send confirmation & payment emails via Gmail using an App Password</div></div>
+        <button onClick={()=>setEmail(p=>({...p,enabled:!p.enabled}))} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid var(--bd)',background:email.enabled?'var(--text)':'var(--bg)',color:email.enabled?'#fff':'var(--m)',fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,cursor:'pointer'}}>{email.enabled?'✓ Enabled':'Disabled'}</button>
       </div>
-
-      {/* SMTP Test card */}
-      <div style={{background:'var(--card)',borderRadius:16,border:`1.5px solid ${isConfigured?'rgba(79,70,229,.25)':'var(--bd)'}`,padding:24}}>
-        <div style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,color:'var(--text)',marginBottom:4}}>
-          🧪 Test SMTP Configuration
-        </div>
-        <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginBottom:16}}>
-          Send a test email using your saved SMTP settings to verify everything is working correctly.
-        </div>
-
-        <div style={{display:'flex',gap:12,alignItems:'flex-end',marginBottom:14,flexWrap:'wrap'}}>
-          <div style={{flex:1,minWidth:220}}>
-            <label style={lbl}>Send Test To (email address)</label>
-            <input
-              value={testTo}
-              onChange={e=>setTestTo(e.target.value)}
-              placeholder="yourname@gmail.com"
-              type="email"
-              style={inp}
-            />
-          </div>
-          <button
-            onClick={sendTest}
-            disabled={testing || !isConfigured || !testTo.trim()}
-            style={{display:'flex',alignItems:'center',gap:7,padding:'10px 22px',borderRadius:9,background:isConfigured&&testTo.trim()?'#059669':'var(--bd)',border:'none',color:isConfigured&&testTo.trim()?'#fff':'var(--m)',cursor:testing||!isConfigured||!testTo.trim()?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:testing?0.7:1,whiteSpace:'nowrap'}}
-          >
-            {testing ? '⏳ Sending…' : '📤 Send Test Email'}
-          </button>
-        </div>
-
-        {/* Test result */}
-        {testResult && (
-          <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            <div style={{padding:'12px 16px',borderRadius:10,background:testResult.ok?'rgba(16,185,129,.07)':'rgba(239,68,68,.07)',border:`1px solid ${testResult.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'}`,display:'flex',gap:10,alignItems:'flex-start'}}>
-              <span style={{flexShrink:0,fontSize:16}}>{testResult.ok?'✅':'❌'}</span>
-              <div>
-                <div style={{fontFamily:'monospace',fontSize:12,color:testResult.ok?'#15803d':'#dc2626',fontWeight:600}}>{testResult.msg}</div>
-                {testResult.ok && <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginTop:4}}>Check your inbox — the test email may take a few seconds to arrive.</div>}
-              </div>
-            </div>
-            {testResult.hint && (
-              <div style={{padding:'10px 14px',borderRadius:8,background:'rgba(184,134,11,.07)',border:'1px solid rgba(184,134,11,.2)',fontFamily:'DM Sans,sans-serif',fontSize:12,color:'#92610A'}}>
-                🔧 <strong>Fix:</strong> {testResult.hint}
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isConfigured && (
-          <div style={{padding:'10px 14px',borderRadius:8,background:'var(--bg)',border:'1.5px dashed var(--bd)',fontFamily:'DM Sans,sans-serif',fontSize:12,color:'var(--m)',textAlign:'center'}}>
-            Configure and save SMTP settings above to enable the test button.
-          </div>
-        )}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+        {[{k:'fromName',l:'Sender Name',ph:'Thynk Registration'},{k:'fromEmail',l:'From Email',ph:'noreply@yourdomain.com'},{k:'smtpHost',l:'SMTP Host',ph:'smtp.gmail.com'},{k:'smtpPort',l:'SMTP Port',ph:'587'},{k:'smtpUser',l:'Gmail Address',ph:'your@gmail.com'}].map(f=>(<div key={f.k}><label style={lbl}>{f.l}</label><input value={(email as any)[f.k]} onChange={e=>setEmail(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph} style={inp}/></div>))}
+        <div><label style={lbl}>App Password</label><div style={{position:'relative'}}><input type={showPass?'text':'password'} value={email.smtpPass} onChange={e=>setEmail(p=>({...p,smtpPass:e.target.value}))} placeholder="xxxx xxxx xxxx xxxx" style={{...inp,paddingRight:40}}/><button type="button" onClick={()=>setShowPass(!showPass)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button></div><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}><a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer" style={{color:'var(--acc)'}}>How to create a Gmail App Password →</a></p></div>
       </div>
+      <button onClick={save} disabled={saving} style={{marginTop:20,display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>{saving?'⏳ Saving…':'💾 Save Email Settings'}</button>
     </div>
   );
 }

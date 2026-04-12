@@ -36,19 +36,16 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-// Detect if user is from India via timezone
-function detectIsIndia(): boolean {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return tz === 'Asia/Calcutta' || tz === 'Asia/Kolkata';
-  } catch {
-    return true; // default to India
-  }
+// Detect if school is in India based on country field
+function isIndianCountry(country?: string): boolean {
+  return !country || country.toLowerCase() === 'india';
 }
 
 export default function RegistrationCard({ school, pricing, paymentError }: Props) {
   const [step, setStep]       = useState<Step>(1);
-  const [isIndia, setIsIndia] = useState(true);
+  // ── AUTHORITATIVE: derive isIndia from school's country field ──────────────
+  // School country is set by admin. International (non-India) schools use PayPal + USD.
+  const isIndia = isIndianCountry((school as any).country);
   const [selGW, setSelGW]     = useState<AllGatewayKey | ''>('');
   const [discCode, setDiscCode]   = useState('');
   const [discAmt, setDiscAmt]     = useState(0);
@@ -77,11 +74,6 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
     school.allowed_grades && school.allowed_grades.length > 0
       ? school.allowed_grades
       : DEFAULT_GRADES;
-
-  // Detect geography on mount
-  useEffect(() => {
-    setIsIndia(detectIsIndia());
-  }, []);
 
   useEffect(() => {
     if (paymentError) showToast('Previous payment was cancelled or failed. Please try again.', 'err');

@@ -26,6 +26,10 @@ export interface School {
   is_active: boolean;
   project_id?: string | null;
   created_at: string;
+  country?: string;
+  city?: string;
+  state?: string;
+  status?: string;
 }
 
 export interface Pricing {
