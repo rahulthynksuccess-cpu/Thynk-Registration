@@ -1,5 +1,7 @@
 'use client';
 import { authFetch } from '@/lib/supabase/client';
+import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
+import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithApproval';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -400,11 +402,16 @@ export default function AdminDashboard() {
 
           {/* ── SCHOOLS ─────────────────────────────────────────────── */}
           <div className={`page${activePage==='schools'?' active':''}`}>
-            <div className="topbar">
-              <div className="topbar-left"><h1>Schools <span>Management</span></h1><p>{schools.length} schools configured</p></div>
-              <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>{loadPrograms();setSchoolForm({});}}>+ Add School</button>}</div>
-            </div>
-            <SchoolsTable schools={schools} programs={programs} isSuperAdmin={isSuperAdmin} onEdit={s=>{loadPrograms();setSchoolForm(s);}} />
+            <SchoolsPageWithApproval
+              schools={schools}
+              programs={programs}
+              isSuperAdmin={isSuperAdmin}
+              BACKEND={BACKEND}
+              authHeaders={authHeaders}
+              onEdit={s => { loadPrograms(); setSchoolForm(s); }}
+              onRefresh={loadSchools}
+              showToast={(t, i) => showToast(t, i ?? '')}
+            />
           </div>
 
           {/* ── DISCOUNT CODES ───────────────────────────────────────── */}
