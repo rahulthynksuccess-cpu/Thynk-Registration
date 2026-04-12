@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
   const {
     school_code, name, org_name,
     city, state, country,
+    address, pin_code, contact_persons,
     project_id, school_price, currency: bodyCurrency,
     discount_code,
     primary_color, accent_color, is_active,
@@ -67,15 +68,18 @@ export async function POST(req: NextRequest) {
   const discCode    = (discount_code || code).toUpperCase();
 
   const { data: school, error } = await service.from('schools').insert({
-    school_code:   code,
+    school_code:      code,
     name,
     org_name,
-    city:          city    || null,
-    state:         state   || null,
-    country:       resolvedCountry,
+    city:             city    || null,
+    state:            state   || null,
+    country:          resolvedCountry,
+    address:          address || null,
+    pin_code:         pin_code || null,
+    contact_persons:  contact_persons || [],
     project_id,
-    project_slug:  program.slug,
-    discount_code: discCode,
+    project_slug:     program.slug,
+    discount_code:    discCode,
     branding: {
       primaryColor: primary_color || '#4f46e5',
       accentColor:  accent_color  || '#8b5cf6',
@@ -132,6 +136,9 @@ export async function PATCH(req: NextRequest) {
     project_id,
     country,
     discount_code,
+    address,
+    pin_code,
+    contact_persons,
     ...rest
   } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
@@ -155,7 +162,10 @@ export async function PATCH(req: NextRequest) {
     country: resolvedCountry,
   };
 
-  if (discount_code) updatePayload.discount_code = discount_code.toUpperCase();
+  if (discount_code)    updatePayload.discount_code    = discount_code.toUpperCase();
+  if (address !== undefined)          updatePayload.address          = address || null;
+  if (pin_code !== undefined)         updatePayload.pin_code         = pin_code || null;
+  if (contact_persons !== undefined)  updatePayload.contact_persons  = contact_persons ?? [];
 
   if (project_id) {
     const { data: program } = await service
