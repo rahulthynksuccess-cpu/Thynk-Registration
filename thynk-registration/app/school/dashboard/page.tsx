@@ -31,23 +31,8 @@ function Badge({ status }: { status: string }) {
   return <span style={{ background:bg, color:fg, borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{status ?? '—'}</span>;
 }
 
-// ── Mini progress bar ─────────────────────────────────────────────
-function MiniProgress({ paid, total, label }: { paid: number; total: number; label: string }) {
-  const pct = total > 0 ? Math.round((paid / total) * 100) : 0;
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-      <div style={{ flex:1, height:6, background:'var(--bd)', borderRadius:3, overflow:'hidden', minWidth:40 }}>
-        <div style={{ width:`${pct}%`, height:'100%', background:'#10b981', borderRadius:3, transition:'width .3s' }} />
-      </div>
-      <span style={{ fontSize:11, fontWeight:700, color:'var(--text)', minWidth:32 }}>{pct}%</span>
-    </div>
-  );
-}
-
-// ── Class Breakdown card ──────────────────────────────────────────
 function ClassBreakdownCard({ byClass }: { byClass: Record<string, { total:number; paid:number; unpaid:number }> }) {
   const classes = Object.keys(byClass).sort();
-  const maxTotal = Math.max(...classes.map(c => byClass[c].total), 1);
   return (
     <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:20, display:'flex', flexDirection:'column', gap:0 }}>
       <div style={{ fontWeight:700, fontSize:14, marginBottom:16, color:'var(--text)', display:'flex', alignItems:'center', gap:8 }}>
@@ -63,7 +48,6 @@ function ClassBreakdownCard({ byClass }: { byClass: Record<string, { total:numbe
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
                 <span style={{ background:'var(--acc3)', color:'var(--acc)', padding:'2px 10px', borderRadius:6, fontSize:11, fontWeight:700, flexShrink:0, minWidth:70, textAlign:'center' }}>{cls}</span>
                 <div style={{ flex:1, display:'flex', alignItems:'center', gap:4 }}>
-                  {/* Stacked bar: paid green, unpaid red */}
                   <div style={{ flex:1, height:10, borderRadius:5, overflow:'hidden', background:'rgba(239,68,68,0.15)', display:'flex', minWidth:60 }}>
                     <div style={{ width:`${paidPct}%`, height:'100%', background:'#10b981', borderRadius:'5px 0 0 5px', flexShrink:0 }} />
                   </div>
@@ -78,7 +62,6 @@ function ClassBreakdownCard({ byClass }: { byClass: Record<string, { total:numbe
           );
         })}
       </div>
-      {/* Legend */}
       <div style={{ display:'flex', gap:16, marginTop:14, paddingTop:12, borderTop:'1px solid var(--bd)', fontSize:11, color:'var(--m)' }}>
         <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10, height:10, borderRadius:2, background:'#10b981', display:'inline-block' }}/> Paid</span>
         <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10, height:10, borderRadius:2, background:'rgba(239,68,68,0.4)', display:'inline-block' }}/> Not Paid</span>
@@ -87,7 +70,6 @@ function ClassBreakdownCard({ byClass }: { byClass: Record<string, { total:numbe
   );
 }
 
-// ── Gender Breakdown card ─────────────────────────────────────────
 function GenderBreakdownCard({ byGender }: { byGender: Record<string, { total:number; paid:number }> }) {
   const GC: Record<string, { fg:string; bg:string; icon:string }> = {
     Male:    { fg:'#2563eb', bg:'#eff6ff', icon:'👦' },
@@ -103,7 +85,6 @@ function GenderBreakdownCard({ byGender }: { byGender: Record<string, { total:nu
         ⚧ Gender-wise Breakdown
         <span style={{ fontSize:10, background:'rgba(236,72,153,0.1)', color:'#db2777', padding:'2px 8px', borderRadius:20, fontWeight:600, marginLeft:'auto' }}>All registrations</span>
       </div>
-      {/* Big gender pills */}
       <div style={{ display:'flex', gap:10, marginBottom:16 }}>
         {genders.map(g => {
           const { fg, bg, icon } = GC[g] ?? { fg:'#64748b', bg:'#f1f5f9', icon:'❓' };
@@ -116,7 +97,6 @@ function GenderBreakdownCard({ byGender }: { byGender: Record<string, { total:nu
               <div style={{ fontSize:11, fontWeight:600, color:'var(--m)', marginTop:4 }}>{g}</div>
               <div style={{ fontSize:24, fontWeight:800, fontFamily:'Sora', color:fg, margin:'4px 0 2px' }}>{total}</div>
               <div style={{ fontSize:10, color:'var(--m)', marginBottom:6 }}>{pct}% of total</div>
-              {/* Paid mini bar */}
               <div style={{ height:5, borderRadius:3, overflow:'hidden', background:'rgba(0,0,0,0.08)' }}>
                 <div style={{ width:`${paidPct}%`, height:'100%', background:'#10b981' }} />
               </div>
@@ -129,7 +109,6 @@ function GenderBreakdownCard({ byGender }: { byGender: Record<string, { total:nu
   );
 }
 
-// ── Cross Tab card ────────────────────────────────────────────────
 function CrossTabCard({ crossTab }: { crossTab: Record<string, Record<string, number>> }) {
   const sortedClasses = Object.keys(crossTab).sort();
   const allGenders    = [...new Set(sortedClasses.flatMap(c => Object.keys(crossTab[c])))].sort();
@@ -194,7 +173,6 @@ export default function SchoolDashboard() {
   const [data,   setData]   = useState<any>(null);
   const [loading,setLoading]= useState(true);
   const [tab,    setTab]    = useState<'overview' | 'students'>('overview');
-  // Students sub-tab: 'paid' | 'pending'
   const [studentTab, setStudentTab] = useState<'paid' | 'pending'>('paid');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
@@ -213,8 +191,9 @@ export default function SchoolDashboard() {
     try {
       const res  = await authFetch(`${BACKEND}/api/school/dashboard`);
       if (res.status === 401) { router.push('/school/login'); return; }
-      if (res.status === 403) { showToast('Access denied'); return; }
+      if (res.status === 403) { showToast('Access denied — no school linked to this account'); return; }
       const json = await res.json();
+      if (json.error) { showToast(json.error); return; }
       setData(json);
     } catch (e: any) {
       showToast('Failed to load: ' + e.message);
@@ -228,7 +207,7 @@ export default function SchoolDashboard() {
   function showToast(msg: string) {
     setToast(msg);
     clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(() => setToast(''), 3500);
+    toastRef.current = setTimeout(() => setToast(''), 4000);
   }
 
   async function doLogout() {
@@ -240,7 +219,6 @@ export default function SchoolDashboard() {
     if (chartsRef.current[id]) { chartsRef.current[id].destroy(); delete chartsRef.current[id]; }
   }
 
-  // Charts: only for daily reg + payment status doughnut on overview
   useEffect(() => {
     if (!data || !(window as any).Chart || tab !== 'overview') return;
     const C = (window as any).Chart;
@@ -282,7 +260,6 @@ export default function SchoolDashboard() {
   const pendingRows = allRows.filter(r => r.payment_status !== 'paid');
   const classes     = [...new Set(allRows.map(r => r.class_grade).filter(Boolean))].sort();
 
-  // Active student list based on sub-tab
   const activeStudentRows = studentTab === 'paid' ? paidRows : pendingRows;
   const filteredRows = activeStudentRows.filter(r => {
     const s = search.toLowerCase();
@@ -300,7 +277,19 @@ export default function SchoolDashboard() {
     </div>
   );
 
-  const { stats, school, byClass, byGender, crossTab } = data ?? {};
+  // Show error state if no data loaded
+  if (!data) return (
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)' }}>
+      <div style={{ textAlign:'center', maxWidth:400 }}>
+        <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
+        <p style={{ color:'var(--text)', fontSize:16, fontWeight:700, marginBottom:8 }}>Could not load dashboard</p>
+        <p style={{ color:'var(--m)', fontSize:13, marginBottom:20 }}>Your account may not be linked to a school yet. Please contact your administrator.</p>
+        <button onClick={doLogout} style={{ background:'var(--red2)', color:'var(--red)', border:'none', borderRadius:8, padding:'8px 18px', fontSize:13, fontWeight:600, cursor:'pointer' }}>Sign Out</button>
+      </div>
+    </div>
+  );
+
+  const { stats, school, byClass, byGender, crossTab } = data;
 
   const TABS = [
     { id:'overview', icon:'🏠', label:'Overview'     },
@@ -356,7 +345,7 @@ export default function SchoolDashboard() {
           {/* Main */}
           <main style={{ flex:1, padding:'24px', overflowY:'auto' }}>
 
-            {/* ── OVERVIEW ─────────────────────────────────────────── */}
+            {/* ── OVERVIEW ─────────────────────────────────────── */}
             {tab === 'overview' && (
               <div>
                 <h2 style={{ margin:'0 0 20px', fontSize:22, fontWeight:800, color:'var(--text)' }}>
@@ -364,7 +353,6 @@ export default function SchoolDashboard() {
                   <span style={{ fontSize:13, fontWeight:500, color:'var(--m)', marginLeft:12 }}>{school?.name}</span>
                 </h2>
 
-                {/* Stat cards */}
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:16, marginBottom:24 }}>
                   <StatCard icon="👨‍🎓" label="Total Registered"  value={stats?.total   ?? 0} color="var(--acc)" />
                   <StatCard icon="✅"  label="Paid"               value={stats?.paid    ?? 0} color="#10b981"   sub={`₹${fmtR(stats?.totalRev ?? 0)} collected`} />
@@ -377,7 +365,6 @@ export default function SchoolDashboard() {
                   />
                 </div>
 
-                {/* Charts row */}
                 <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20, marginBottom:24 }}>
                   <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:20 }}>
                     <div style={{ fontWeight:700, fontSize:14, marginBottom:14, color:'var(--text)' }}>📅 Daily Registrations (Last 30 days)</div>
@@ -389,7 +376,6 @@ export default function SchoolDashboard() {
                   </div>
                 </div>
 
-                {/* ── FIX #4: Class, Gender, CrossTab all on Overview ── */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:24 }}>
                   {byClass  && <ClassBreakdownCard byClass={byClass} />}
                   {byGender && <GenderBreakdownCard byGender={byGender} />}
@@ -402,16 +388,16 @@ export default function SchoolDashboard() {
               </div>
             )}
 
-            {/* ── ALL STUDENTS ─────────────────────────────────────── */}
+            {/* ── ALL STUDENTS ─────────────────────────────────── */}
             {tab === 'students' && (
               <div>
                 <h2 style={{ margin:'0 0 16px', fontSize:22, fontWeight:800, color:'var(--text)' }}>All Students</h2>
 
-                {/* ── FIX #5: Paid / Pending sub-tabs ── */}
+                {/* Paid / Pending sub-tabs */}
                 <div style={{ display:'flex', gap:8, marginBottom:20, borderBottom:'2px solid var(--bd)', paddingBottom:0 }}>
                   {([
-                    { id:'paid',    label:'✅ Paid Students',       count: paidRows.length,    color:'#10b981' },
-                    { id:'pending', label:'⏳ Pending / Not Paid',  count: pendingRows.length, color:'#f59e0b' },
+                    { id:'paid',    label:'✅ Paid Students',      count: paidRows.length,    color:'#10b981' },
+                    { id:'pending', label:'⏳ Pending / Not Paid', count: pendingRows.length, color:'#f59e0b' },
                   ] as const).map(st => (
                     <button key={st.id} onClick={() => { setStudentTab(st.id); setSearch(''); setClassFilter(''); }}
                       style={{
