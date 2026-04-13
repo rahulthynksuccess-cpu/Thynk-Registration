@@ -22,8 +22,13 @@ export async function createCashfreeOrder(
   secretKey: string,
   mode: 'production' | 'sandbox' = 'production'
 ): Promise<CashfreeOrderResponse> {
+  // Auto-detect from key prefix — TEST keys must always use sandbox
+  // Also normalise 'live' → 'production'
+  const _isTestKey = appId?.toUpperCase().startsWith('TEST');
+  const _normMode  = mode === 'live' ? 'production' : mode === 'test' ? 'sandbox' : mode;
+  const resolvedMode = _isTestKey ? 'sandbox' : _normMode;
   const baseUrl =
-    mode === 'production'
+    resolvedMode === 'production'
       ? 'https://api.cashfree.com/pg'
       : 'https://sandbox.cashfree.com/pg';
 
@@ -63,8 +68,11 @@ export async function verifyCashfreePayment(
   secretKey: string,
   mode: 'production' | 'sandbox' = 'production'
 ): Promise<{ status: string; cf_payment_id?: string }> {
+  const _isTestKey2 = appId?.toUpperCase().startsWith('TEST');
+  const _normMode2  = mode === 'live' ? 'production' : mode === 'test' ? 'sandbox' : mode;
+  const resolvedMode = _isTestKey2 ? 'sandbox' : _normMode2;
   const baseUrl =
-    mode === 'production'
+    resolvedMode === 'production'
       ? 'https://api.cashfree.com/pg'
       : 'https://sandbox.cashfree.com/pg';
 
