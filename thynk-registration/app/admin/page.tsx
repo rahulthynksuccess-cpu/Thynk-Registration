@@ -1021,7 +1021,27 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code, is_registration_active:f.is_registration_active, gateway_configs: gw })}>{f.id?'Save Changes':'Create School'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({
+          id:                     f.id,
+          name:                   f.name,
+          org_name:               f.org_name,
+          school_code:            f.school_code,
+          address:                f.address,
+          pin_code:               f.pin_code,
+          country:                f.country,
+          state:                  f.state,
+          city:                   f.city,
+          project_id:             f.project_id,
+          school_price:           Math.round(Number(f.school_price)*100),
+          currency:               f.currency,
+          discount_code:          f.discount_code,
+          primary_color:          f.primary_color,
+          accent_color:           f.accent_color,
+          is_active:              f.is_active,
+          is_registration_active: f.is_registration_active,
+          contact_persons:        contacts,
+          gateway_configs:        gw,
+        })}>{f.id?'Save Changes':'Create School'}</button>
       </div>
     </ModalShell>
   );
