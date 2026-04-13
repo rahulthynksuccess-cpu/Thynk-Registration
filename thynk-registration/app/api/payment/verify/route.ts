@@ -16,13 +16,23 @@ const FALLBACK_URL = 'https://www.thynksuccess.com';
 
 // ── Load gateway credentials from integration_configs table ───────────────────
 async function getGatewayConfig(supabase: any, schoolId: string, provider: string) {
-  const { data } = await supabase
+  // 1. Try school-specific config first
+  const { data: schoolCfg } = await supabase
     .from('integration_configs')
     .select('config, is_active')
     .eq('school_id', schoolId)
     .eq('provider', provider)
-    .single();
-  return data ?? null;
+    .maybeSingle();
+  if (schoolCfg) return schoolCfg;
+
+  // 2. Fall back to global config (school_id = null) — set via Admin → Integrations page
+  const { data: globalCfg } = await supabase
+    .from('integration_configs')
+    .select('config, is_active')
+    .is('school_id', null)
+    .eq('provider', provider)
+    .maybeSingle();
+  return globalCfg ?? null;
 }
 
 // ── POST — called by client after Razorpay success callback ───────────────────
@@ -112,7 +122,8 @@ export async function GET(req: NextRequest) {
       const cfConfig  = await getGatewayConfig(supabase, payment.school_id, 'cashfree');
       const appId     = cfConfig?.config?.key_id     ?? process.env.CASHFREE_APP_ID!;
       const secret    = cfConfig?.config?.key_secret ?? process.env.CASHFREE_SECRET_KEY!;
-      const mode      = cfConfig?.config?.mode       ?? process.env.CASHFREE_MODE ?? 'production';
+      const _cfRaw    = cfConfig?.config?.mode       ?? process.env.CASHFREE_MODE ?? 'production';
+      const mode      = _cfRaw === 'live' ? 'production' : _cfRaw === 'test' ? 'sandbox' : _cfRaw;
 
       const result    = await verifyCashfreePayment(payment.gateway_txn_id!, appId, secret, mode as 'production' | 'sandbox');
       const newStatus = result.status === 'PAID' ? 'paid' : 'failed';
