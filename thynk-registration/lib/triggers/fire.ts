@@ -16,7 +16,7 @@ export async function fireTriggers(
   const { data: triggers } = await supabase
     .from('notification_triggers')
     .select('*, notification_templates(*)')
-    .eq('school_id', schoolId)
+    .or(`school_id.eq.${schoolId},school_id.is.null`)
     .eq('event_type', event)
     .eq('is_active', true);
 
