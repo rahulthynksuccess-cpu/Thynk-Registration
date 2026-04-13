@@ -206,6 +206,7 @@ export default function LockedSchoolPage({
         }}
         isIndia={isIndia}
         paymentError={paymentError}
+        ppClientId={(school as any).public_gateway_config?.pp_client_id ?? null}
         onBack={() => setPageStep('details')}
         onSuccess={() => setPageStep('success')}
       />
