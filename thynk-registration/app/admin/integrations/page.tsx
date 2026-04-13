@@ -42,8 +42,22 @@ function SecretField({label,hint,value,onChange}:{label:string;hint:string;value
 
 function GatewayCard({gw,onUpdate,onMoveUp,onMoveDown,isFirst,isLast}:{gw:GatewayState;onUpdate:(id:string,patch:Partial<GatewayState>)=>void;onMoveUp:()=>void;onMoveDown:()=>void;isFirst:boolean;isLast:boolean}) {
   const [expanded,setExpanded]=useState(false);
+  const [testing,setTesting]=useState(false);
+  const [testResult,setTestResult]=useState<{ok:boolean;msg:string}|null>(null);
   const meta=GATEWAY_META[gw.id]; if(!meta) return null;
   const isConfigured=!!(gw.key_id&&gw.key_secret);
+
+  const runTest=async(e:React.MouseEvent)=>{
+    e.stopPropagation();
+    if(!isConfigured){setTestResult({ok:false,msg:'Enter Key ID and Secret first'});return;}
+    setTesting(true);setTestResult(null);
+    try{
+      const res=await authFetch(`${BACKEND}/api/admin/integrations/test`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:gw.id,config:{key_id:gw.key_id,key_secret:gw.key_secret,mode:gw.mode}})});
+      const d=await res.json();
+      setTestResult({ok:d.success,msg:d.message||d.error||'Unknown result'});
+    }catch(e:any){setTestResult({ok:false,msg:'Network error: '+e.message});}
+    setTesting(false);
+  };
   return (
     <div style={{background:'var(--card)',border:`1.5px solid ${gw.enabled?meta.color+'40':'var(--bd)'}`,borderRadius:14,overflow:'hidden',transition:'border-color .2s'}}>
       <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',background:gw.enabled?meta.bg:'transparent',cursor:'pointer'}} onClick={()=>setExpanded(!expanded)}>
@@ -79,7 +93,17 @@ function GatewayCard({gw,onUpdate,onMoveUp,onMoveDown,isFirst,isLast}:{gw:Gatewa
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
             {meta.fields.map(f=>f.secret?<SecretField key={f.key} label={f.label} hint={f.hint} value={(gw as any)[f.key]||''} onChange={v=>onUpdate(gw.id,{[f.key]:v} as any)}/>:(<div key={f.key}><label style={lbl}>{f.label}</label><input type="text" value={(gw as any)[f.key]||''} onChange={e=>onUpdate(gw.id,{[f.key]:e.target.value} as any)} placeholder={f.hint} style={inp}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{f.hint}</p></div>))}
           </div>
-          <div style={{marginTop:14}}><a href={meta.docs} target="_blank" rel="noreferrer" style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:meta.color,textDecoration:'none',fontWeight:600}}>📖 {meta.name} API docs →</a></div>
+          <div style={{marginTop:14,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+            <a href={meta.docs} target="_blank" rel="noreferrer" style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:meta.color,textDecoration:'none',fontWeight:600}}>📖 {meta.name} API docs →</a>
+            <button onClick={runTest} disabled={testing} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 16px',borderRadius:8,border:`1.5px solid ${meta.color}`,background:'transparent',color:meta.color,cursor:testing?'not-allowed':'pointer',fontSize:12,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:testing?0.6:1}}>
+              {testing?'⏳ Testing…':'🔌 Test Connection'}
+            </button>
+            {testResult&&(
+              <span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:testResult.ok?'#15803d':'var(--red)',padding:'4px 10px',borderRadius:6,background:testResult.ok?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)',border:`1px solid ${testResult.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'}`}}>
+                {testResult.ok?'✅':'❌'} {testResult.msg}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
