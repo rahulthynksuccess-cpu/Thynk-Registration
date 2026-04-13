@@ -23,15 +23,17 @@ const GATEWAY_LABELS: Record<AllGatewayKey, { name: string; color: string; selCl
 };
 
 // PayPal client ID — set this in your env or pass via school config
-const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? 'YOUR_PAYPAL_CLIENT_ID';
+// PayPal client ID sourced from school.public_gateway_config.pp_client_id
 
 type Step = 1 | 2 | 3;
 
 function loadScript(src: string): Promise<void> {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
     const s = document.createElement('script');
-    s.src = src; s.onload = () => resolve(); s.onerror = () => resolve();
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => { s.remove(); reject(new Error('Failed to load: ' + src)); };
     document.head.appendChild(s);
   });
 }
@@ -255,13 +257,25 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
   // ── PayPal (international only) ────────────────────────────────
   async function renderPayPalButton() {
     if (paypalRendered.current) return;
+    const ppClientId = (school as any).public_gateway_config?.pp_client_id;
+    if (!ppClientId) {
+      showToast('PayPal is not configured for this school. Contact support.', 'err');
+      return;
+    }
     showLoader('Loading PayPal…');
-    await loadScript(`https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD`);
+    const stale = document.querySelector('script[src*="paypal.com/sdk/js"]');
+    if (stale) stale.remove();
+    try {
+      await loadScript(`https://www.paypal.com/sdk/js?client-id=${ppClientId}&currency=USD&intent=capture&components=buttons`);
+    } catch {
+      hideLoader();
+      showToast('PayPal SDK failed to load. Check your connection or disable ad blockers.', 'err');
+      return;
+    }
     hideLoader();
-
     const container = document.getElementById('paypal-button-container');
     if (!container || !(window as any).paypal) {
-      showToast('PayPal failed to load. Please try again.', 'err');
+      showToast('PayPal failed to initialize. Please reload.', 'err');
       return;
     }
     container.innerHTML = '';
