@@ -162,6 +162,7 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
+  const body = await req.json();
   const {
     id,
     school_price,
@@ -173,10 +174,8 @@ export async function PATCH(req: NextRequest) {
     address, pin_code, contact_persons,
     is_registration_active,
     gateway_configs,
-    integration_configs: _ic,  // strip — comes from GET, must not be saved back to schools table
-    pricing: _pricing,          // strip — managed separately
-    ...rest
-  } = await req.json();
+    name, org_name, city, state, is_active,
+  } = body;
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
@@ -193,15 +192,16 @@ export async function PATCH(req: NextRequest) {
   const resolvedCountry  = country || existing?.country || 'India';
   const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
 
-  // Preserve existing status — do not allow PATCH to accidentally reset it
+  // Build update payload explicitly — never use ...rest to avoid unknown fields hitting Supabase
   const updatePayload: Record<string, any> = {
-    ...rest,
     branding,
     country: resolvedCountry,
   };
-
-  // Strip status from rest if accidentally passed — PATCH must not change approval status
-  delete updatePayload.status;
+  if (name  !== undefined)   updatePayload.name     = name;
+  if (org_name !== undefined) updatePayload.org_name = org_name;
+  if (city  !== undefined)   updatePayload.city     = city  || null;
+  if (state !== undefined)   updatePayload.state    = state || null;
+  if (is_active !== undefined) updatePayload.is_active = !!is_active;
 
   if (discount_code)                        updatePayload.discount_code          = discount_code.toUpperCase();
   if (address !== undefined)                updatePayload.address                = address || null;
