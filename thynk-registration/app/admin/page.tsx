@@ -11,9 +11,10 @@ import { useRouter } from 'next/navigation';
 
 const fmt  = (n: any) => { const v = parseFloat(String(n??0).replace(/[^0-9.]/g,'')); return isNaN(v)?'0':v.toLocaleString('en-IN'); };
 const fmtR = (p: number) => fmt(p/100);
-const isIndia = (country?: string) => !country || country === 'India';
-const currSymbol = (country?: string) => isIndia(country) ? '₹' : '$';
-const fmtAmt = (p: number, country?: string) => `${currSymbol(country)}${fmtR(p)}`;
+// Currency helpers — India = INR (₹), everywhere else = USD ($)
+const isIndia     = (country?: string) => !country || country === 'India';
+const currSymbol  = (country?: string) => isIndia(country) ? '₹' : '$';
+const fmtAmt      = (p: number, country?: string) => `${currSymbol(country)}${fmtR(p)}`;
 type Row   = Record<string,any>;
 const PALETTE = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899'];
 const BACKEND  = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
@@ -252,7 +253,11 @@ export default function AdminDashboard() {
   const paid    = ovRows.filter(r=>r.payment_status==='paid');
   const pending = ovRows.filter(r=>['pending','initiated'].includes(r.payment_status));
   const failed  = ovRows.filter(r=>['failed','cancelled'].includes(r.payment_status));
-  const totalRev = paid.reduce((s,r)=>s+(r.final_amount??0),0);
+  const totalRev  = paid.reduce((s,r)=>s+(r.final_amount??0),0);
+  const inrPaidOv = paid.filter(r=>isIndia(r.country));
+  const usdPaidOv = paid.filter(r=>!isIndia(r.country));
+  const inrRevOv  = inrPaidOv.reduce((s,r)=>s+(r.final_amount??0),0);
+  const usdRevOv  = usdPaidOv.reduce((s,r)=>s+(r.final_amount??0),0);
   const conv = ovRows.length ? Math.round(paid.length/ovRows.length*100) : 0;
   const avg  = paid.length   ? Math.round(totalRev/paid.length)            : 0;
   const today    = new Date().toISOString().slice(0,10);
@@ -329,12 +334,12 @@ export default function AdminDashboard() {
             <div className="revenue-hero">
               <div>
                 <div className="rev-label">💰 Total Revenue Collected</div>
-                <div className="rev-val">split display — ₹{fmtR(inrRevOv)} + $USD if any </div>
+                <div className="rev-val">₹{fmtR(inrRevOv)}{usdRevOv > 0 && <span style={{marginLeft:12,fontSize:'0.65em',color:'#22c55e',fontWeight:700}}> + ${fmtR(usdRevOv)} USD</span>}</div>
                 <div className="rev-sub">From {paid.length} confirmed payments{overviewProgram ? ` · ${overviewProgram}` : ''}</div>
               </div>
               <div className="rev-stats">
                 <div className="rev-stat"><div className="rev-stat-val">{conv}%</div><div className="rev-stat-lbl">Conversion</div></div>
-                <div className="rev-stat"><div className="rev-stat-val">₹{fmtR(avg)}</div><div className="rev-stat-lbl">Avg ticket</div></div>
+                <div className="rev-stat"><div className="rev-stat-val">₹{fmtR(inrPaidOv.length ? Math.round(inrRevOv/inrPaidOv.length) : 0)}</div><div className="rev-stat-lbl">Avg ticket</div></div>
                 <div className="rev-stat"><div className="rev-stat-val">{ovRows.filter(r=>r.created_at?.slice(0,10)===today).length}</div><div className="rev-stat-lbl">Today</div></div>
               </div>
             </div>
@@ -694,7 +699,7 @@ export default function AdminDashboard() {
           <div className="modal">
             <div className="modal-head"><h3>{modal.student_name}</h3><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
             <div className="modal-body">
-              {[['Status',<span key="s" className={`badge badge-${modal.payment_status??'pending'}`}>{modal.payment_status??'—'}</span>],['Date',modal.created_at?.slice(0,10)??'—'],['Student',modal.student_name],['Class',modal.class_grade],['Gender',modal.gender],['Program',modal.program_name??'—'],['Country',modal.country??'—'],['School',modal.school_name??modal.parent_school],['City',modal.city],['Parent',modal.parent_name],['Phone',<a key="p" href={`tel:${modal.contact_phone}`} style={{color:'var(--acc)',fontWeight:600}}>{modal.contact_phone}</a>],['Email',<a key="e" href={`mailto:${modal.contact_email}`} style={{color:'var(--acc)',fontSize:12}}>{modal.contact_email}</a>],['Gateway',modal.gateway??'—'],['Base',`₹${fmtR(modal.base_amount??0, modal.country)}`],['Discount',modal.discount_code?`🏷️ ${modal.discount_code??0} (₹${fmtR(modal.discount_amount??0, modal.country)} off)`:'None'],['Paid',<span key="a" style={{fontFamily:'Sora',fontWeight:800,color:'var(--green)',fontSize:18}}>₹{fmtR(modal.final_amount??0, modal.country)}</span>],['Txn ID',<span key="t" style={{fontSize:11,color:'var(--m2)',wordBreak:'break-all'}}>{modal.gateway_txn_id??'—'}</span>]].map(([l,v])=><div key={String(l)} className="modal-row"><div className="modal-lbl">{l}</div><div className="modal-val">{v}</div></div>)}
+              {[['Status',<span key="s" className={`badge badge-${modal.payment_status??'pending'}`}>{modal.payment_status??'—'}</span>],['Date',modal.created_at?.slice(0,10)??'—'],['Student',modal.student_name],['Class',modal.class_grade],['Gender',modal.gender],['Program',modal.program_name??'—'],['Country',modal.country??'—'],['School',modal.school_name??modal.parent_school],['City',modal.city],['Parent',modal.parent_name],['Phone',<a key="p" href={`tel:${modal.contact_phone}`} style={{color:'var(--acc)',fontWeight:600}}>{modal.contact_phone}</a>],['Email',<a key="e" href={`mailto:${modal.contact_email}`} style={{color:'var(--acc)',fontSize:12}}>{modal.contact_email}</a>],['Gateway',modal.gateway??'—'],['Base',fmtAmt(modal.base_amount??0, modal.country)],['Discount',modal.discount_code?`🏷️ ${modal.discount_code} (${currSymbol(modal.country)}${fmtR(modal.discount_amount??0)} off)`:'None'],['Paid',<span key="a" style={{fontFamily:'Sora',fontWeight:800,color:'var(--green)',fontSize:18}}>{fmtAmt(modal.final_amount??0, modal.country)}</span>],['Txn ID',<span key="t" style={{fontSize:11,color:'var(--m2)',wordBreak:'break-all'}}>{modal.gateway_txn_id??'—'}</span>]].map(([l,v])=><div key={String(l)} className="modal-row"><div className="modal-lbl">{l}</div><div className="modal-val">{v}</div></div>)}
             </div>
             <div className="modal-actions">
               <a className="fu-btn wa"   href={`https://wa.me/91${modal.contact_phone}`} target="_blank" rel="noreferrer">💬 WhatsApp</a>
@@ -715,7 +720,7 @@ export default function AdminDashboard() {
                 <div key={r.id} className="drill-row" onClick={()=>{setDrillData(null);setTimeout(()=>setModal(r),200);}}>
                   <div className="drill-num">{i+1}</div>
                   <div style={{flex:1}}><div className="drill-name">{r.student_name} <span className={`badge badge-${r.payment_status}`} style={{fontSize:10}}>{r.payment_status}</span></div><div className="drill-meta">{r.class_grade} · {r.school_name??r.parent_school} · {r.city}</div></div>
-                  <div style={{textAlign:'right'}}><div className="drill-amt">₹{fmtAmt(r.final_amount??0, r.country)})}</div></div>
+                  <div style={{textAlign:'right'}}><div className="drill-amt">{fmtAmt(r.final_amount??0, r.country)}</div></div>
                 </div>
               ))}
             </div>
@@ -1192,7 +1197,7 @@ function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row
 
 function FollowUpList({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>void }) {
   if(!rows.length) return <div className="empty-state"><div className="emoji">🎉</div><p>No pending follow-ups!</p></div>;
-  return <div className="followup-card">{rows.map(r=>{const st=r.payment_status??'pending';return(<div key={r.id} className="followup-item" onClick={()=>onRowClick(r)}><div className={`fu-avatar ${st}`}>{(r.student_name??'?')[0].toUpperCase()}</div><div className="fu-info"><div className="fu-name">{r.student_name} <span className={`fu-tag ${st}`}>{r.payment_status}</span></div><div className="fu-meta">{r.class_grade} · {r.school_name??r.parent_school} · {r.city}</div></div><div className="fu-actions"><a className="fu-btn wa" href={`https://wa.me/91${r.contact_phone}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}>💬 WA</a><a className="fu-btn call" href={`tel:${r.contact_phone}`} onClick={e=>e.stopPropagation()}>📞 Call</a></div><div style={{textAlign:'right',marginLeft:8}}><div className="amt" style={{fontSize:13}}>₹{fmtAmt(r.final_amount??0, r.country)}</div><div style={{fontSize:10,color:'var(--m2)'}}>{r.gateway}</div></div></div>);})}</div>;
+  return <div className="followup-card">{rows.map(r=>{const st=r.payment_status??'pending';return(<div key={r.id} className="followup-item" onClick={()=>onRowClick(r)}><div className={`fu-avatar ${st}`}>{(r.student_name??'?')[0].toUpperCase()}</div><div className="fu-info"><div className="fu-name">{r.student_name} <span className={`fu-tag ${st}`}>{r.payment_status}</span></div><div className="fu-meta">{r.class_grade} · {r.school_name??r.parent_school} · {r.city}</div></div><div className="fu-actions"><a className="fu-btn wa" href={`https://wa.me/91${r.contact_phone}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}>💬 WA</a><a className="fu-btn call" href={`tel:${r.contact_phone}`} onClick={e=>e.stopPropagation()}>📞 Call</a></div><div style={{textAlign:'right',marginLeft:8}}><div className="amt" style={{fontSize:13}}>{fmtAmt(r.final_amount??0, r.country)}</div><div style={{fontSize:10,color:'var(--m2)'}}>{r.gateway}</div></div></div>);})}</div>;
 }
 
 function CityHeatmap({ rows }:{ rows:Row[] }) {
@@ -1229,7 +1234,7 @@ function UnifiedTimeline({ paymentRows, activityLogs, onRowClick }:{ paymentRows
       <div>{filtered.map(e=>(<div key={e.id} className="tl-item" onClick={()=>e.raw&&onRowClick(e.raw)} style={{cursor:e.raw?'pointer':'default'}}>
         <div style={{position:'relative',flexShrink:0}}><div className={`tl-dot ${e.dot}`}>{e.icon}</div>{e.type==='school'&&<div style={{position:'absolute',top:-2,right:-2,width:10,height:10,borderRadius:'50%',background:'#f59e0b',border:'2px solid var(--bg)',fontSize:7,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800}}>S</div>}</div>
         <div className="tl-info"><div className="tl-name">{e.title}{e.type==='school'&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:20,background:'rgba(245,158,11,0.12)',color:'#d97706'}}>School</span>}{e.type==='payment'&&e.raw&&<span className={`badge badge-${e.raw.payment_status}`} style={{marginLeft:6,fontSize:10}}>{e.raw.payment_status}</span>}</div><div className="tl-meta">{e.sub}</div>{e.meta&&<div className="tl-meta" style={{fontSize:10,marginTop:1,opacity:.7}}>{e.meta}</div>}</div>
-        <div style={{textAlign:'right',flexShrink:0}}>{e.amount>0&&<div className="tl-amt">₹{fmtR(e.amount)}</div>}{e.type==='school'&&<div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>Registration</div>}<div className="tl-time">{new Date(e.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div><div style={{fontSize:10,color:'var(--m2)'}}>{new Date(e.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div></div>
+        <div style={{textAlign:'right',flexShrink:0}}>{e.amount>0&&<div className="tl-amt">{fmtAmt(e.amount, e.raw?.country)}</div>}{e.type==='school'&&<div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>Registration</div>}<div className="tl-time">{new Date(e.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div><div style={{fontSize:10,color:'var(--m2)'}}>{new Date(e.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div></div>
       </div>))}</div>
     </div>
   );
