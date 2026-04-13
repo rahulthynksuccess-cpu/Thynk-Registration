@@ -118,7 +118,8 @@ export async function GET(req: NextRequest) {
         const cfConfig = await getGatewayConfig(supabase, payment.school_id, 'cashfree');
         const appId    = cfConfig?.config?.key_id     ?? process.env.CASHFREE_APP_ID!;
         const secret   = cfConfig?.config?.key_secret ?? process.env.CASHFREE_SECRET_KEY!;
-        const mode     = cfConfig?.config?.mode       ?? process.env.CASHFREE_MODE ?? 'production';
+        const _cfRaw2  = cfConfig?.config?.mode       ?? process.env.CASHFREE_MODE ?? 'production';
+        const mode     = _cfRaw2 === 'live' ? 'production' : _cfRaw2 === 'test' ? 'sandbox' : _cfRaw2;
 
         const { verifyCashfreePayment } = await import('@/lib/payment/cashfree');
         const result    = await verifyCashfreePayment(payment.gateway_txn_id, appId, secret, mode as 'production' | 'sandbox');
@@ -427,7 +428,8 @@ export async function POST(req: NextRequest) {
       // key_id = App ID, key_secret = Secret Key, mode = sandbox|production in Integrations UI
       const appId     = gc.key_id     ?? process.env.CASHFREE_APP_ID!;
       const secretKey = gc.key_secret ?? process.env.CASHFREE_SECRET_KEY!;
-      const mode      = gc.mode       ?? process.env.CASHFREE_MODE ?? 'production';
+      const _cfRaw    = gc.mode       ?? process.env.CASHFREE_MODE ?? 'production';
+      const mode      = _cfRaw === 'live' ? 'production' : _cfRaw === 'test' ? 'sandbox' : _cfRaw;
       const txnId     = `CF${payment.id.replace(/-/g, '').slice(0, 16)}`;
 
       const cfOrder = await createCashfreeOrder(
@@ -458,9 +460,10 @@ export async function POST(req: NextRequest) {
     // ── Easebuzz ─────────────────────────────────────────────────────────────
     if (gateway === 'easebuzz') {
       // key_id = Merchant Key, key_secret = Salt, mode = test|production in Integrations UI
-      const ebKey  = gc.key_id     ?? process.env.EASEBUZZ_KEY!;
-      const ebSalt = gc.key_secret ?? process.env.EASEBUZZ_SALT!;
-      const ebEnv  = gc.mode       ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
+      const ebKey    = gc.key_id     ?? process.env.EASEBUZZ_KEY!;
+      const ebSalt   = gc.key_secret ?? process.env.EASEBUZZ_SALT!;
+      const _ebRaw   = gc.mode       ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
+      const ebEnv    = _ebRaw === 'live' ? 'production' : _ebRaw === 'sandbox' ? 'test' : _ebRaw;
       const txnId  = generateTxnId('EB');
 
       const ebResult = await initEasebuzzPayment(
