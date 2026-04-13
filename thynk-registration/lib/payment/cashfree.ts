@@ -20,7 +20,7 @@ export async function createCashfreeOrder(
   options: CashfreeOrderOptions,
   appId: string,
   secretKey: string,
-  mode: 'production' | 'sandbox' = 'production'
+  mode: 'production' | 'sandbox' | 'live' | 'test' = 'production'
 ): Promise<CashfreeOrderResponse> {
   // Auto-detect from key prefix — TEST keys must always use sandbox
   // Also normalise 'live' → 'production'
@@ -66,7 +66,7 @@ export async function verifyCashfreePayment(
   orderId: string,
   appId: string,
   secretKey: string,
-  mode: 'production' | 'sandbox' = 'production'
+  mode: 'production' | 'sandbox' | 'live' | 'test' = 'production'
 ): Promise<{ status: string; cf_payment_id?: string }> {
   const _isTestKey2 = appId?.toUpperCase().startsWith('TEST');
   const _normMode2  = mode === 'live' ? 'production' : mode === 'test' ? 'sandbox' : mode;
