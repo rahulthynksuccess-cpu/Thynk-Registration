@@ -173,6 +173,8 @@ export async function PATCH(req: NextRequest) {
     address, pin_code, contact_persons,
     is_registration_active,
     gateway_configs,
+    integration_configs: _ic,  // strip — comes from GET, must not be saved back to schools table
+    pricing: _pricing,          // strip — managed separately
     ...rest
   } = await req.json();
 
