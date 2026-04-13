@@ -41,12 +41,31 @@ export async function POST(req: NextRequest) {
 
   const merged = { ...(existing?.config ?? {}), ...body };
 
-  const { error } = await service
+  // Use manual upsert: try update first, insert if no row exists
+  // Cannot use .upsert() with onConflict for NULL school_id — PostgreSQL NULLs don't match in unique constraints
+  const { data: existingRow } = await service
     .from('integration_configs')
-    .upsert(
-      { provider: 'platform_settings', school_id: null, config: merged, is_active: true, priority: 0 },
-      { onConflict: 'provider,school_id' }
-    );
+    .select('id')
+    .eq('provider', 'platform_settings')
+    .is('school_id', null)
+    .maybeSingle();
+
+  let error;
+  if (existingRow?.id) {
+    // Update existing row
+    const { error: updateErr } = await service
+      .from('integration_configs')
+      .update({ config: merged, is_active: true })
+      .eq('id', existingRow.id);
+    error = updateErr;
+  } else {
+    // Insert new row
+    const { error: insertErr } = await service
+      .from('integration_configs')
+      .insert({ provider: 'platform_settings', school_id: null, config: merged, is_active: true, priority: 0 });
+    error = insertErr;
+  }
+
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ success: true });
 }
