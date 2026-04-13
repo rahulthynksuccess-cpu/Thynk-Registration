@@ -8,6 +8,7 @@
 //   4. Payment status re-check endpoint added (GET /api/register?paymentId=xxx)
 
 import { NextRequest, NextResponse } from 'next/server';
+import { fireTriggers } from '@/lib/triggers/fire';
 import { createServiceClient } from '@/lib/supabase/server';
 import { createRazorpayOrder } from '@/lib/payment/razorpay';
 import { createCashfreeOrder } from '@/lib/payment/cashfree';
@@ -351,6 +352,10 @@ export async function POST(req: NextRequest) {
       void (async () => { try { await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }); } catch (err: any) { console.warn('decrement_discount_usage failed:', err?.message); } })();
     }
 
+    // Fire triggers: registration created + payment paid (PayPal is synchronous)
+    void fireTriggers('registration.created', registration.id, schoolId).catch(e => console.error('[trigger] registration.created PayPal:', e?.message));
+    void fireTriggers('payment.paid',         registration.id, schoolId).catch(e => console.error('[trigger] payment.paid PayPal:', e?.message));
+
     return NextResponse.json({
       gateway:         'paypal',
       payment_id:      payment?.id,
@@ -403,6 +408,9 @@ export async function POST(req: NextRequest) {
   if (payErr || !payment) {
     return NextResponse.json({ error: 'Failed to create payment record' }, { status: 500 });
   }
+
+  // Fire registration.created trigger immediately (payment may still be pending)
+  void fireTriggers('registration.created', registration.id, schoolId).catch(e => console.error('[trigger] registration.created:', e?.message));
 
   const appUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://thynk-registration.vercel.app';
 
