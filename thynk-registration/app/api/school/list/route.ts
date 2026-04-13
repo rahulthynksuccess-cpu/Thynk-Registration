@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, school_code, name, city, state, country,
       status, is_active, is_registration_active, project_slug,
+      branding, gateway_config,
       pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)
     `)
     .eq('status', 'approved')
@@ -65,7 +66,11 @@ export async function GET(req: NextRequest) {
       state:                s.state,
       country:              s.country,
       project_slug:         s.project_slug,
+      branding:             s.branding ?? {},
       pricing:              (s.pricing as any[]).filter((p: any) => p.is_active),
+      public_gateway_config: {
+        pp_client_id: (s.gateway_config as any)?.pp_client_id ?? process.env.PAYPAL_CLIENT_ID ?? null,
+      },
     }));
 
   console.log(`[/api/school/list] project=${projectSlug} city=${city} state=${state} → ${allSchools.length} total, ${schools.length} with active pricing`);
