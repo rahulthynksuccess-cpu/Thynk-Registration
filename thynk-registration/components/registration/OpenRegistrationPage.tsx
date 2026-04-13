@@ -534,6 +534,7 @@ function StudentOpenFlow({
         }}
         isIndia={isIndia}
         paymentError={paymentError}
+        ppClientId={(selectedSchool as any).public_gateway_config?.pp_client_id ?? null}
         onBack={() => setStudentStep('details')}
         onSuccess={() => setStudentStep('success')}
       />
