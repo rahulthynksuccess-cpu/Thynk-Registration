@@ -8,7 +8,7 @@ import type { Pricing } from '@/lib/types';
 import { formatAmount } from '@/lib/utils';
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
-const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? 'YOUR_PAYPAL_CLIENT_ID';
+// PayPal client ID is passed as a prop (sourced from school API response)
 
 type AllGatewayKey = 'razorpay' | 'cashfree' | 'easebuzz' | 'paypal';
 
@@ -21,15 +21,11 @@ const GW_META: Record<AllGatewayKey, { name: string; selClass: string; sub: stri
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing) { resolve(); return; }
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
     const s = document.createElement('script');
     s.src = src;
     s.onload = () => resolve();
-    s.onerror = () => {
-      s.remove(); // clean up so retry is possible
-      reject(new Error(`Failed to load script: ${src}`));
-    };
+    s.onerror = () => { s.remove(); reject(new Error('Failed to load: ' + src)); };
     document.head.appendChild(s);
   });
 }
@@ -51,11 +47,12 @@ interface Props {
   formData: FormData;
   isIndia: boolean;
   paymentError?: boolean;
+  ppClientId?: string | null;
   onBack: () => void;
   onSuccess: () => void;
 }
 
-export default function PaymentStep({ school, pricing, formData, isIndia, paymentError, onBack, onSuccess }: Props) {
+export default function PaymentStep({ school, pricing, formData, isIndia, paymentError, ppClientId, onBack, onSuccess }: Props) {
   const [selGW, setSelGW]       = useState<AllGatewayKey | ''>('');
   const [discCode, setDiscCode] = useState('');
   const [discAmt, setDiscAmt]   = useState(0);
@@ -198,30 +195,23 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
 
   async function renderPayPal() {
     if (paypalDone.current) return;
+    if (!ppClientId) {
+      showToast('PayPal is not configured for this school. Contact support.', 'err');
+      return;
+    }
     showLoader('Loading PayPal…');
-
-    // Remove any previously failed PayPal script so a fresh load is attempted
-    const staleScript = document.querySelector(`script[src*="paypal.com/sdk/js"]`);
-    if (staleScript) staleScript.remove();
-
-    const sdkUrl = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&components=buttons`;
-
+    const stale = document.querySelector('script[src*="paypal.com/sdk/js"]');
+    if (stale) stale.remove();
     try {
-      await loadScript(sdkUrl);
+      await loadScript(`https://www.paypal.com/sdk/js?client-id=${ppClientId}&currency=USD&intent=capture&components=buttons`);
     } catch {
       hideLoader();
-      showToast('PayPal SDK failed to load. Check your connection or disable ad/script blockers and try again.', 'err');
+      showToast('PayPal SDK failed to load. Check your connection or disable ad blockers.', 'err');
       return;
     }
-
     hideLoader();
     const container = document.getElementById('paypal-btn-container');
-    if (!container) { showToast('PayPal container not found.', 'err'); return; }
-    if (!(window as any).paypal || typeof (window as any).paypal.Buttons !== 'function') {
-      showToast('PayPal failed to initialize. Please reload and try again.', 'err');
-      return;
-    }
-
+    if (!container || !(window as any).paypal) { showToast('PayPal failed to initialize. Please reload.', 'err'); return; }
     container.innerHTML = '';
     paypalDone.current = true;
 
@@ -249,11 +239,7 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
         onSuccess();
       },
       onCancel: () => { paypalDone.current = false; showToast('PayPal cancelled.', 'err'); },
-      onError: (err: any) => {
-        paypalDone.current = false;
-        const msg = (err as any)?.message || (err as any)?.toString() || 'Unknown error';
-        showToast('PayPal error: ' + msg, 'err');
-      },
+      onError: (err: any) => { paypalDone.current = false; showToast('PayPal error: ' + (err?.message ?? 'Unknown'), 'err'); },
     }).render('#paypal-btn-container');
   }
 
