@@ -226,8 +226,34 @@ function EmailTab({showToast}:{showToast:(m:string)=>void}) {
   const [email,setEmail]=useState({fromName:'Thynk Registration',fromEmail:'',smtpHost:'smtp.gmail.com',smtpPort:'587',smtpUser:'',smtpPass:'',enabled:false});
   const [showPass,setShowPass]=useState(false);
   const [saving,setSaving]=useState(false);
+  const [testTo,setTestTo]=useState('');
+  const [testing,setTesting]=useState(false);
+  const [testResult,setTestResult]=useState<{ok:boolean;msg:string}|null>(null);
+
   useEffect(()=>{authFetch(`${BACKEND}/api/admin/settings`).then(r=>r.ok?r.json():null).then(d=>{if(d?.email_settings)setEmail(p=>({...p,...d.email_settings}));}).catch(()=>{});}, []);
-  const save=async()=>{setSaving(true);try{const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email_settings:email})});if(res.ok)showToast('✅ Email settings saved!');else showToast('❌ Save failed');}catch{showToast('❌ Save failed');}setSaving(false);};
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email_settings:email})});
+      if(res.ok)showToast('✅ Email settings saved!');
+      else showToast('❌ Save failed');
+    }catch{showToast('❌ Save failed');}
+    setSaving(false);
+  };
+
+  const testSmtp=async()=>{
+    if(!testTo.trim()){showToast('❌ Enter a recipient email');return;}
+    if(!email.smtpUser||!email.smtpPass){showToast('❌ Fill SMTP credentials first');return;}
+    setTesting(true);setTestResult(null);
+    try{
+      const res=await authFetch(`${BACKEND}/api/admin/settings/test`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:testTo.trim(),...email})});
+      const d=await res.json();
+      setTestResult({ok:!!d.success,msg:d.message||d.error||'Unknown result'});
+      if(d.success)showToast('✅ Test email sent!');else showToast('❌ SMTP test failed');
+    }catch(e:any){setTestResult({ok:false,msg:'Network error: '+e.message});}
+    setTesting(false);
+  };
   return (
     <div style={{background:'var(--card)',borderRadius:16,border:'1.5px solid var(--bd)',padding:28}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
@@ -238,7 +264,22 @@ function EmailTab({showToast}:{showToast:(m:string)=>void}) {
         {[{k:'fromName',l:'Sender Name',ph:'Thynk Registration'},{k:'fromEmail',l:'From Email',ph:'noreply@yourdomain.com'},{k:'smtpHost',l:'SMTP Host',ph:'smtp.gmail.com'},{k:'smtpPort',l:'SMTP Port',ph:'587'},{k:'smtpUser',l:'Gmail Address',ph:'your@gmail.com'}].map(f=>(<div key={f.k}><label style={lbl}>{f.l}</label><input value={(email as any)[f.k]} onChange={e=>setEmail(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph} style={inp}/></div>))}
         <div><label style={lbl}>App Password</label><div style={{position:'relative'}}><input type={showPass?'text':'password'} value={email.smtpPass} onChange={e=>setEmail(p=>({...p,smtpPass:e.target.value}))} placeholder="xxxx xxxx xxxx xxxx" style={{...inp,paddingRight:40}}/><button type="button" onClick={()=>setShowPass(!showPass)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button></div><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}><a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer" style={{color:'var(--acc)'}}>How to create a Gmail App Password →</a></p></div>
       </div>
-      <button onClick={save} disabled={saving} style={{marginTop:20,display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>{saving?'⏳ Saving…':'💾 Save Email Settings'}</button>
+      <div style={{marginTop:20,padding:'16px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
+        <div style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,color:'var(--text)',marginBottom:12}}>📤 Send Test Email</div>
+        <div style={{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
+          <div style={{flex:1,minWidth:200}}>
+            <label style={lbl}>Send test to</label>
+            <input value={testTo} onChange={e=>setTestTo(e.target.value)} placeholder="your@email.com" style={inp}/>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,paddingTop:22}}>
+            <button onClick={testSmtp} disabled={testing} style={{display:'flex',alignItems:'center',gap:6,padding:'10px 20px',borderRadius:9,border:'1.5px solid var(--acc)',background:'transparent',color:'var(--acc)',cursor:testing?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:testing?0.6:1,whiteSpace:'nowrap'}}>
+              {testing?'⏳ Sending…':'🔌 Test SMTP'}
+            </button>
+          </div>
+        </div>
+        {testResult&&<div style={{marginTop:10,padding:'10px 14px',borderRadius:8,background:testResult.ok?'rgba(16,185,129,.07)':'rgba(239,68,68,.07)',border:`1px solid ${testResult.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'}`,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:testResult.ok?'#15803d':'var(--red)'}}>{testResult.ok?'✅':'❌'} {testResult.msg}</div>}
+      </div>
+      <button onClick={save} disabled={saving} style={{marginTop:16,display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>{saving?'⏳ Saving…':'💾 Save Email Settings'}</button>
     </div>
   );
 }
