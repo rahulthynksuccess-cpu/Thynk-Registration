@@ -842,55 +842,9 @@ const isIndianCountry = (c: string) => c === 'India';
 // ── School Form ─────────────────────────────────────────────────────
 const EMPTY_CONTACT = { name:'', designation:'', email:'', mobile:'' };
 
-// ── Gateway metadata for school form ────────────────────────────────────────
-const SCHOOL_GW_META = [
-  { id:'razorpay', name:'Razorpay',  logo:'💙', color:'#3395FF', domestic:true,  fields:[{key:'key_id',label:'Key ID',hint:'rzp_live_...'},{key:'key_secret',label:'Key Secret',hint:'Razorpay Dashboard → API Keys',secret:true}] },
-  { id:'cashfree', name:'Cashfree',  logo:'💚', color:'#00C853', domestic:true,  fields:[{key:'key_id',label:'App ID',hint:'Cashfree Dashboard → Credentials'},{key:'key_secret',label:'Secret Key',hint:'Cashfree Dashboard',secret:true}] },
-  { id:'easebuzz', name:'Easebuzz', logo:'🟠', color:'#FF6600', domestic:true,  fields:[{key:'key_id',label:'Merchant Key',hint:'Easebuzz → API Keys'},{key:'key_secret',label:'Salt',hint:'Easebuzz salt',secret:true}] },
-  { id:'paypal',   name:'PayPal',   logo:'🌐', color:'#003087', domestic:false, fields:[{key:'key_id',label:'Client ID',hint:'PayPal Developer Dashboard'},{key:'key_secret',label:'Client Secret',hint:'PayPal Developer Dashboard',secret:true}] },
-] as const;
-type GwId = 'razorpay'|'cashfree'|'easebuzz'|'paypal';
-interface SchoolGwConfig { enabled:boolean; key_id:string; key_secret:string; mode:'live'|'test'; }
-type SchoolGwState = Record<GwId, SchoolGwConfig>;
-
-function initGwState(initial: Row): SchoolGwState {
-  const configs: Row[] = initial.integration_configs ?? [];
-  const def: SchoolGwConfig = { enabled:false, key_id:'', key_secret:'', mode:'live' };
-  return {
-    razorpay: configs.find(c=>c.provider==='razorpay') ? { enabled:configs.find(c=>c.provider==='razorpay')!.is_active, key_id:configs.find(c=>c.provider==='razorpay')!.config?.key_id??'', key_secret:configs.find(c=>c.provider==='razorpay')!.config?.key_secret??'', mode:configs.find(c=>c.provider==='razorpay')!.config?.mode??'live' } : {...def},
-    cashfree:  configs.find(c=>c.provider==='cashfree')  ? { enabled:configs.find(c=>c.provider==='cashfree')!.is_active,  key_id:configs.find(c=>c.provider==='cashfree')!.config?.key_id??'',  key_secret:configs.find(c=>c.provider==='cashfree')!.config?.key_secret??'',  mode:configs.find(c=>c.provider==='cashfree')!.config?.mode??'live'  } : {...def},
-    easebuzz:  configs.find(c=>c.provider==='easebuzz')  ? { enabled:configs.find(c=>c.provider==='easebuzz')!.is_active,  key_id:configs.find(c=>c.provider==='easebuzz')!.config?.key_id??'',  key_secret:configs.find(c=>c.provider==='easebuzz')!.config?.key_secret??'',  mode:configs.find(c=>c.provider==='easebuzz')!.config?.mode??'live'  } : {...def},
-    paypal:    configs.find(c=>c.provider==='paypal')    ? { enabled:configs.find(c=>c.provider==='paypal')!.is_active,    key_id:configs.find(c=>c.provider==='paypal')!.config?.key_id??'',    key_secret:configs.find(c=>c.provider==='paypal')!.config?.key_secret??'',    mode:configs.find(c=>c.provider==='paypal')!.config?.mode??'live'    } : {...def},
-  };
-}
-
 function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
   const initContacts = (() => { if (Array.isArray(initial.contact_persons) && initial.contact_persons.length) return initial.contact_persons; return [{ ...EMPTY_CONTACT }]; })();
-  // IMPORTANT: only include known school form fields — never spread initial directly
-  // as it may contain nested arrays (integration_configs, pricing) that break the API
-  const [f,setF] = useState({
-    id:                      initial.id??'',
-    school_code:             initial.school_code??'',
-    name:                    initial.name??'',
-    org_name:                initial.org_name??'',
-    address:                 initial.address??'',
-    pin_code:                initial.pin_code??'',
-    country:                 initial.country||'India',
-    state:                   initial.state??'',
-    city:                    initial.city??'',
-    project_id:              initial.project_id??'',
-    school_price:            initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '',
-    currency:                initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'),
-    discount_code:           initial.discount_code ?? initial.school_code?.toUpperCase() ?? '',
-    primary_color:           initial.branding?.primaryColor??'#4f46e5',
-    accent_color:            initial.branding?.accentColor??'#8b5cf6',
-    is_active:               initial.is_active!==false,
-    is_registration_active:  initial.is_registration_active!==false,
-    // explicitly excluded: integration_configs, pricing, branding (object), gateway_config
-  });
-  const [gw, setGw] = useState<SchoolGwState>(()=>initGwState(initial));
-  const [gwExpanded, setGwExpanded] = useState<Record<string,boolean>>({});
-  const updateGw = (id:GwId, patch:Partial<SchoolGwConfig>) => setGw(p=>({...p,[id]:{...p[id],...patch}}));
+  const [f,setF] = useState({ id:initial.id??'', school_code:initial.school_code??'', name:initial.name??'', org_name:initial.org_name??'', address:initial.address??'', pin_code:initial.pin_code??'', country:initial.country||'India', state:initial.state??'', city:initial.city??'', project_id:initial.project_id??'', school_price:initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '', currency:initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'), discount_code:initial.discount_code ?? initial.school_code?.toUpperCase() ?? '', primary_color:initial.branding?.primaryColor??'#4f46e5', accent_color:initial.branding?.accentColor??'#8b5cf6', is_active:initial.is_active!==false, is_registration_active:initial.is_registration_active!==false });
   const [contacts, setContacts] = useState<{name:string;designation:string;email:string;mobile:string}[]>(initContacts);
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => { const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value; setF(p => { const updated = {...p, [k]: val}; if (k === 'country') { updated.currency = isIndianCountry(val as string) ? 'INR' : 'USD'; updated.state = ''; updated.city = ''; } if (k === 'state') updated.city = ''; if (k === 'school_code' && !p.id) { updated.discount_code = (val as string).toUpperCase(); } return updated; }); };
   const setContact = (idx:number, field:string) => (e:React.ChangeEvent<HTMLInputElement>) => { setContacts(prev => prev.map((c,i) => i===idx ? {...c,[field]:e.target.value} : c)); };
@@ -962,86 +916,9 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto',accentColor:'var(--acc)'}}/><label htmlFor="is_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>School is Active</label></div>
         <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/><label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>Registration Active</label></div>
       </div>
-      {/* ── Payment Gateways section ────────────────────────────── */}
-      <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
-        <div style={{fontSize:11,fontWeight:700,color:'var(--m)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:12}}>💳 Payment Gateways</div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {SCHOOL_GW_META.map(meta=>{
-            const cfg = gw[meta.id as GwId];
-            const isConfigured = !!(cfg.key_id && cfg.key_secret);
-            const expanded = gwExpanded[meta.id];
-            return (
-              <div key={meta.id} style={{border:`1.5px solid ${cfg.enabled ? meta.color+'50':'var(--bd)'}`,borderRadius:10,overflow:'hidden',background:cfg.enabled?`${meta.color}08`:'var(--card)'}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',cursor:'pointer'}} onClick={()=>setGwExpanded(p=>({...p,[meta.id]:!p[meta.id]}))}>
-                  <span style={{fontSize:18}}>{meta.logo}</span>
-                  <div style={{flex:1}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                      <span style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,color:'var(--text)'}}>{meta.name}</span>
-                      {meta.domestic ? <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:100,background:'rgba(16,185,129,.1)',color:'#15803d'}}>Domestic</span> : <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:100,background:'rgba(59,130,246,.1)',color:'#1d4ed8'}}>International</span>}
-                      {isConfigured ? <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:100,background:'rgba(16,185,129,.1)',color:'#15803d'}}>✓ Keys set</span> : <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:100,background:'rgba(239,68,68,.1)',color:'#dc2626'}}>⚠ No keys</span>}
-                    </div>
-                  </div>
-                  <div onClick={e=>e.stopPropagation()} style={{display:'flex',alignItems:'center',gap:6}}>
-                    <span style={{fontSize:11,color:cfg.enabled?meta.color:'var(--m)',fontWeight:600}}>{cfg.enabled?'Active':'Off'}</span>
-                    <div onClick={()=>updateGw(meta.id as GwId,{enabled:!cfg.enabled})} style={{width:36,height:20,borderRadius:10,background:cfg.enabled?meta.color:'var(--bd)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
-                      <div style={{width:14,height:14,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:cfg.enabled?19:3,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
-                    </div>
-                  </div>
-                  <span style={{fontSize:10,color:'var(--m)',transform:expanded?'rotate(180deg)':'none',transition:'transform .2s'}}>▼</span>
-                </div>
-                {expanded && (
-                  <div style={{padding:'12px 14px',borderTop:'1px solid var(--bd)',display:'flex',flexDirection:'column',gap:10}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <span style={{fontSize:11,fontWeight:700,color:'var(--m)'}}>Mode:</span>
-                      {(['live','test'] as const).map(m=>(
-                        <button key={m} onClick={()=>updateGw(meta.id as GwId,{mode:m})} style={{padding:'4px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,fontWeight:700,background:cfg.mode===m?(m==='live'?'#B8860B':'var(--text)'):'var(--bg)',color:cfg.mode===m?'#fff':'var(--m)'}}>{m==='live'?'🌐 Live':'🧪 Test'}</button>
-                      ))}
-                      {cfg.mode==='live' && <span style={{fontSize:10,color:'var(--red)',fontWeight:600}}>⚠ Real money</span>}
-                    </div>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                      {meta.fields.map(fld=>(
-                        <div key={fld.key}>
-                          <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:'0.5px',textTransform:'uppercase',color:'var(--m)',marginBottom:4}}>{fld.label}</label>
-                          <input
-                            type={fld.secret ? 'password' : 'text'}
-                            value={(cfg as any)[fld.key] || ''}
-                            onChange={e=>updateGw(meta.id as GwId,{[fld.key]:e.target.value} as any)}
-                            placeholder={fld.hint}
-                            style={{...IS,fontSize:12,fontFamily:'monospace'}}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({
-          id:                     f.id,
-          name:                   f.name,
-          org_name:               f.org_name,
-          school_code:            f.school_code,
-          address:                f.address,
-          pin_code:               f.pin_code,
-          country:                f.country,
-          state:                  f.state,
-          city:                   f.city,
-          project_id:             f.project_id,
-          school_price:           Math.round(Number(f.school_price)*100),
-          currency:               f.currency,
-          discount_code:          f.discount_code,
-          primary_color:          f.primary_color,
-          accent_color:           f.accent_color,
-          is_active:              f.is_active,
-          is_registration_active: f.is_registration_active,
-          contact_persons:        contacts,
-          gateway_configs:        gw,
-        })}>{f.id?'Save Changes':'Create School'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code, is_registration_active:f.is_registration_active})}>{f.id?'Save Changes':'Create School'}</button>
       </div>
     </ModalShell>
   );
