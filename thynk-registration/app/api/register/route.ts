@@ -22,13 +22,23 @@ function isIndiaCurrency(currency: string): boolean {
 // The Admin → Integrations UI saves: { key_id, key_secret, mode, priority }
 // under integration_configs.config for each provider + school_id
 async function getGatewayConfig(supabase: any, schoolId: string, provider: string) {
-  const { data } = await supabase
+  // 1. Try school-specific config first
+  const { data: schoolCfg } = await supabase
     .from('integration_configs')
     .select('config, is_active')
     .eq('school_id', schoolId)
     .eq('provider', provider)
-    .single();
-  return data ?? null;
+    .maybeSingle();
+  if (schoolCfg) return schoolCfg;
+
+  // 2. Fall back to global config (school_id = null) — set via Admin → Integrations page
+  const { data: globalCfg } = await supabase
+    .from('integration_configs')
+    .select('config, is_active')
+    .is('school_id', null)
+    .eq('provider', provider)
+    .maybeSingle();
+  return globalCfg ?? null;
 }
 
 // ── Verify PayPal order server-side using Orders API v2 ───────────────────────
