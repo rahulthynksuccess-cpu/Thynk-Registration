@@ -127,12 +127,12 @@ export function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; 
   const gatewayStats = gatewaySet.map(g => {
     const all  = rows.filter(r => r.gateway === g);
     const paid = all.filter(r => r.payment_status === 'paid');
-    return { gw: g, attempts: all.length, paid: paid.length, rev: paid.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
+    return { gw: g, gateway: g, attempts: all.length, paid: paid.length, rev: paid.reduce((a, r) => a + (r.final_amount ?? 0), 0) };
   }).sort((a, b) => b.paid - a.paid);
 
   const allSchoolNames    = [...new Set(paidRows.map(r => getSchoolName(r)).filter(Boolean))];
-  const topRevenueSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); return { name:s, students:sr.length, rev:sr.reduce((a,r)=>a+(r.final_amount??0),0) }; }).sort((a,b)=>b.rev-a.rev).slice(0,10);
-  const topStudentSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); return { name:s, students:sr.length, rev:sr.reduce((a,r)=>a+(r.final_amount??0),0) }; }).sort((a,b)=>b.students-a.students).slice(0,10);
+  const topRevenueSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); const country = sr[0]?.country ?? 'India'; return { name:s, students:sr.length, rev:sr.reduce((a,r)=>a+(r.final_amount??0),0), country }; }).sort((a,b)=>b.rev-a.rev).slice(0,10);
+  const topStudentSchools = allSchoolNames.map(s => { const sr = paidRows.filter(r => getSchoolName(r) === s); const country = sr[0]?.country ?? 'India'; return { name:s, students:sr.length, rev:sr.reduce((a,r)=>a+(r.final_amount??0),0), country }; }).sort((a,b)=>b.students-a.students).slice(0,10);
 
   const countryStats = countrySet.map(c => {
     const cr  = paidRows.filter(r => (r.country ?? 'India') === c);
