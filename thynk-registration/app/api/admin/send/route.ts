@@ -114,7 +114,8 @@ async function dispatchWhatsApp(service: any, schoolId: string, phone: string, b
 
   const wa = platformRow?.config?.whatsapp_settings;
 
-  if (wa?.enabled && wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
+  // platform_settings uses 'thynkcomm' | 'meta' | 'twilio' as provider names
+  if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
     const url = wa.tcUrl.replace(/\/$/, '') + '/api/send-message';
     const normalized = phone.replace(/\D/g, '');
     const to = normalized.startsWith('91') ? normalized : `91${normalized}`;
@@ -132,6 +133,44 @@ async function dispatchWhatsApp(service: any, schoolId: string, phone: string, b
       throw new Error(`ThynkComm error: ${e.message ?? res.status}`);
     }
     return 'thynkcomm';
+  }
+
+  // Check for Meta Cloud API in platform_settings
+  if (wa?.provider === 'meta' && wa?.metaPhoneId && wa?.metaToken) {
+    const normalized = phone.replace(/\D/g, '');
+    const res = await fetch(`https://graph.facebook.com/v19.0/${wa.metaPhoneId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${wa.metaToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: normalized.startsWith('91') ? normalized : `91${normalized}`,
+        type: 'text',
+        text: { body },
+      }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(`Meta WhatsApp error: ${JSON.stringify(e)}`);
+    }
+    return 'meta_whatsapp';
+  }
+
+  // Check for Twilio in platform_settings
+  if (wa?.provider === 'twilio' && wa?.accountSid && wa?.authToken && wa?.fromNumber) {
+    const normalized = phone.replace(/\D/g, '');
+    const creds = Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64');
+    const from = wa.fromNumber.startsWith('whatsapp:') ? wa.fromNumber : `whatsapp:${wa.fromNumber}`;
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${wa.accountSid}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        From: from,
+        To: `whatsapp:+${normalized.startsWith('91') ? normalized : '91' + normalized}`,
+        Body: body,
+      }).toString(),
+    });
+    if (!res.ok) throw new Error(`Twilio (platform) error: ${res.status}`);
+    return 'twilio';
   }
 
   // Fall back to integration_configs (WhatsApp Cloud / Twilio)
@@ -209,7 +248,7 @@ async function dispatchEmail(
 
   const emailCfg = platformRow?.config?.email_settings;
 
-  if (emailCfg?.enabled && emailCfg?.smtpHost) {
+  if (emailCfg?.smtpHost && emailCfg?.smtpUser) {
     await sendViaSMTP(emailCfg, { to, subject, body });
     return 'smtp';
   }
