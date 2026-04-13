@@ -230,9 +230,22 @@ export default function IntegrationsPage() {
   const [dragActive,setDragActive]=useState<number|null>(null);
 
   const loadGateways=useCallback(async()=>{
-    try{const r=await authFetch(`${BACKEND}/api/admin/integrations`);const d=await r.json();const rows:Row[]=d.integrations??[];
-    const gwList:GatewayState[]=Object.keys(GATEWAY_META).map((id,i)=>{const row=rows.find(r=>r.provider===id);return{id,enabled:row?.is_active??false,priority:row?.config?.priority??(i+1),key_id:row?.config?.key_id??'',key_secret:row?.config?.key_secret??'',mode:row?.config?.mode??'test',db_id:row?.id};});
-    gwList.sort((a,b)=>a.priority-b.priority);setGateways(gwList);}catch{}setLoadingGW(false);
+    try{
+      // Load global configs (school_id=null) — no school filter needed
+      const r=await authFetch(`${BACKEND}/api/admin/integrations`);
+      const d=await r.json();
+      const rows:Row[]=d.integrations??[];
+      // Only use rows where school_id is null (global) or all rows if super_admin
+      const globalRows=rows.filter((r:Row)=>r.school_id===null||r.school_id===undefined);
+      const sourceRows=globalRows.length>0?globalRows:rows;
+      const gwList:GatewayState[]=Object.keys(GATEWAY_META).map((id,i)=>{
+        const row=sourceRows.find((r:Row)=>r.provider===id);
+        return{id,enabled:row?.is_active??false,priority:row?.config?.priority??(i+1),key_id:row?.config?.key_id??'',key_secret:row?.config?.key_secret??'',mode:row?.config?.mode??'live',db_id:row?.id};
+      });
+      gwList.sort((a,b)=>a.priority-b.priority);
+      setGateways(gwList);
+    }catch{}
+    setLoadingGW(false);
   },[]);
   useEffect(()=>{loadGateways();},[loadGateways]);
 
@@ -244,8 +257,23 @@ export default function IntegrationsPage() {
 
   const saveGateways=async()=>{
     setSaving(true);
-    try{await Promise.all(gateways.map(gw=>authFetch(`${BACKEND}/api/admin/integrations`,{method:gw.db_id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...(gw.db_id?{id:gw.db_id}:{}),provider:gw.id,is_active:gw.enabled,priority:gw.priority,config:{key_id:gw.key_id,key_secret:gw.key_secret,mode:gw.mode,priority:gw.priority}})})));showToast('✅ Payment gateways saved!');loadGateways();}
-    catch{showToast('❌ Save failed');}setSaving(false);
+    try{
+      await Promise.all(gateways.map(gw=>authFetch(`${BACKEND}/api/admin/integrations`,{
+        method:gw.db_id?'PATCH':'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          ...(gw.db_id?{id:gw.db_id}:{}),
+          school_id: null,        // global config — applies to all schools
+          provider:  gw.id,
+          is_active: gw.enabled,
+          priority:  gw.priority,
+          config:{key_id:gw.key_id,key_secret:gw.key_secret,mode:gw.mode,priority:gw.priority},
+        }),
+      })));
+      showToast('✅ Payment gateways saved!');
+      loadGateways();
+    }catch{showToast('❌ Save failed');}
+    setSaving(false);
   };
 
   const enabledCount=gateways.filter(g=>g.enabled&&g.key_id).length;
