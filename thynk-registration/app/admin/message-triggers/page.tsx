@@ -235,17 +235,6 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
             )}
           </div>
 
-          <div>
-            <label style={lbl}>School (blank = all schools)</label>
-            <select value={f.school_id??''} onChange={e=>set('school_id',e.target.value||null)}
-              style={{...inp,cursor:'pointer'}}>
-              <option value="">All Schools</option>
-              {schools.map(s=>(
-                <option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>
-              ))}
-            </select>
-          </div>
-
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
             <div style={{fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,color:'var(--text)'}}>Active</div>
             <div onClick={()=>set('is_active',!f.is_active)}
