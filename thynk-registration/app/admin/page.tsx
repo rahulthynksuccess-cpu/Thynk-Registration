@@ -329,7 +329,7 @@ export default function AdminDashboard() {
             <div className="revenue-hero">
               <div>
                 <div className="rev-label">💰 Total Revenue Collected</div>
-                <div className="rev-val">₹{fmtR(totalRev)}</div>
+                <div className="rev-val">split display — ₹{fmtR(inrRevOv)} + $USD if any </div>
                 <div className="rev-sub">From {paid.length} confirmed payments{overviewProgram ? ` · ${overviewProgram}` : ''}</div>
               </div>
               <div className="rev-stats">
@@ -694,7 +694,7 @@ export default function AdminDashboard() {
           <div className="modal">
             <div className="modal-head"><h3>{modal.student_name}</h3><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
             <div className="modal-body">
-              {[['Status',<span key="s" className={`badge badge-${modal.payment_status??'pending'}`}>{modal.payment_status??'—'}</span>],['Date',modal.created_at?.slice(0,10)??'—'],['Student',modal.student_name],['Class',modal.class_grade],['Gender',modal.gender],['Program',modal.program_name??'—'],['Country',modal.country??'—'],['School',modal.school_name??modal.parent_school],['City',modal.city],['Parent',modal.parent_name],['Phone',<a key="p" href={`tel:${modal.contact_phone}`} style={{color:'var(--acc)',fontWeight:600}}>{modal.contact_phone}</a>],['Email',<a key="e" href={`mailto:${modal.contact_email}`} style={{color:'var(--acc)',fontSize:12}}>{modal.contact_email}</a>],['Gateway',modal.gateway??'—'],['Base',`₹${fmtR(modal.base_amount??0)}`],['Discount',modal.discount_code?`🏷️ ${modal.discount_code} (₹${fmtR(modal.discount_amount??0)} off)`:'None'],['Paid',<span key="a" style={{fontFamily:'Sora',fontWeight:800,color:'var(--green)',fontSize:18}}>₹{fmtR(modal.final_amount??0)}</span>],['Txn ID',<span key="t" style={{fontSize:11,color:'var(--m2)',wordBreak:'break-all'}}>{modal.gateway_txn_id??'—'}</span>]].map(([l,v])=><div key={String(l)} className="modal-row"><div className="modal-lbl">{l}</div><div className="modal-val">{v}</div></div>)}
+              {[['Status',<span key="s" className={`badge badge-${modal.payment_status??'pending'}`}>{modal.payment_status??'—'}</span>],['Date',modal.created_at?.slice(0,10)??'—'],['Student',modal.student_name],['Class',modal.class_grade],['Gender',modal.gender],['Program',modal.program_name??'—'],['Country',modal.country??'—'],['School',modal.school_name??modal.parent_school],['City',modal.city],['Parent',modal.parent_name],['Phone',<a key="p" href={`tel:${modal.contact_phone}`} style={{color:'var(--acc)',fontWeight:600}}>{modal.contact_phone}</a>],['Email',<a key="e" href={`mailto:${modal.contact_email}`} style={{color:'var(--acc)',fontSize:12}}>{modal.contact_email}</a>],['Gateway',modal.gateway??'—'],['Base',`₹${fmtR(modal.base_amount??0, modal.country)}`],['Discount',modal.discount_code?`🏷️ ${modal.discount_code??0} (₹${fmtR(modal.discount_amount??0, modal.country)} off)`:'None'],['Paid',<span key="a" style={{fontFamily:'Sora',fontWeight:800,color:'var(--green)',fontSize:18}}>₹{fmtR(modal.final_amount??0, modal.country)}</span>],['Txn ID',<span key="t" style={{fontSize:11,color:'var(--m2)',wordBreak:'break-all'}}>{modal.gateway_txn_id??'—'}</span>]].map(([l,v])=><div key={String(l)} className="modal-row"><div className="modal-lbl">{l}</div><div className="modal-val">{v}</div></div>)}
             </div>
             <div className="modal-actions">
               <a className="fu-btn wa"   href={`https://wa.me/91${modal.contact_phone}`} target="_blank" rel="noreferrer">💬 WhatsApp</a>
@@ -715,7 +715,7 @@ export default function AdminDashboard() {
                 <div key={r.id} className="drill-row" onClick={()=>{setDrillData(null);setTimeout(()=>setModal(r),200);}}>
                   <div className="drill-num">{i+1}</div>
                   <div style={{flex:1}}><div className="drill-name">{r.student_name} <span className={`badge badge-${r.payment_status}`} style={{fontSize:10}}>{r.payment_status}</span></div><div className="drill-meta">{r.class_grade} · {r.school_name??r.parent_school} · {r.city}</div></div>
-                  <div style={{textAlign:'right'}}><div className="drill-amt">₹{fmtR(r.final_amount??0)}</div></div>
+                  <div style={{textAlign:'right'}}><div className="drill-amt">₹{fmtAmt(r.final_amount??0, r.country)})}</div></div>
                 </div>
               ))}
             </div>
@@ -1182,7 +1182,7 @@ function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row
           <td style={{fontSize:12}}>{r.parent_name??'—'}</td>
           <td><a href={`tel:${r.contact_phone}`} onClick={e=>e.stopPropagation()} style={{color:'var(--acc)',fontSize:12,textDecoration:'none',fontWeight:600}}>{r.contact_phone}</a></td>
           <td><span className="gw-tag">{r.gateway??'—'}</span></td>
-          <td><span className="amt">₹{fmtR(r.final_amount??0)}</span></td>
+          <td><span className="amt">{fmtAmt(r.final_amount??0, r.country)}</span></td>
           <td style={{fontSize:11,color:'var(--red)',fontWeight:600}}>{r.discount_code?`🏷️ ${r.discount_code}`:'—'}</td>
         </tr>
       ))}</tbody>
