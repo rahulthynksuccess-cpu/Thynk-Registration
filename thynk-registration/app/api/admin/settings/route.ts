@@ -29,10 +29,22 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const body = await req.json();
   const service = createServiceClient();
+
+  // Read existing config first so we MERGE not overwrite
+  // e.g. saving whatsapp_settings must not wipe email_settings
+  const { data: existing } = await service
+    .from('integration_configs')
+    .select('config')
+    .eq('provider', 'platform_settings')
+    .is('school_id', null)
+    .maybeSingle();
+
+  const merged = { ...(existing?.config ?? {}), ...body };
+
   const { error } = await service
     .from('integration_configs')
     .upsert(
-      { provider: 'platform_settings', school_id: null, config: body, is_active: true, priority: 0 },
+      { provider: 'platform_settings', school_id: null, config: merged, is_active: true, priority: 0 },
       { onConflict: 'provider,school_id' }
     );
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
