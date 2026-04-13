@@ -11,6 +11,9 @@ import { useRouter } from 'next/navigation';
 
 const fmt  = (n: any) => { const v = parseFloat(String(n??0).replace(/[^0-9.]/g,'')); return isNaN(v)?'0':v.toLocaleString('en-IN'); };
 const fmtR = (p: number) => fmt(p/100);
+const isIndia = (country?: string) => !country || country === 'India';
+const currSymbol = (country?: string) => isIndia(country) ? '₹' : '$';
+const fmtAmt = (p: number, country?: string) => `${currSymbol(country)}${fmtR(p)}`;
 type Row   = Record<string,any>;
 const PALETTE = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899'];
 const BACKEND  = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
