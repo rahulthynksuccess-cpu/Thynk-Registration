@@ -53,6 +53,7 @@ async function verifyPayPalOrder(
     : 'https://api-m.paypal.com';
 
   try {
+    // Get OAuth token
     const tokenRes = await fetch(`${base}/v1/oauth2/token`, {
       method: 'POST',
       headers: {
@@ -64,21 +65,24 @@ async function verifyPayPalOrder(
     if (!tokenRes.ok) return { verified: false, status: 'token_error' };
     const { access_token } = await tokenRes.json();
 
-    const captureRes = await fetch(`${base}/v2/checkout/orders/${orderId}/capture`, {
-      method: 'POST',
+    // GET the order to verify — frontend already captured it via actions.order.capture()
+    // DO NOT call /capture again — PayPal rejects double captures
+    const orderRes = await fetch(`${base}/v2/checkout/orders/${orderId}`, {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${access_token}`,
         'Content-Type': 'application/json',
       },
     });
 
-    const captureData = await captureRes.json();
-    const orderStatus = captureData.status;
-    const verified    = orderStatus === 'COMPLETED';
+    const orderData  = await orderRes.json();
+    const orderStatus = orderData.status;
+    // COMPLETED = fully captured, APPROVED = approved but not yet captured server-side
+    const verified   = orderStatus === 'COMPLETED' || orderStatus === 'APPROVED';
 
     let amount: number | undefined;
     try {
-      const unit    = captureData.purchase_units?.[0];
+      const unit    = orderData.purchase_units?.[0];
       const capture = unit?.payments?.captures?.[0];
       amount = capture ? Math.round(parseFloat(capture.amount.value) * 100) : undefined;
     } catch { /* non-critical */ }
