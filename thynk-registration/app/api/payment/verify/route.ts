@@ -62,6 +62,24 @@ export async function POST(req: NextRequest) {
     const rzpConfig = await getGatewayConfig(supabase, payment.school_id, 'razorpay');
     const secret    = rzpConfig?.config?.key_secret ?? process.env.RAZORPAY_KEY_SECRET!;
     verified  = verifyRazorpaySignature(razorpayOrderId, gatewayTxnId, razorpaySignature, secret);
+
+    // If signature fails but we have a payment ID, verify directly with Razorpay API
+    // This handles cases where key was rotated after order creation
+    if (!verified && gatewayTxnId && rzpConfig?.config?.key_id) {
+      try {
+        const keyId  = rzpConfig.config.key_id ?? process.env.RAZORPAY_KEY_ID!;
+        const creds  = Buffer.from(`${keyId}:${secret}`).toString('base64');
+        const rzpRes = await fetch(`https://api.razorpay.com/v1/payments/${gatewayTxnId}`, {
+          headers: { 'Authorization': `Basic ${creds}` },
+        });
+        if (rzpRes.ok) {
+          const rzpData = await rzpRes.json();
+          // If Razorpay confirms payment is captured, trust it
+          verified = rzpData.status === 'captured' && rzpData.order_id === razorpayOrderId;
+        }
+      } catch { /* ignore — fall through to failed */ }
+    }
+
     newStatus = verified ? 'paid' : 'failed';
     txnId     = gatewayTxnId;
   }
