@@ -108,8 +108,8 @@ export function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; 
   const countrySet     = [...new Set(schools.map(s => s.country ?? 'India').filter(Boolean))];
   const totalCountries = countrySet.length;
 
-  const inrPaid  = paidRows.filter(r => (r.currency ?? 'INR') === 'INR');
-  const usdPaid  = paidRows.filter(r => r.currency === 'USD');
+const inrPaid = paidRows.filter(r => isIndia(r.country));
+const usdPaid = paidRows.filter(r => !isIndia(r.country));
   const inrRev   = inrPaid.reduce((a, r) => a + (r.final_amount ?? 0), 0);
   const usdRev   = usdPaid.reduce((a, r) => a + (r.final_amount ?? 0), 0);
   const totalRev = paidRows.reduce((a, r) => a + (r.final_amount ?? 0), 0);
@@ -457,7 +457,7 @@ export function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; 
                               <span style={{ fontSize:12, fontWeight:700, color:'#10b981' }}>{c.students}</span>
                             </div>
                           </td>
-                          <td><span className="amt">₹{fmtA(c.rev)}</span></td>
+                          <td><span className="amt">{c.country === 'India' ? `₹${fmtA(c.rev)}` : `$${fmtA(c.rev)}`}</span></td>
                           <td style={{ color:'var(--m)', fontSize:12 }}>₹{c.students ? fmtA(Math.round(c.rev/c.students)) : '0'}</td>
                         </tr>
                       ))}
@@ -485,7 +485,7 @@ export function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; 
                       <div style={{ fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={s.name}>{s.name}</div>
                       <div style={{ fontSize:10, color:'var(--m)' }}>{s.students} paid students</div>
                     </div>
-                    <div style={{ fontSize:13, fontWeight:800, color:'#f59e0b', fontFamily:'Sora', flexShrink:0 }}>₹{fmtA(s.rev)}</div>
+                    <div style={{ fontSize:13, fontWeight:800, color:'#f59e0b', fontFamily:'Sora', flexShrink:0 }}>{isIndia(s.country) ? `₹${fmtA(s.rev)}` : `$${fmtA(s.rev)}`}</div>
                   </div>
                 ))}
               </div>
@@ -497,7 +497,7 @@ export function ReportingPage({ allRows, programs, schools }: { allRows: Row[]; 
                     <span style={{ fontSize: i<3 ? 18 : 12, width:24, textAlign:'center', flexShrink:0, fontWeight:800, color:RANK_COLORS[i] }}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={s.name}>{s.name}</div>
-                      <div style={{ fontSize:10, color:'var(--m)' }}>₹{fmtA(s.rev)}</div>
+                      <div style={{ fontSize:10, color:'var(--m)' }}>{isIndia(s.country) ? `₹${fmtA(s.rev)}` : `$${fmtA(s.rev)}`}</div>
                     </div>
                     <div style={{ textAlign:'right', flexShrink:0 }}>
                       <div style={{ fontSize:22, fontWeight:800, color:'#06b6d4', fontFamily:'Sora' }}>{s.students}</div>
