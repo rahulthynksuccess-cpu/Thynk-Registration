@@ -34,7 +34,6 @@ export async function GET(req: NextRequest) {
     .from('schools')
     .select(`
       id, school_code, name, org_name, logo_url, branding, gateway_config,
-      integration_configs (id, provider, is_active, config),
       is_active, is_registration_active, status, approved_at, approved_by,
       city, state, country, address, pin_code, contact_persons,
       project_id, project_slug, discount_code, created_at,
@@ -64,7 +63,6 @@ export async function POST(req: NextRequest) {
     discount_code,
     primary_color, accent_color,
     is_active, is_registration_active,
-    gateway_configs,
   } = body;
 
   if (!school_code || !name || !org_name || !project_id || !school_price)
@@ -141,19 +139,6 @@ export async function POST(req: NextRequest) {
     max_uses:        null,
   });
 
-  // Save gateway configs if provided
-  if (gateway_configs && typeof gateway_configs === 'object') {
-    for (const [provider, cfg] of Object.entries(gateway_configs as Record<string, any>)) {
-      if (!cfg.key_id && !cfg.key_secret) continue; // skip empty
-      await service.from('integration_configs').upsert({
-        school_id:  school.id,
-        provider,
-        is_active:  cfg.enabled ?? false,
-        config: { key_id: cfg.key_id, key_secret: cfg.key_secret, mode: cfg.mode ?? 'live' },
-      }, { onConflict: 'school_id,provider' });
-    }
-  }
-
   return NextResponse.json({ school }, { status: 201 });
 }
 
@@ -162,7 +147,6 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
-  const body = await req.json();
   const {
     id,
     school_price,
@@ -173,9 +157,8 @@ export async function PATCH(req: NextRequest) {
     discount_code,
     address, pin_code, contact_persons,
     is_registration_active,
-    gateway_configs,
-    name, org_name, city, state, is_active,
-  } = body;
+    ...rest
+  } = await req.json();
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
@@ -192,16 +175,15 @@ export async function PATCH(req: NextRequest) {
   const resolvedCountry  = country || existing?.country || 'India';
   const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
 
-  // Build update payload explicitly — never use ...rest to avoid unknown fields hitting Supabase
+  // Preserve existing status — do not allow PATCH to accidentally reset it
   const updatePayload: Record<string, any> = {
+    ...rest,
     branding,
     country: resolvedCountry,
   };
-  if (name  !== undefined)   updatePayload.name     = name;
-  if (org_name !== undefined) updatePayload.org_name = org_name;
-  if (city  !== undefined)   updatePayload.city     = city  || null;
-  if (state !== undefined)   updatePayload.state    = state || null;
-  if (is_active !== undefined) updatePayload.is_active = !!is_active;
+
+  // Strip status from rest if accidentally passed — PATCH must not change approval status
+  delete updatePayload.status;
 
   if (discount_code)                        updatePayload.discount_code          = discount_code.toUpperCase();
   if (address !== undefined)                updatePayload.address                = address || null;
@@ -245,19 +227,6 @@ export async function PATCH(req: NextRequest) {
       .update({ code: discount_code.toUpperCase() })
       .eq('school_id', id)
       .eq('code', existing.discount_code);
-  }
-
-  // Update gateway configs if provided
-  if (gateway_configs && typeof gateway_configs === 'object') {
-    for (const [provider, cfg] of Object.entries(gateway_configs as Record<string, any>)) {
-      if (!cfg.key_id && !cfg.key_secret) continue; // skip empty — don't wipe existing keys
-      await service.from('integration_configs').upsert({
-        school_id:  id,
-        provider,
-        is_active:  cfg.enabled ?? false,
-        config: { key_id: cfg.key_id, key_secret: cfg.key_secret, mode: cfg.mode ?? 'live' },
-      }, { onConflict: 'school_id,provider' });
-    }
   }
 
   return NextResponse.json({ school: data });
