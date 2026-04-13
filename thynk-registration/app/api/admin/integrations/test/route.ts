@@ -60,16 +60,18 @@ export async function POST(req: NextRequest) {
     if (provider === 'cashfree') {
       const appId  = config.key_id     ?? process.env.CASHFREE_APP_ID;
       const secret = config.key_secret ?? process.env.CASHFREE_SECRET_KEY;
-      const mode   = config.mode       ?? 'production';
-      const base   = mode === 'sandbox' ? 'https://sandbox.cashfree.com' : 'https://api.cashfree.com';
+      if (!appId || !secret) throw new Error('App ID and Secret Key are required');
+      // Auto-detect env from key prefix — TEST keys must use sandbox URL
+      const isSandbox = String(appId).toUpperCase().startsWith('TEST');
+      const base = isSandbox ? 'https://sandbox.cashfree.com' : 'https://api.cashfree.com';
       const res = await fetch(`${base}/pg/orders`, {
         method: 'POST',
         headers: { 'x-client-id': appId, 'x-client-secret': secret, 'x-api-version': '2023-08-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: 'test_check_' + Date.now(), order_amount: 1, order_currency: 'INR', customer_details: { customer_id: 'test', customer_phone: '9999999999' } }),
+        body: JSON.stringify({ order_id: 'test_check_' + Date.now(), order_amount: 1, order_currency: 'INR', customer_details: { customer_id: 'test', customer_phone: '9999999999', customer_email: 'test@test.com', customer_name: 'Test' } }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? 'Cashfree credentials invalid');
-      return NextResponse.json({ success: true, message: 'Cashfree credentials valid ✅' });
+      if (!res.ok) throw new Error(data.message ?? data.type ?? 'Authentication failed — check App ID and Secret');
+      return NextResponse.json({ success: true, message: `Cashfree credentials valid ✅ (${isSandbox ? 'sandbox' : 'production'})` });
     }
 
     if (provider === 'easebuzz') {
