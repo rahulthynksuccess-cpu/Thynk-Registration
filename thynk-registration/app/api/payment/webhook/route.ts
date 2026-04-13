@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fireTriggers } from '@/lib/triggers/fire';
 import { createServiceClient } from '@/lib/supabase/server';
 import { verifyRazorpayWebhook } from '@/lib/payment/razorpay';
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
     // Find payment row by gateway_txn_id (order_id)
     const { data: payment } = await supabase
       .from('payments')
-      .select('id, registration_id, status')
+      .select('id, registration_id, school_id, status')
       .eq('gateway_txn_id', orderId)
       .single();
 
@@ -51,6 +52,9 @@ export async function POST(req: NextRequest) {
 
     if (status === 'paid') {
       await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id });
+      void fireTriggers('payment.paid',   payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.paid razorpay webhook:', e?.message));
+    } else {
+      void fireTriggers('payment.failed', payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.failed razorpay webhook:', e?.message));
     }
 
     return new Response('ok');
@@ -73,7 +77,7 @@ export async function POST(req: NextRequest) {
 
     const { data: payment } = await supabase
       .from('payments')
-      .select('id, registration_id, status')
+      .select('id, registration_id, school_id, status')
       .eq('gateway_txn_id', cfOrderId)
       .single();
 
@@ -89,6 +93,9 @@ export async function POST(req: NextRequest) {
 
     if (cfStatus === 'paid') {
       await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id });
+      void fireTriggers('payment.paid',   payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.paid cashfree webhook:', e?.message));
+    } else {
+      void fireTriggers('payment.failed', payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.failed cashfree webhook:', e?.message));
     }
 
     return new Response('ok');
