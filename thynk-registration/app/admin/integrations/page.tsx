@@ -129,7 +129,7 @@ function WhatsAppTab({showToast}:{showToast:(m:string)=>void}) {
 
   const save=async()=>{
     setSaving(true);
-    try{const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({whatsapp_settings:wa})});if(res.ok)showToast('✅ WhatsApp settings saved!');else showToast('❌ Save failed');}catch{showToast('❌ Save failed');}
+    try{const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({whatsapp_settings:wa})});if(res.ok)showToast('✅ WhatsApp settings saved!');else{const e=await res.json().catch(()=>({}));showToast('❌ Save failed: '+(e.error||'HTTP '+res.status));}}catch(err:any){showToast('❌ Save failed: '+err.message);}
     setSaving(false);
   };
 
