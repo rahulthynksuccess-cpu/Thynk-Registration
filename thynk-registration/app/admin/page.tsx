@@ -866,7 +866,28 @@ function initGwState(initial: Row): SchoolGwState {
 
 function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
   const initContacts = (() => { if (Array.isArray(initial.contact_persons) && initial.contact_persons.length) return initial.contact_persons; return [{ ...EMPTY_CONTACT }]; })();
-  const [f,setF] = useState({ id:initial.id??'', school_code:initial.school_code??'', name:initial.name??'', org_name:initial.org_name??'', address:initial.address??'', pin_code:initial.pin_code??'', country:initial.country||'India', state:initial.state??'', city:initial.city??'', project_id:initial.project_id??'', school_price:initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '', currency:initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'), discount_code:initial.discount_code ?? initial.school_code?.toUpperCase() ?? '', primary_color:initial.branding?.primaryColor??'#4f46e5', accent_color:initial.branding?.accentColor??'#8b5cf6', is_active:initial.is_active!==false, is_registration_active:initial.is_registration_active!==false });
+  // IMPORTANT: only include known school form fields — never spread initial directly
+  // as it may contain nested arrays (integration_configs, pricing) that break the API
+  const [f,setF] = useState({
+    id:                      initial.id??'',
+    school_code:             initial.school_code??'',
+    name:                    initial.name??'',
+    org_name:                initial.org_name??'',
+    address:                 initial.address??'',
+    pin_code:                initial.pin_code??'',
+    country:                 initial.country||'India',
+    state:                   initial.state??'',
+    city:                    initial.city??'',
+    project_id:              initial.project_id??'',
+    school_price:            initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '',
+    currency:                initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'),
+    discount_code:           initial.discount_code ?? initial.school_code?.toUpperCase() ?? '',
+    primary_color:           initial.branding?.primaryColor??'#4f46e5',
+    accent_color:            initial.branding?.accentColor??'#8b5cf6',
+    is_active:               initial.is_active!==false,
+    is_registration_active:  initial.is_registration_active!==false,
+    // explicitly excluded: integration_configs, pricing, branding (object), gateway_config
+  });
   const [gw, setGw] = useState<SchoolGwState>(()=>initGwState(initial));
   const [gwExpanded, setGwExpanded] = useState<Record<string,boolean>>({});
   const updateGw = (id:GwId, patch:Partial<SchoolGwConfig>) => setGw(p=>({...p,[id]:{...p[id],...patch}}));
