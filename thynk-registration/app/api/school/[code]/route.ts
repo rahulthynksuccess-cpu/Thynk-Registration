@@ -78,30 +78,28 @@ export async function GET(
     allowedGrades = (allGrades ?? []).map((g: any) => g.name);
   }
 
-  // ── Fetch PayPal client ID from integration_configs ──────────────────────────
-  // Only the public client_id is safe to expose; client_secret stays server-side.
-  let ppClientId: string | null = null;
+  const { gateway_config, ...safeSchool } = data;
+
+  // Fetch PayPal client ID from integration_configs (saved via Admin → Integrations)
+  // Only the public client_id is safe to expose to the browser; secret stays server-side.
+  let ppClientId: string | null = process.env.PAYPAL_CLIENT_ID ?? null; // env fallback
   try {
     const { data: ppCfg } = await supabase
       .from('integration_configs')
       .select('config, is_active')
       .eq('school_id', data.id)
       .eq('provider', 'paypal')
-      .single();
-    if (ppCfg?.is_active && (ppCfg.config as any)?.key_id) {
-      ppClientId = (ppCfg.config as any).key_id as string;
+      .maybeSingle();
+    if (ppCfg?.is_active && (ppCfg.config as any)?.pp_client_id) {
+      ppClientId = (ppCfg.config as any).pp_client_id as string;
     }
-  } catch { /* no paypal integration configured */ }
+  } catch { /* no paypal integration row — use env fallback above */ }
 
-  // Fall back to server env var if not in DB
-  if (!ppClientId) ppClientId = process.env.PAYPAL_CLIENT_ID ?? null;
-
-  const { gateway_config, ...safeSchool } = data;
   const publicGatewayConfig = {
     rzp_key_id:   (gateway_config as any)?.rzp_key_id ?? process.env.RAZORPAY_KEY_ID,
     cf_mode:      (gateway_config as any)?.cf_mode    ?? 'production',
     eb_env:       (gateway_config as any)?.eb_env     ?? 'production',
-    pp_client_id: ppClientId,  // PayPal public client ID — safe to expose to browser
+    pp_client_id: ppClientId,
   };
 
   return NextResponse.json({
