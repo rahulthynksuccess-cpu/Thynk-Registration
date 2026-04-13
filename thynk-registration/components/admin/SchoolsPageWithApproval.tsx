@@ -20,8 +20,11 @@ function SchoolDetailModal({
   const [templates,   setTemplates]   = useState<Row[]>([]);
   const [sendChannel, setSendChannel] = useState<'whatsapp' | 'email' | null>(null);
   const [selectedTpl, setSelectedTpl] = useState('');
-  const [toPhone,     setToPhone]     = useState(school.contact_phone ?? '');
-  const [toEmail,     setToEmail]     = useState(school.contact_email ?? '');
+  const primaryContact = Array.isArray(school.contact_persons) && school.contact_persons.length > 0
+    ? school.contact_persons[0]
+    : null;
+  const [toPhone,     setToPhone]     = useState(primaryContact?.mobile ?? '');
+  const [toEmail,     setToEmail]     = useState(primaryContact?.email ?? '');
   const [sending,     setSending]     = useState(false);
   const [preview,     setPreview]     = useState('');
 
@@ -42,7 +45,7 @@ function SchoolDetailModal({
     const vars: Record<string, string> = {
       school_name:  school.name ?? '',
       school_code:  school.school_code ?? '',
-      contact_name: school.contact_name ?? school.name ?? '',
+      contact_name: primaryContact?.name ?? school.name ?? '',
       city:         school.city ?? '',
       country:      school.country ?? '',
       program_name: school.program_name ?? '',
@@ -67,7 +70,7 @@ function SchoolDetailModal({
           vars: {
             school_name:  school.name ?? '',
             school_code:  school.school_code ?? '',
-            contact_name: school.contact_name ?? school.name ?? '',
+            contact_name: primaryContact?.name ?? school.name ?? '',
             city:         school.city ?? '',
             country:      school.country ?? '',
             program_name: school.program_name ?? '',
@@ -104,12 +107,14 @@ function SchoolDetailModal({
     ['Org',      school.org_name && school.org_name !== school.name ? school.org_name : '—'],
     ['Program',  school.program_name ?? school.project_slug ?? '—'],
     ['Location', [school.city, school.state, school.country].filter(Boolean).join(', ') || '—'],
-    ['Contact',  school.contact_name ?? '—'],
-    ['Phone',    school.contact_phone
-      ? <a key="p" href={`tel:${school.contact_phone}`} style={{ color: 'var(--acc)', fontWeight: 600 }}>{school.contact_phone}</a>
+    ['Contact',  primaryContact?.name
+      ? `${primaryContact.name}${primaryContact.designation ? ' · ' + primaryContact.designation : ''}`
       : '—'],
-    ['Email',    school.contact_email
-      ? <a key="e" href={`mailto:${school.contact_email}`} style={{ color: 'var(--acc)', fontSize: 12 }}>{school.contact_email}</a>
+    ['Phone',    primaryContact?.mobile
+      ? <a key="p" href={`tel:${primaryContact.mobile}`} style={{ color: 'var(--acc)', fontWeight: 600 }}>{primaryContact.mobile}</a>
+      : '—'],
+    ['Email',    primaryContact?.email
+      ? <a key="e" href={`mailto:${primaryContact.email}`} style={{ color: 'var(--acc)', fontSize: 12 }}>{primaryContact.email}</a>
       : '—'],
     ['Status',   <span key="s" className={`badge ${school.is_active ? 'badge-paid' : 'badge-cancelled'}`}>{school.is_active ? 'Active' : 'Inactive'}</span>],
     ['Reg Open', <span key="r" className={`badge ${school.is_registration_active ? 'badge-paid' : 'badge-cancelled'}`}>{school.is_registration_active ? 'Open' : 'Closed'}</span>],
@@ -193,19 +198,19 @@ function SchoolDetailModal({
         {!sendChannel && (
           <div style={{ display: 'flex', gap: 10, padding: '16px 24px 20px' }}>
             <button
-              onClick={() => { setSendChannel('whatsapp'); setToPhone(school.contact_phone ?? ''); }}
+              onClick={() => { setSendChannel('whatsapp'); setToPhone(primaryContact?.mobile ?? ''); }}
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, border: '1.5px solid rgba(26,184,168,.35)', background: 'rgba(26,184,168,.08)', color: '#0e8a7d', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
             >
               💬 WhatsApp
             </button>
             <a
-              href={`tel:${school.contact_phone}`}
+              href={`tel:${primaryContact?.mobile ?? ''}`}
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, border: '1.5px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.06)', color: '#dc2626', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}
             >
               📞 Call
             </a>
             <button
-              onClick={() => { setSendChannel('email'); setToEmail(school.contact_email ?? ''); }}
+              onClick={() => { setSendChannel('email'); setToEmail(primaryContact?.email ?? ''); }}
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, border: '1.5px solid rgba(245,158,11,.3)', background: 'rgba(245,158,11,.07)', color: '#b45309', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
             >
               ✉️ Email
