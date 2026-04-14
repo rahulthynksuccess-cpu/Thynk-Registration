@@ -300,7 +300,7 @@ function SchoolAnalytics({ schools, programs }: { schools: Row[]; programs: Row[
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:10 }}>
               {activeSchools.map(s => {
                 const regUrl  = s.branding?.redirectURL
-                  ?? (s.project_slug && s.school_code ? `https://www.thynksuccess.com/registration/${s.project_slug}/${s.school_code}` : '');
+                  ?? (s.project_slug && s.school_code ? `https://www.thynksuccess.com/registration/${s.project_slug}/?school=${s.school_code}` : '');
                 return (
                   <div key={s.id} style={{ background:'var(--bg)', border:'1.5px solid var(--bd)', borderRadius:12, padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
                     <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
@@ -681,9 +681,11 @@ export function SchoolsTableWithStatus({
               ? <tr><td colSpan={11} className="table-empty">No schools match the selected filters.</td></tr>
               : filtered.map(s => {
                   const prog = programs.find(p => p.id === s.project_id) ?? programs.find(p => p.slug === s.project_slug);
-                  // Use stored branding.redirectURL (most accurate) or fallback
+                  // Use branding.redirectURL if set (most accurate, set at school creation).
+                  // Otherwise fall back to the ORIGINAL working format: ?school=schoolCode query param.
+                  // Never use path-based /slug/schoolCode for old schools — that route may not exist.
                   const regUrl = s.branding?.redirectURL
-                    ?? `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug ?? ''}/${s.school_code}`;
+                    ?? `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug ?? prog?.slug ?? ''}/?school=${s.school_code}`;
 
                   const schoolCurr  = s.pricing?.[0]?.currency ?? 'INR';
                   const priceFmt    = schoolCurr === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount ?? 0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount ?? 0)}`;
