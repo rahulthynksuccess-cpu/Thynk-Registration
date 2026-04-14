@@ -31,6 +31,7 @@ const TEMPLATE_VARS = [
   '{{contact_phone}}','{{contact_email}}','{{school_name}}','{{program_name}}',
   '{{base_amount}}','{{discount_amount}}','{{final_amount}}',
   '{{discount_code}}','{{gateway}}','{{txn_id}}','{{registration_id}}',
+  '{{payment_link}}',
 ];
 
 const inp: React.CSSProperties = {
