@@ -157,7 +157,20 @@ async function buildTemplateVars(
   const payment = payments[0];
   const school  = reg.schools as any;
   const pricing = reg.pricing as any;
-  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? '';
+  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
+
+  // Build payment link using ?school= format — works for ALL schools on thynksuccess.com
+  let paymentLink = '';
+  if (event !== 'payment.paid') {
+    const { data: schoolData } = await supabase
+      .from('schools')
+      .select('school_code, project_slug')
+      .eq('id', reg.school_id ?? schoolId)
+      .single();
+    if (schoolData?.project_slug && schoolData?.school_code) {
+      paymentLink = `https://www.thynksuccess.com/registration/${schoolData.project_slug}/?school=${schoolData.school_code}`;
+    }
+  }
 
   return {
     student_name:  reg.student_name  ?? '',
@@ -176,8 +189,9 @@ async function buildTemplateVars(
     gateway:       payment?.gateway        ?? undefined,
     paid_at:       payment?.paid_at
       ? new Date(payment.paid_at).toLocaleDateString('en-IN') : undefined,
-    retry_link:    event === 'payment.failed' ? `${appUrl}/${reg.school_id}` : undefined,
-  };
+    payment_link:  paymentLink || undefined,
+    retry_link:    paymentLink || undefined,  // backward compat alias
+  } as TemplateVars;
 }
 
 export function renderTemplate(body: string, vars: TemplateVars): string {
