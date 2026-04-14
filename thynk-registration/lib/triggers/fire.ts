@@ -83,6 +83,7 @@ export async function fireTriggers(
       status: 'pending',
     };
 
+    let lastError: string | null = null;
     try {
       if (trigger.channel === 'email') {
         const provider = await sendEmail(template, vars, schoolId);
@@ -96,14 +97,16 @@ export async function fireTriggers(
         console.log(`${tag} whatsapp sent via ${provider} to ${recipient}`);
       }
     } catch (err: any) {
+      lastError = err?.message ?? 'unknown error';
       logEntry.status = 'failed';
       logEntry.provider = logEntry.provider || 'unknown';
-      console.error(`${tag} FAILED ${trigger.channel} to ${recipient}:`, err?.message);
+      console.error(`${tag} FAILED ${trigger.channel} to ${recipient}:`, lastError);
     }
 
     const { error: logErr } = await supabase.from('notification_logs').insert({
       ...logEntry,
       sent_at: logEntry.status === 'sent' ? new Date().toISOString() : null,
+      provider_response: logEntry.status === 'failed' ? { error: lastError } : null,
     });
     if (logErr) console.error(`${tag} Failed to write log:`, logErr.message);
   }
