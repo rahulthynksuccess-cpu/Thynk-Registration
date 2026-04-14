@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await req.json();
-  const { channel, template_id, school_id, to_phone, to_email, vars = {} } = body;
+  const { channel, template_id, school_id, registration_id, to_phone, to_email, vars = {} } = body;
 
   if (!channel || !template_id || !school_id) {
     return NextResponse.json({ error: 'channel, template_id and school_id are required' }, { status: 400 });
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
     // Log the manual send
     await service.from('notification_logs').insert({
       school_id,
+      registration_id: registration_id ?? null,
       channel,
       provider,
       recipient: channel === 'whatsapp' ? to_phone : to_email,
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
     // Log failure
     await service.from('notification_logs').insert({
       school_id,
+      registration_id: registration_id ?? null,
       channel,
       provider: 'unknown',
       recipient: channel === 'whatsapp' ? (to_phone ?? '') : (to_email ?? ''),
