@@ -36,23 +36,30 @@ const BACKEND  = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
  */
 function buildPayLink(r: Row): string {
   if (r.payment_status === 'paid') return '';
-  // Prefer the stored redirectURL (most accurate — set when school was created)
-  const base = r.registration_url
-    ?? (r.project_slug && r.school_code
-        ? `https://www.thynksuccess.com/registration/${r.project_slug}/${r.school_code}`
-        : '');
-  if (!base) return '';
-  const params = new URLSearchParams({
-    prefill: '1',
-    ...(r.id             ? { reg:    r.id             } : {}),
-    ...(r.student_name   ? { name:   r.student_name   } : {}),
-    ...(r.contact_phone  ? { phone:  r.contact_phone  } : {}),
-    ...(r.contact_email  ? { email:  r.contact_email  } : {}),
-    ...(r.class_grade    ? { class:  r.class_grade    } : {}),
-    ...(r.gender         ? { gender: r.gender         } : {}),
-    ...(r.parent_name    ? { parent: r.parent_name    } : {}),
-  });
-  return `${base}?${params.toString()}`;
+
+  // Always use ?school= query-param format — this works for ALL schools on thynksuccess.com.
+  // branding.redirectURL uses path-based /slug/schoolCode which only exists for new schools
+  // and breaks for schools created before that route existed. Never use it for pay links.
+  //
+  // We need: https://www.thynksuccess.com/registration/{project_slug}/?school={school_code}
+  // project_slug comes from the schools.projects join (r.project_slug from the API).
+  // school_code is always present.
+
+  if (!r.school_code || !r.project_slug) return '';
+
+  const url = new URL(
+    `https://www.thynksuccess.com/registration/${r.project_slug}/`
+  );
+  url.searchParams.set('school',  r.school_code);
+  url.searchParams.set('prefill', '1');
+  if (r.id)            url.searchParams.set('reg',    r.id);
+  if (r.student_name)  url.searchParams.set('name',   r.student_name);
+  if (r.contact_phone) url.searchParams.set('phone',  r.contact_phone);
+  if (r.contact_email) url.searchParams.set('email',  r.contact_email);
+  if (r.class_grade)   url.searchParams.set('class',  r.class_grade);
+  if (r.gender)        url.searchParams.set('gender', r.gender);
+  if (r.parent_name)   url.searchParams.set('parent', r.parent_name);
+  return url.toString();
 }
 
 const NAV = [
