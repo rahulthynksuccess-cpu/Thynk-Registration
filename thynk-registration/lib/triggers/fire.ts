@@ -191,16 +191,52 @@ async function sendEmail(template: any, vars: TemplateVars, schoolId: string): P
   const to       = vars.contact_email ?? '';
   if (!to) throw new Error('contact_email is empty');
 
+  // ── Multi-SMTP routing by program ─────────────────────────────────────────
+  // Load platform settings which holds email_smtp_configs array
   const { data: platformRow } = await supabase
     .from('integration_configs').select('config')
     .eq('provider', 'platform_settings').is('school_id', null).maybeSingle();
 
+  const smtpConfigs: any[] = platformRow?.config?.email_smtp_configs ?? [];
+
+  if (smtpConfigs.length > 0) {
+    // Find the program_id for this school
+    let programId: string | null = null;
+    if (schoolId) {
+      const { data: school } = await supabase
+        .from('schools').select('project_id').eq('id', schoolId).single();
+      programId = school?.project_id ?? null;
+    }
+
+    // Priority 1: find an enabled SMTP assigned to this exact program
+    let smtpCfg = programId
+      ? smtpConfigs.find(c => c.enabled && c.program_id === programId)
+      : null;
+
+    // Priority 2: fallback to Default (program_id === '' or null)
+    if (!smtpCfg) {
+      smtpCfg = smtpConfigs.find(c => c.enabled && (!c.program_id || c.program_id === ''));
+    }
+
+    // Priority 3: any enabled SMTP
+    if (!smtpCfg) {
+      smtpCfg = smtpConfigs.find(c => c.enabled);
+    }
+
+    if (smtpCfg?.smtpHost && smtpCfg?.smtpUser) {
+      await sendViaSMTP(smtpCfg, { to, subject, body });
+      return `smtp:${smtpCfg.name || smtpCfg.smtpUser}`;
+    }
+  }
+
+  // ── Legacy single email_settings fallback ─────────────────────────────────
   const emailCfg = platformRow?.config?.email_settings;
   if (emailCfg?.smtpHost && emailCfg?.smtpUser) {
     await sendViaSMTP(emailCfg, { to, subject, body });
     return 'smtp';
   }
 
+  // ── integration_configs table fallback ────────────────────────────────────
   const { data: configs } = await supabase
     .from('integration_configs').select('provider, config')
     .or(`school_id.eq.${schoolId},school_id.is.null`)
@@ -219,7 +255,7 @@ async function sendEmail(template: any, vars: TemplateVars, schoolId: string): P
     return 'smtp_env';
   }
 
-  throw new Error('No email provider configured. Add SMTP/SendGrid/SES in Admin → Settings.');
+  throw new Error('No email provider configured. Add SMTP in Admin → Integrations → Email / SMTP.');
 }
 
 async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string): Promise<string> {
