@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
+import { deduplicateRegistrations } from '@/lib/dedup';
 
 export async function GET(req: NextRequest) {
   const user = await getUserFromRequest(req);
@@ -96,7 +97,14 @@ export async function GET(req: NextRequest) {
   // Flatten for dashboard consumption
   // FIX: pricing is nested under schools, not directly on registrations
   const flat = (rows ?? []).map((r: any) => {
-    const payment = Array.isArray(r.payments) ? (r.payments[0] ?? {}) : (r.payments ?? {});
+    // Pick the BEST payment record for this registration:
+    // paid > pending/initiated > failed/cancelled > anything else
+    // This prevents a failed-payment record shadowing a later paid one.
+    const allPayments: any[] = Array.isArray(r.payments) ? r.payments : r.payments ? [r.payments] : [];
+    const STATUS_RANK: Record<string, number> = { paid: 0, pending: 1, initiated: 1, failed: 2, cancelled: 2 };
+    const payment = allPayments.sort((a, b) =>
+      (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9)
+    )[0] ?? {};
     const school  = r.schools ?? {};
     // FIX: pricing lives under schools
     const pricing = Array.isArray(school.pricing) ? (school.pricing[0] ?? {}) : (school.pricing ?? {});
@@ -134,13 +142,16 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Apply payment status filter after flattening (since it lives in payments table)
-  let filtered = flat;
-  if (status) {
-    filtered = flat.filter(r => r.payment_status === status);
-  }
+  // ── Deduplication ────────────────────────────────────────────────────────
+  // If the same student (matched by school + name + phone + email) has both a
+  // paid and non-paid registration, suppress the non-paid duplicate.
+  const deduped = deduplicateRegistrations(flat);
 
-  // Search filter
+  // Apply payment status filter after flattening
+  let filtered = deduped;
+  if (status) {
+    filtered = deduped.filter((r: any) => r.payment_status === status);
+  }
   if (search) {
     const q = search.toLowerCase();
     filtered = filtered.filter(r => {
@@ -159,5 +170,5 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ rows: filtered, count: count ?? filtered.length });
+  return NextResponse.json({ rows: filtered, count: filtered.length });
 }

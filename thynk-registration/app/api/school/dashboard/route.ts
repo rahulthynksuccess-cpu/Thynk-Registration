@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
+import { deduplicateRegistrations } from '@/lib/dedup';
 import { NextRequest } from 'next/server';
 
 export async function GET(req: NextRequest) {
@@ -43,7 +44,13 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const flat = (rows ?? []).map((r: any) => {
-    const payment = r.payments?.[0] ?? {};
+    // Pick the BEST payment record — paid > pending > failed
+    // Prevents a failed attempt shadowing a later successful payment.
+    const allPayments: any[] = Array.isArray(r.payments) ? r.payments : r.payments ? [r.payments] : [];
+    const STATUS_RANK: Record<string, number> = { paid: 0, pending: 1, initiated: 1, failed: 2, cancelled: 2 };
+    const payment = allPayments.sort((a, b) =>
+      (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9)
+    )[0] ?? {};
     return {
       id:              r.id,
       created_at:      r.created_at,
@@ -67,11 +74,16 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const total    = flat.length;
-  const paid     = flat.filter(r => r.payment_status === 'paid');
-  const unpaid   = flat.filter(r => r.payment_status !== 'paid');
-  const pending  = flat.filter(r => ['pending','initiated'].includes(r.payment_status ?? ''));
-  const failed   = flat.filter(r => ['failed','cancelled'].includes(r.payment_status ?? ''));
+  // ── Deduplication ────────────────────────────────────────────────────────
+  // If the same student has both a paid and non-paid registration, suppress
+  // the non-paid duplicate so counts and lists are consistent everywhere.
+  const deduped = deduplicateRegistrations(flat);
+
+  const total    = deduped.length;
+  const paid     = deduped.filter(r => r.payment_status === 'paid');
+  const unpaid   = deduped.filter(r => r.payment_status !== 'paid');
+  const pending  = deduped.filter(r => ['pending','initiated'].includes(r.payment_status ?? ''));
+  const failed   = deduped.filter(r => ['failed','cancelled'].includes(r.payment_status ?? ''));
   const totalRev = paid.reduce((s, r) => s + (r.final_amount ?? 0), 0);
 
   // ── All breakdowns: PAID registrations only ──────────────────────
@@ -107,7 +119,7 @@ export async function GET(req: NextRequest) {
     d.setDate(d.getDate() - i);
     dailyMap[d.toISOString().slice(0, 10)] = { total: 0, paid: 0 };
   }
-  flat.forEach(r => {
+  deduped.forEach(r => {
     const ds = r.created_at?.slice(0, 10);
     if (ds && dailyMap[ds]) {
       dailyMap[ds].total++;
@@ -122,6 +134,6 @@ export async function GET(req: NextRequest) {
     byGender,
     crossTab,
     daily: dailyMap,
-    rows: flat,
+    rows: deduped,
   });
 }
