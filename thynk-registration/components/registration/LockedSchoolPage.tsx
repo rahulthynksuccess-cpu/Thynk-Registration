@@ -55,9 +55,20 @@ export default function LockedSchoolPage({
   const [isIndia, setIsIndia]   = useState(true);
   const [loadError, setLoadError] = useState('');
 
+  // Read pre-fill params from URL (?prefill=1&name=...&phone=...&email=...&class=...&gender=...&parent=...)
+  // These are added by the admin "Pay Link" feature so returning students skip straight to payment.
+  const prefillParams = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : null;
+  const isPrefill = prefillParams?.get('prefill') === '1';
+
   const [fd, setFd] = useState<Record<string, string>>({
-    studentName: '', classGrade: '', gender: '',
-    parentName: '', contactPhone: '', contactEmail: '',
+    studentName:  isPrefill ? (prefillParams?.get('name')   ?? '') : '',
+    classGrade:   isPrefill ? (prefillParams?.get('class')  ?? '') : '',
+    gender:       isPrefill ? (prefillParams?.get('gender') ?? '') : '',
+    parentName:   isPrefill ? (prefillParams?.get('parent') ?? '') : '',
+    contactPhone: isPrefill ? (prefillParams?.get('phone')  ?? '') : '',
+    contactEmail: isPrefill ? (prefillParams?.get('email')  ?? '') : '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -90,17 +101,11 @@ export default function LockedSchoolPage({
         };
 
         setSchool(s);
-
-        // ── AUTHORITATIVE: use school's country to determine currency & gateway ──
-        // School country is set by admin when creating the school.
-        // International schools (non-India) must use PayPal + USD.
         setIsIndia(isIndianCountry(s.country));
 
-        // Pick pricing
         const activePricing = (s.pricing || []).find(p => p.is_active) ?? s.pricing?.[0] ?? null;
         setPricing(activePricing);
 
-        // Check if registration is open
         if (s.status && s.status !== 'approved') {
           setPageStep('blocked');
           setLoadError(
@@ -111,9 +116,20 @@ export default function LockedSchoolPage({
           return;
         }
 
+        // If admin sent a pre-fill link, skip the details form and go straight to payment
+        // (only if all required fields are present)
+        if (isPrefill) {
+          const p = prefillParams!;
+          const hasAll = p.get('name') && p.get('phone') && p.get('email') && p.get('class') && p.get('gender');
+          if (hasAll) {
+            setPageStep('payment');
+            return;
+          }
+        }
+
         setPageStep('details');
       })
-      .catch(e => {
+      .catch(() => {
         setLoadError('Could not load school data. Please try again.');
         setPageStep('blocked');
       });
