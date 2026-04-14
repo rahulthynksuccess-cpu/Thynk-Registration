@@ -1,21 +1,18 @@
 /**
  * GET /api/admin/whatsapp-test?phone=919876543210
- *
- * Tests WhatsApp config end-to-end from the SERVER side and returns the exact error.
- * Super-admin only.
+ * Temporary debug endpoint - NO AUTH - DELETE AFTER TESTING
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 
 export async function GET(req: NextRequest) {
-  const user = await getUserFromRequest(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const supabase = createServiceClient();
   const { searchParams } = new URL(req.url);
   const phone = (searchParams.get('phone') ?? '').replace(/\D/g, '');
 
   if (!phone) return NextResponse.json({ error: 'Pass ?phone=919876543210' }, { status: 400 });
+
+  const to = phone.startsWith('91') ? phone : `91${phone}`;
 
   // Load platform_settings
   const { data: platformRow, error: cfgErr } = await supabase
@@ -31,25 +28,18 @@ export async function GET(req: NextRequest) {
 
   if (!wa) return NextResponse.json({
     step: 'load_config',
-    error: 'No whatsapp_settings found in platform_settings. Go to Admin → Settings → WhatsApp and save your config.',
-    raw_config: platformRow?.config ?? null,
+    error: 'No whatsapp_settings found. Go to Admin → Settings → WhatsApp and save.',
+    raw_config_keys: Object.keys(platformRow?.config ?? {}),
   });
 
-  const result: any = {
-    provider: wa.provider,
-    enabled: wa.enabled,
-    to: phone.startsWith('91') ? phone : `91${phone}`,
-  };
-
-  const to = phone.startsWith('91') ? phone : `91${phone}`;
-  const testMsg = `Thynk WhatsApp test from server at ${new Date().toISOString()}`;
+  const testMsg = `Thynk WhatsApp server test ${new Date().toISOString()}`;
+  const result: any = { provider: wa.provider, enabled: wa.enabled, to };
 
   try {
     if (wa.provider === 'thynkcomm') {
-      result.config_present = { tcUrl: !!wa.tcUrl, tcApiKey: !!wa.tcApiKey, tcApiSecret: !!wa.tcApiSecret };
-      if (!wa.tcUrl || !wa.tcApiKey) throw new Error(`Missing: tcUrl=${!!wa.tcUrl}, tcApiKey=${!!wa.tcApiKey}`);
+      result.config = { tcUrl: wa.tcUrl, hasApiKey: !!wa.tcApiKey, hasSecret: !!wa.tcApiSecret };
+      if (!wa.tcUrl || !wa.tcApiKey) throw new Error(`Missing tcUrl or tcApiKey`);
       const url = wa.tcUrl.replace(/\/$/, '') + '/api/send-message';
-      result.url = url;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': wa.tcApiKey, 'x-api-secret': wa.tcApiSecret ?? '' },
@@ -59,11 +49,10 @@ export async function GET(req: NextRequest) {
       result.http_status = res.status;
       result.response = body;
       result.success = res.ok;
-      if (!res.ok) throw new Error(`ThynkComm HTTP ${res.status}: ${JSON.stringify(body)}`);
 
     } else if (wa.provider === 'meta') {
-      result.config_present = { metaPhoneId: !!wa.metaPhoneId, metaToken: !!wa.metaToken };
-      if (!wa.metaPhoneId || !wa.metaToken) throw new Error(`Missing: metaPhoneId=${!!wa.metaPhoneId}, metaToken=${!!wa.metaToken}`);
+      result.config = { metaPhoneId: wa.metaPhoneId, hasToken: !!wa.metaToken };
+      if (!wa.metaPhoneId || !wa.metaToken) throw new Error(`Missing metaPhoneId or metaToken`);
       const res = await fetch(`https://graph.facebook.com/v19.0/${wa.metaPhoneId}/messages`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${wa.metaToken}`, 'Content-Type': 'application/json' },
@@ -73,10 +62,9 @@ export async function GET(req: NextRequest) {
       result.http_status = res.status;
       result.response = body;
       result.success = res.ok;
-      if (!res.ok) throw new Error(`Meta HTTP ${res.status}: ${JSON.stringify(body)}`);
 
     } else if (wa.provider === 'twilio') {
-      result.config_present = { accountSid: !!wa.accountSid, authToken: !!wa.authToken, fromNumber: !!wa.fromNumber };
+      result.config = { hasAccountSid: !!wa.accountSid, hasAuthToken: !!wa.authToken, fromNumber: wa.fromNumber };
       if (!wa.accountSid || !wa.authToken || !wa.fromNumber) throw new Error(`Missing Twilio config`);
       const from = wa.fromNumber.startsWith('whatsapp:') ? wa.fromNumber : `whatsapp:${wa.fromNumber}`;
       const creds = Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64');
@@ -89,10 +77,9 @@ export async function GET(req: NextRequest) {
       result.http_status = res.status;
       result.response = body;
       result.success = res.ok;
-      if (!res.ok) throw new Error(`Twilio HTTP ${res.status}: ${JSON.stringify(body)}`);
 
     } else {
-      throw new Error(`Unknown provider: "${wa.provider}". Must be thynkcomm, meta, or twilio.`);
+      throw new Error(`Unknown provider: "${wa.provider}"`);
     }
   } catch (err: any) {
     result.success = false;
