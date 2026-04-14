@@ -8,6 +8,57 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 const fmtR = (p: number) => { const v = p / 100; return isNaN(v) ? '0' : v.toLocaleString('en-IN'); };
 const SS: React.CSSProperties = { width: '100%', padding: '9px 12px', background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 8, color: 'var(--text)', fontSize: 13, fontFamily: 'DM Sans,sans-serif', outline: 'none' };
 
+// ── Dashboard Link Button ─────────────────────────────────────────────────────
+// Calls /api/admin/preview-token to get a short-lived signed token,
+// then opens /school/dashboard?preview_token=<token> in a new tab.
+// Admin stays logged in to their own session — no school login required.
+function DashboardLinkButton({ schoolId, label = '📊 Dashboard', style }: {
+  schoolId: string;
+  label?: string;
+  style?: React.CSSProperties;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+
+  async function open() {
+    setLoading(true); setError('');
+    try {
+      const res  = await authFetch(`${BACKEND}/api/admin/preview-token`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ school_id: schoolId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? 'Failed to generate link'); setLoading(false); return; }
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (e: any) {
+      setError(e.message);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ display:'inline-flex', flexDirection:'column', gap:2 }}>
+      <button
+        onClick={e => { e.stopPropagation(); open(); }}
+        disabled={loading}
+        style={{
+          display:'inline-flex', alignItems:'center', gap:4,
+          padding:'5px 12px', borderRadius:7,
+          background: loading ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+          color:'#fff', fontSize:11, fontWeight:700,
+          border:'none', cursor: loading ? 'not-allowed' : 'pointer',
+          whiteSpace:'nowrap', textDecoration:'none',
+          ...style,
+        }}
+      >
+        {loading ? '⏳ Opening…' : label}
+      </button>
+      {error && <span style={{ fontSize:10, color:'#ef4444' }}>{error}</span>}
+    </div>
+  );
+}
+
 // ── Checkbox Dropdown ────────────────────────────────────────────────────────
 function CheckDropdown({ label, options, selected, onChange }: {
   label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void;
@@ -218,6 +269,66 @@ function SchoolAnalytics({ schools, programs }: { schools: Row[]; programs: Row[
           {byCity.length===0&&<div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
         </ChartCard>
       </div>
+
+      {/* Active Schools — schools with student activity */}
+      {(() => {
+        const activeSchools = base
+          .filter(s => s.status === 'approved' || !s.status)
+          .map(s => {
+            const prog = programs.find((p: Row) => p.id === s.project_id || p.slug === s.project_slug);
+            return { ...s, prog } as Row & { prog: Row | undefined };
+          })
+          .filter(s => s.is_registration_active)
+          .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+
+        const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
+
+        return (
+          <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>🟢 Schools with Active Registration</div>
+                <div style={{ fontSize:11, color:'var(--m)', marginTop:3 }}>Click a school to open its dashboard directly</div>
+              </div>
+              <span style={{ background:'#d1fae5', color:'#065f46', borderRadius:20, fontSize:11, fontWeight:700, padding:'3px 10px' }}>
+                {activeSchools.length} active
+              </span>
+            </div>
+            {activeSchools.length === 0 && (
+              <div style={{ textAlign:'center', padding:'24px', color:'var(--m)', fontSize:13 }}>No schools with active registration</div>
+            )}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:10 }}>
+              {activeSchools.map(s => {
+                const regUrl  = s.branding?.redirectURL
+                  ?? (s.project_slug && s.school_code ? `https://www.thynksuccess.com/registration/${s.project_slug}/${s.school_code}` : '');
+                return (
+                  <div key={s.id} style={{ background:'var(--bg)', border:'1.5px solid var(--bd)', borderRadius:12, padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+                      <div style={{ width:36, height:36, background:'linear-gradient(135deg,#6366f1,#8b5cf6)', borderRadius:9, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🏫</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={s.name}>{s.name}</div>
+                        <div style={{ fontSize:11, color:'var(--m)', marginTop:2 }}>{[s.city, s.country].filter(Boolean).join(', ')}</div>
+                        <div style={{ fontSize:10, color:'var(--m2)', marginTop:1 }}>{s.prog?.name ?? s.project_slug ?? '—'}</div>
+                      </div>
+                      <code style={{ fontSize:10, background:'var(--acc3)', color:'var(--acc)', padding:'2px 7px', borderRadius:5, flexShrink:0 }}>{s.school_code}</code>
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <DashboardLinkButton schoolId={s.id} label="📊 View Dashboard"
+                        style={{ flex:1, justifyContent:'center', padding:'7px 0', borderRadius:8, fontSize:11 }} />
+                      {regUrl && (
+                        <a href={regUrl} target="_blank" rel="noreferrer"
+                          style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:5, padding:'7px 0', borderRadius:8, background:'rgba(16,185,129,0.1)', color:'#10b981', border:'1.5px solid rgba(16,185,129,0.3)', fontSize:11, fontWeight:700, textDecoration:'none' }}>
+                          🔗 Reg Page
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -561,16 +672,19 @@ export function SchoolsTableWithStatus({
             <tr>
               <th>Code</th><th>School Name</th><th>Location</th><th>Program</th>
               <th>Price</th><th>Discount Code</th><th>Registration URL</th>
-              <th>Reg Active</th><th>Status</th>
+              <th>Reg Active</th><th>Status</th><th>Dashboard</th>
               {isSuperAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0
-              ? <tr><td colSpan={10} className="table-empty">No schools match the selected filters.</td></tr>
+              ? <tr><td colSpan={11} className="table-empty">No schools match the selected filters.</td></tr>
               : filtered.map(s => {
                   const prog = programs.find(p => p.id === s.project_id) ?? programs.find(p => p.slug === s.project_slug);
-                  const regUrl = `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug ?? ''}/?school=${s.school_code}`;
+                  // Use stored branding.redirectURL (most accurate) or fallback
+                  const regUrl = s.branding?.redirectURL
+                    ?? `${prog?.base_url || 'https://www.thynksuccess.com'}/registration/${s.project_slug ?? ''}/${s.school_code}`;
+
                   const schoolCurr  = s.pricing?.[0]?.currency ?? 'INR';
                   const priceFmt    = schoolCurr === 'USD' ? `$${fmtR(s.pricing?.[0]?.base_amount ?? 0)}` : `₹${fmtR(s.pricing?.[0]?.base_amount ?? 0)}`;
                   const status      = s.status || 'approved';
@@ -589,11 +703,14 @@ export function SchoolsTableWithStatus({
                       <td><code style={{ background:'var(--orange2)', color:'var(--orange)', padding:'2px 8px', borderRadius:6, fontSize:11 }}>{s.discount_code || s.school_code?.toUpperCase()}</code></td>
                       <td>
                         <a href={regUrl} target="_blank" rel="noreferrer" style={{ color:'var(--acc)', fontSize:11, textDecoration:'none' }} onClick={e => e.stopPropagation()}>
-                          🔗 {regUrl.replace('https://','').slice(0,40)}
+                          🔗 {regUrl.replace('https://','').slice(0,36)}
                         </a>
                       </td>
                       <td><span className={`badge ${s.is_registration_active ? 'badge-paid' : 'badge-cancelled'}`}>{s.is_registration_active ? 'Open' : 'Closed'}</span></td>
                       <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <DashboardLinkButton schoolId={s.id} />
+                      </td>
                       {isSuperAdmin && (
                         <td>
                           <button className="btn btn-outline" style={{ fontSize:11, padding:'4px 10px' }} onClick={e => { e.stopPropagation(); onEdit(s); }}>Edit</button>
