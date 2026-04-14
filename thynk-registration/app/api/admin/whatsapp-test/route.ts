@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * GET /api/admin/whatsapp-test?phone=919876543210
  * Temporary debug endpoint - NO AUTH - DELETE AFTER TESTING
