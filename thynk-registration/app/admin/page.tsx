@@ -94,7 +94,7 @@ function StudentDetailModal({
       txn_id:        student.gateway_txn_id ?? '',
       contact_phone: student.contact_phone ?? '',
       contact_email: student.contact_email ?? '',
-      payment_link:  student.payment_status !== 'paid' ? `${BACKEND}/api/payment/retry?reg=${student.id}` : '',
+      payment_link:  (student.payment_status !== 'paid' && student.school_code) ? `${BACKEND}/registration/${student.project_slug ?? student.program_name?.toLowerCase().replace(/\s+/g,'-') ?? ''}/${student.school_code}` : '',
     };
     const rendered = tpl.body.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
     setPreview(rendered);
@@ -126,7 +126,7 @@ function StudentDetailModal({
             txn_id:        student.gateway_txn_id ?? '',
             contact_phone: student.contact_phone ?? '',
             contact_email: student.contact_email ?? '',
-            payment_link:  student.payment_status !== 'paid' ? `${BACKEND}/api/payment/retry?reg=${student.id}` : '',
+            payment_link:  (student.payment_status !== 'paid' && student.school_code) ? `${BACKEND}/registration/${student.project_slug ?? student.program_name?.toLowerCase().replace(/\s+/g,'-') ?? ''}/${student.school_code}` : '',
           },
         }),
       });
@@ -388,6 +388,7 @@ export default function AdminDashboard() {
     setToast({ text:`${icon} ${text}`.trim(), type: icon==='✅'?'ok':icon==='❌'?'err':'' });
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(()=>setToast({text:'',type:''}), 3500);
+    showToastGlobal = (msg, ic='') => showToast(msg, ic);
   }
 
   async function doLogout() { await createClient().auth.signOut(); router.push('/admin/login'); }
@@ -1518,8 +1519,12 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
 }
 
 // ── Checkbox Dropdown ───────────────────────────────────────────────
-function CheckDropdown({ label, options, selected, onChange }: {
-  label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void;
+const STATUS_DOT: Record<string,string> = {
+  paid:'#10b981', initiated:'#4f46e5', pending:'#f59e0b',
+  failed:'#ef4444', cancelled:'#94a3b8', unknown:'#94a3b8',
+};
+function CheckDropdown({ label, options, selected, onChange, colorDots }: {
+  label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void; colorDots?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1532,127 +1537,273 @@ function CheckDropdown({ label, options, selected, onChange }: {
   const hasFilter = selected.length > 0;
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${hasFilter ? 'var(--acc)' : 'var(--bd)'}`,
-          background: hasFilter ? 'var(--acc3)' : 'var(--card)', cursor: 'pointer',
-          fontSize: 12, fontWeight: 600, color: hasFilter ? 'var(--acc)' : 'var(--m)',
-          display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
-          fontFamily: 'DM Sans,sans-serif',
-        }}
-      >
-        {label}{hasFilter && <span style={{ background: 'var(--acc)', color: '#fff', borderRadius: 20, fontSize: 10, padding: '1px 6px', fontWeight: 800 }}>{selected.length}</span>}
-        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? '▲' : '▼'}</span>
+      <button onClick={() => setOpen(o => !o)} style={{
+        padding: '8px 14px', borderRadius: 8,
+        border: `1.5px solid ${hasFilter ? 'var(--acc)' : 'var(--bd)'}`,
+        background: hasFilter ? 'rgba(79,70,229,0.08)' : 'var(--card)',
+        cursor: 'pointer', fontSize: 12, fontWeight: 600,
+        color: hasFilter ? 'var(--acc)' : 'var(--m)',
+        display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+        fontFamily: 'DM Sans,sans-serif', height: 36,
+        boxShadow: hasFilter ? '0 0 0 3px rgba(79,70,229,0.1)' : 'none',
+        transition: 'all .15s',
+      }}>
+        <span>{label}</span>
+        {hasFilter
+          ? <span style={{ background:'var(--acc)', color:'#fff', borderRadius:20, fontSize:10, padding:'2px 7px', fontWeight:800, lineHeight:1.4 }}>{selected.length}</span>
+          : <span style={{ fontSize:9, color:'var(--m2)', lineHeight:1 }}>▼</span>
+        }
       </button>
       {open && (
         <div style={{
-          position: 'absolute', top: '110%', left: 0, zIndex: 200,
-          background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 180, maxHeight: 260, overflowY: 'auto',
-          padding: 6,
+          position:'absolute', top:'calc(100% + 6px)', left:0, zIndex:300,
+          background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:12,
+          boxShadow:'0 12px 32px rgba(0,0,0,.15)', minWidth:200, maxHeight:280, overflowY:'auto', padding:8,
         }}>
+          <div style={{ fontSize:10, fontWeight:700, color:'var(--m2)', textTransform:'uppercase', letterSpacing:'.06em', padding:'4px 10px 8px', borderBottom:'1px solid var(--bd)', marginBottom:4 }}>
+            {label} {options.length > 0 && `· ${options.length} options`}
+          </div>
           {selected.length > 0 && (
-            <button onClick={() => onChange([])} style={{ width: '100%', padding: '6px 10px', border: 'none', background: 'rgba(239,68,68,0.08)', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 4, textAlign: 'left' }}>
-              ✕ Clear all
+            <button onClick={() => onChange([])} style={{ width:'100%', padding:'6px 10px', border:'none', background:'rgba(239,68,68,0.07)', borderRadius:7, cursor:'pointer', fontSize:11, fontWeight:700, color:'#ef4444', marginBottom:4, textAlign:'left', display:'flex', alignItems:'center', gap:6 }}>
+              <span>✕</span> Clear all ({selected.length})
             </button>
           )}
           {options.map(opt => (
-            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: selected.includes(opt) ? 700 : 500, color: 'var(--text)', background: selected.includes(opt) ? 'var(--acc3)' : 'transparent' }}>
-              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: 'var(--acc)', width: 14, height: 14, flexShrink: 0 }} />
-              {opt}
+            <label key={opt} onClick={e => e.stopPropagation()} style={{
+              display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:7,
+              cursor:'pointer', fontSize:13, fontWeight: selected.includes(opt) ? 700 : 400,
+              color:'var(--text)', background: selected.includes(opt) ? 'rgba(79,70,229,0.08)' : 'transparent',
+              transition:'background .1s', userSelect:'none',
+            }}>
+              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)}
+                style={{ accentColor:'var(--acc)', width:15, height:15, flexShrink:0, cursor:'pointer' }} />
+              {colorDots && STATUS_DOT[opt] && (
+                <span style={{ width:8, height:8, borderRadius:'50%', background:STATUS_DOT[opt], flexShrink:0 }} />
+              )}
+              <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{opt}</span>
             </label>
           ))}
-          {options.length === 0 && <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--m)' }}>No options</div>}
+          {options.length === 0 && <div style={{ padding:'12px 10px', fontSize:12, color:'var(--m)', textAlign:'center' }}>No options available</div>}
         </div>
       )}
     </div>
   );
 }
 
-// ── Students Analytics ──────────────────────────────────────────────
+// ── Students Analytics — CRM Dashboard ─────────────────────────────
 function StudentsAnalytics({ rows }: { rows: Row[] }) {
-  const paid    = rows.filter(r => r.payment_status === 'paid');
-  const unpaid  = rows.filter(r => r.payment_status !== 'paid');
-  const failed  = rows.filter(r => ['failed','cancelled'].includes(r.payment_status));
-  const pending = rows.filter(r => ['pending','initiated'].includes(r.payment_status));
+  const programs = [...new Set(rows.map(r => r.program_name).filter(Boolean))].sort();
+  const [selProgram, setSelProgram] = useState<string>('__all__');
+  const base = selProgram === '__all__' ? rows : rows.filter(r => r.program_name === selProgram);
+
+  const paid    = base.filter(r => r.payment_status === 'paid');
+  const failed  = base.filter(r => ['failed','cancelled'].includes(r.payment_status));
+  const pending = base.filter(r => ['pending','initiated'].includes(r.payment_status));
   const totalRev = paid.reduce((s,r) => s + (r.final_amount ?? 0), 0);
-  const conv = rows.length ? Math.round(paid.length / rows.length * 100) : 0;
+  const avgTicket = paid.length ? Math.round(totalRev / paid.length) : 0;
+  const conv = base.length ? Math.round(paid.length / base.length * 100) : 0;
 
-  // Breakdowns
-  const byStatus:  Record<string,number> = {};
-  const byProgram: Record<string,number> = {};
-  const byGender:  Record<string,number> = {};
-  const byClass:   Record<string,number> = {};
-  const byGateway: Record<string,number> = {};
-  const byCountry: Record<string,number> = {};
-  const byCity:    Record<string,number> = {};
-  const bySchool:  Record<string,number> = {};
-
-  rows.forEach(r => {
-    const s = r.payment_status ?? 'unknown'; byStatus[s]  = (byStatus[s]  ?? 0) + 1;
-    const p = r.program_name   ?? 'Unknown'; byProgram[p] = (byProgram[p] ?? 0) + 1;
-    const g = r.gender         ?? 'Unknown'; byGender[g]  = (byGender[g]  ?? 0) + 1;
-    const c = r.class_grade    ?? 'Unknown'; byClass[c]   = (byClass[c]   ?? 0) + 1;
-    const gw= r.gateway        ?? 'Unknown'; byGateway[gw]= (byGateway[gw]?? 0) + 1;
-    const co= r.country        ?? 'Unknown'; byCountry[co]= (byCountry[co]?? 0) + 1;
-    const ci= r.city           ?? 'Unknown'; byCity[ci]   = (byCity[ci]   ?? 0) + 1;
-    const sc= r.school_name ?? r.parent_school ?? 'Unknown'; bySchool[sc] = (bySchool[sc] ?? 0) + 1;
+  const today = new Date();
+  const trend14 = Array.from({length:14}, (_,i) => {
+    const d = new Date(today); d.setDate(d.getDate() - (13-i));
+    const ds = d.toISOString().slice(0,10);
+    const dayRows = base.filter(r => r.created_at?.slice(0,10) === ds);
+    return { label: d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}), total: dayRows.length, paid: dayRows.filter(r => r.payment_status==='paid').length };
   });
+  const trendMax = Math.max(...trend14.map(d => d.total), 1);
 
-  const STAT_COLOR = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
+  const mkBreakdown = (key: (r: Row) => string) => {
+    const tot: Record<string,number> = {}, p: Record<string,number> = {};
+    base.forEach(r => { const k = key(r)||'Unknown'; tot[k]=(tot[k]??0)+1; if(r.payment_status==='paid') p[k]=(p[k]??0)+1; });
+    return Object.keys(tot).sort((a,b)=>tot[b]-tot[a]).slice(0,8).map(k => ({ label:k, total:tot[k], paid:p[k]??0, conv: tot[k]>0?Math.round(((p[k]??0)/tot[k])*100):0 }));
+  };
 
-  function BarChart({ data, color = '#4f46e5', label }: { data: Record<string,number>; color?: string; label: string }) {
-    const sorted = Object.entries(data).sort((a,b) => b[1] - a[1]).slice(0, 10);
-    const max = sorted[0]?.[1] ?? 1;
+  const byStatus = (() => { const m: Record<string,number> = {}; base.forEach(r => { const s=r.payment_status??'unknown'; m[s]=(m[s]??0)+1; }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); })();
+  const byProgram = mkBreakdown(r => r.program_name);
+  const byClass   = mkBreakdown(r => r.class_grade);
+  const byGender  = mkBreakdown(r => r.gender);
+  const byGateway = mkBreakdown(r => r.gateway);
+  const byCity    = mkBreakdown(r => r.city);
+  const bySchool  = mkBreakdown(r => r.school_name ?? r.parent_school);
+  const byCountry = mkBreakdown(r => r.country);
+
+  const COLORS = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#84cc16'];
+  const ST_COLOR: Record<string,string> = { paid:'#10b981', initiated:'#4f46e5', pending:'#f59e0b', failed:'#ef4444', cancelled:'#94a3b8' };
+
+  function BarRow({ label, total, paid: p, conv: c, color }: { label:string; total:number; paid:number; conv:number; color:string }) {
+    const maxTotal = base.length || 1;
     return (
-      <div style={{ background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 14, padding: '16px 18px' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>{label}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {sorted.map(([k, v], i) => (
-            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 11, color: 'var(--m)', minWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={k}>{k}</span>
-              <div style={{ flex: 1, height: 8, background: 'var(--bd)', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.round(v/max*100)}%`, height: '100%', background: STAT_COLOR[i % STAT_COLOR.length], borderRadius: 4, transition: 'width .6s ease' }} />
-              </div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: STAT_COLOR[i % STAT_COLOR.length], minWidth: 28, textAlign: 'right' }}>{v}</span>
-            </div>
-          ))}
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid var(--bd)' }}>
+        <span style={{ fontSize:12, color:'var(--text)', minWidth:120, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontWeight:500 }} title={label}>{label}</span>
+        <div style={{ flex:1, height:10, background:'var(--bg)', borderRadius:5, overflow:'hidden', position:'relative' }}>
+          <div style={{ position:'absolute', left:0, top:0, width:`${Math.round(total/maxTotal*100)}%`, height:'100%', background:`${color}25`, borderRadius:5 }} />
+          <div style={{ position:'absolute', left:0, top:0, width:`${Math.round(p/maxTotal*100)}%`, height:'100%', background:color, borderRadius:5 }} />
         </div>
+        <span style={{ fontSize:11, fontWeight:700, color:'var(--m)', minWidth:24, textAlign:'right' }}>{total}</span>
+        <span style={{ fontSize:11, color:'#10b981', fontWeight:800, minWidth:24, textAlign:'right' }}>{p}</span>
+        <span style={{ fontSize:10, color: c>=60?'#10b981':c>=30?'#f59e0b':'#ef4444', fontWeight:700, minWidth:36, textAlign:'right', background: c>=60?'#d1fae5':c>=30?'#fef3c7':'#fee2e2', padding:'1px 5px', borderRadius:4 }}>{c}%</span>
+      </div>
+    );
+  }
+
+  function ChartCard({ title, legend=true, children }: { title:string; legend?:boolean; children:React.ReactNode }) {
+    return (
+      <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom: legend?4:14 }}>{title}</div>
+        {legend && <div style={{ fontSize:10, color:'var(--m2)', marginBottom:14, display:'flex', gap:16 }}>
+          <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#4f46e520', border:'1px solid #4f46e5', display:'inline-block' }}/> Total</span>
+          <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#10b981', display:'inline-block' }}/> Paid</span>
+          <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#fef3c7', border:'1px solid #f59e0b', display:'inline-block' }}/> Conv%</span>
+        </div>}
+        {children}
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* KPI strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      {programs.length > 1 && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:12, fontWeight:600, color:'var(--m)' }}>Filter by Program:</span>
+          {['__all__',...programs].map(p => (
+            <button key={p} onClick={() => setSelProgram(p)}
+              style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', cursor:'pointer', fontSize:12, fontWeight:600, transition:'all .15s', fontFamily:'DM Sans,sans-serif',
+                background: selProgram===p ? 'var(--acc)' : 'transparent',
+                borderColor: selProgram===p ? 'var(--acc)' : 'var(--bd)',
+                color: selProgram===p ? '#fff' : 'var(--m)',
+              }}>
+              {p==='__all__' ? '🌐 All Programs' : p}
+              <span style={{ marginLeft:5, opacity:.7, fontSize:10 }}>({p==='__all__' ? rows.length : rows.filter(r=>r.program_name===p).length})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* KPI row */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12 }}>
         {[
-          { label: 'Total Students',  val: rows.length,           color: '#4f46e5', icon: '👨‍🎓' },
-          { label: 'Paid',            val: paid.length,           color: '#10b981', icon: '✅' },
-          { label: 'Pending',         val: pending.length,        color: '#f59e0b', icon: '⏳' },
-          { label: 'Failed',          val: failed.length,         color: '#ef4444', icon: '❌' },
-          { label: 'Conversion',      val: `${conv}%`,            color: '#06b6d4', icon: '📊' },
-          { label: 'Total Revenue',   val: `₹${fmtR(totalRev)}`, color: '#8b5cf6', icon: '💰' },
+          { label:'Total Registered', val:base.length,          sub:`${conv}% conv rate`, color:'#4f46e5', bg:'#eef2ff', icon:'👨\u200d🎓' },
+          { label:'Paid',             val:paid.length,           sub:`₹${fmtR(totalRev)} collected`, color:'#10b981', bg:'#ecfdf5', icon:'✅' },
+          { label:'Pending/Initiated', val:pending.length,      sub:'need follow-up', color:'#f59e0b', bg:'#fffbeb', icon:'⏳' },
+          { label:'Failed/Cancelled', val:failed.length,        sub:'lost conversions', color:'#ef4444', bg:'#fff1f2', icon:'❌' },
+          { label:'Total Revenue',    val:`₹${fmtR(totalRev)}`, sub:'from paid registrations', color:'#8b5cf6', bg:'#f5f3ff', icon:'💰' },
+          { label:'Avg Ticket Size',  val:`₹${fmtR(avgTicket)}`,sub:'per paid student', color:'#06b6d4', bg:'#ecfeff', icon:'🎫' },
         ].map(m => (
-          <div key={m.label} style={{ background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 20 }}>{m.icon}</span>
-            <span style={{ fontSize: 22, fontWeight: 900, color: m.color, fontFamily: 'Sora,sans-serif', lineHeight: 1 }}>{m.val}</span>
-            <span style={{ fontSize: 11, color: 'var(--m)', fontWeight: 500 }}>{m.label}</span>
+          <div key={m.label} style={{ background:m.bg, border:`1.5px solid ${m.color}30`, borderRadius:14, padding:'16px 14px 12px' }}>
+            <div style={{ fontSize:22, marginBottom:8 }}>{m.icon}</div>
+            <div style={{ fontSize:26, fontWeight:900, color:m.color, fontFamily:'Sora,sans-serif', lineHeight:1, letterSpacing:'-0.5px' }}>{m.val}</div>
+            <div style={{ fontSize:12, fontWeight:700, color:m.color, marginTop:5, opacity:.9 }}>{m.label}</div>
+            <div style={{ fontSize:10, color:'var(--m)', marginTop:2 }}>{m.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* Charts grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <BarChart data={byProgram} label="📚 By Program" color="#4f46e5" />
-        <BarChart data={byStatus}  label="💳 By Payment Status" color="#10b981" />
-        <BarChart data={byClass}   label="🎓 By Class / Grade" color="#8b5cf6" />
-        <BarChart data={byGender}  label="⚧ By Gender" color="#ec4899" />
-        <BarChart data={byGateway} label="🔧 By Payment Gateway" color="#f59e0b" />
-        <BarChart data={byCountry} label="🌍 By Country" color="#06b6d4" />
-        <BarChart data={byCity}    label="🗺️ By City (Top 10)" color="#4f46e5" />
-        <BarChart data={bySchool}  label="🏫 By School (Top 10)" color="#10b981" />
+      {/* Conversion funnel */}
+      <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:16 }}>📊 Conversion Funnel</div>
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          {[
+            { label:'Registered', val:base.length, color:'#4f46e5' },
+            { label:'Initiated',  val:base.filter(r=>['initiated','pending'].includes(r.payment_status)).length+paid.length, color:'#8b5cf6' },
+            { label:'Paid',       val:paid.length,  color:'#10b981' },
+            { label:'Failed',     val:failed.length, color:'#ef4444' },
+          ].map((step,i,arr) => {
+            const pct = arr[0].val>0 ? Math.round(step.val/arr[0].val*100) : 0;
+            return (
+              <React.Fragment key={step.label}>
+                <div style={{ flex:1, background:`${step.color}12`, border:`2px solid ${step.color}40`, borderRadius:12, padding:'14px 10px', textAlign:'center' }}>
+                  <div style={{ fontSize:26, fontWeight:900, color:step.color, fontFamily:'Sora,sans-serif', lineHeight:1 }}>{step.val}</div>
+                  <div style={{ fontSize:11, color:'var(--m)', fontWeight:600, marginTop:4 }}>{step.label}</div>
+                  <div style={{ fontSize:14, fontWeight:800, color:step.color, marginTop:6 }}>{pct}%</div>
+                </div>
+                {i<arr.length-1 && <div style={{ fontSize:18, color:'var(--m2)', flexShrink:0 }}>→</div>}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 14-day trend */}
+      <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>📅 14-Day Registration Trend</div>
+          <div style={{ display:'flex', gap:14, fontSize:11, color:'var(--m)' }}>
+            <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10, height:3, background:'#4f46e5', borderRadius:2, display:'inline-block' }}/> Total</span>
+            <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10, height:3, background:'#10b981', borderRadius:2, display:'inline-block' }}/> Paid</span>
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:80 }}>
+          {trend14.map((d,i) => (
+            <div key={i} title={`${d.label}: ${d.total} total, ${d.paid} paid`}
+              style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%', gap:1 }}>
+              <div style={{ width:'100%', background:'#4f46e520', borderRadius:'3px 3px 0 0', minHeight:2, height:`${Math.max(Math.round(d.total/trendMax*72),2)}px`, position:'relative' }}>
+                {d.paid>0 && <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'#10b981', height:`${Math.round(d.paid/trendMax*72)}px`, borderRadius:'3px 3px 0 0' }} />}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', marginTop:4 }}>
+          <span style={{ fontSize:10, color:'var(--m2)' }}>{trend14[0]?.label}</span>
+          <span style={{ fontSize:10, color:'var(--m2)' }}>{trend14[trend14.length-1]?.label}</span>
+        </div>
+      </div>
+
+      {/* Status + gateway */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>💳 Payment Status</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {byStatus.map(([k,v]) => {
+              const pct = base.length>0 ? Math.round(v/base.length*100) : 0;
+              const col = ST_COLOR[k]??'#94a3b8';
+              return (
+                <div key={k} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ width:10, height:10, borderRadius:'50%', background:col, flexShrink:0 }} />
+                  <span style={{ fontSize:12, color:'var(--text)', flex:1, textTransform:'capitalize', fontWeight:500 }}>{k}</span>
+                  <div style={{ width:90, height:8, background:'var(--bg)', borderRadius:4, overflow:'hidden' }}>
+                    <div style={{ width:`${pct}%`, height:'100%', background:col, borderRadius:4 }} />
+                  </div>
+                  <span style={{ fontSize:13, fontWeight:800, color:col, minWidth:28, textAlign:'right' }}>{v}</span>
+                  <span style={{ fontSize:10, color:'var(--m)', minWidth:32, textAlign:'right' }}>{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <ChartCard title="🔧 By Gateway">
+          {byGateway.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byGateway.length===0 && <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
+      </div>
+
+      {/* All breakdowns */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        {selProgram==='__all__' && programs.length>1 && (
+          <ChartCard title="📚 By Program">
+            {byProgram.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          </ChartCard>
+        )}
+        <ChartCard title="🎓 By Class">
+          {byClass.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byClass.length===0 && <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
+        <ChartCard title="⚧ By Gender">
+          {byGender.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byGender.length===0 && <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
+        <ChartCard title="🌍 By Country">
+          {byCountry.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byCountry.length===0 && <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
+        <ChartCard title="🗺️ By City (Top 8)">
+          {byCity.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byCity.length===0 && <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
+        <ChartCard title="🏫 By School (Top 8)">
+          {bySchool.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {bySchool.length===0 && <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
       </div>
     </div>
   );
@@ -1717,7 +1868,7 @@ function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: 
       {studentPageTab === 'list' && (<>
         <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <input placeholder="🔍 Search name, phone, email, txn…" value={search} onChange={e => setSearch(e.target.value)} style={{ minWidth: 220 }} />
-          <CheckDropdown label="Status"   options={allStatuses}  selected={statuses}    onChange={setStatuses_f} />
+          <CheckDropdown label="Status"   options={allStatuses}  selected={statuses}    onChange={setStatuses_f} colorDots />
           <CheckDropdown label="Gateway"  options={allGateways}  selected={gateways}    onChange={setGateways_f} />
           <CheckDropdown label="Program"  options={allPrograms}  selected={programs_f}  onChange={setPrograms_f} />
           <CheckDropdown label="Country"  options={allCountries} selected={countries_f} onChange={v => { setCountries_f(v); setStates_f([]); setCities_f([]); setSchools_f([]); }} />
@@ -1740,9 +1891,12 @@ function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: 
             ? <tr><td colSpan={16} className="table-empty">No records found</td></tr>
             : filtered.map((r, i) => {
               const needsPayLink = r.payment_status !== 'paid';
-              const payLink = needsPayLink
-                ? `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ''}/api/payment/retry?reg=${r.id}`
-                : null;
+              const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
+              const payLink = needsPayLink && r.school_code && r.project_slug
+                ? `${baseUrl}/registration/${r.project_slug}/${r.school_code}`
+                : needsPayLink && r.school_code
+                  ? `${baseUrl}/registration/${r.program_name?.toLowerCase().replace(/\s+/g,'-') ?? ''}/${r.school_code}`
+                  : null;
               return (
                 <tr key={r.id} onClick={() => onRowClick(r)}>
                   <td style={{ color: 'var(--m2)', fontSize: 11 }}>{i + 1}</td>
@@ -1787,8 +1941,93 @@ function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: 
 }
 
 function FollowUpList({ rows, onRowClick }: { rows: Row[]; onRowClick: (r: Row) => void }) {
-  const [channel, setChannel] = useState<'all' | 'whatsapp' | 'email'>('all');
-  const [search,  setSearch]  = useState('');
+  const [search,  setSearch]  = React.useState('');
+  // sendModal: { row, channel }
+  const [sendModal, setSendModal] = React.useState<{row:Row; channel:'whatsapp'|'email'}|null>(null);
+  const [templates,    setTemplates]    = React.useState<Row[]>([]);
+  const [selectedTpl,  setSelectedTpl]  = React.useState('');
+  const [sending,      setSending]      = React.useState(false);
+  const [toAddr,       setToAddr]       = React.useState('');
+  const [preview,      setPreview]      = React.useState('');
+
+  React.useEffect(() => {
+    authFetch(`${BACKEND}/api/admin/templates`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTemplates((d?.templates??[]).filter((t:Row)=>t.is_active)))
+      .catch(()=>{});
+  }, []);
+
+  const payLink = (r: Row) => {
+    const base = BACKEND;
+    if (r.school_code && r.project_slug) return `${base}/registration/${r.project_slug}/${r.school_code}`;
+    if (r.school_code) return `${base}/registration/${r.program_name?.toLowerCase().replace(/\s+/g,'-')??''}/${r.school_code}`;
+    return '';
+  };
+
+  const channelTpls = templates.filter(t => t.channel === sendModal?.channel);
+
+  React.useEffect(() => {
+    if (!selectedTpl || !sendModal) { setPreview(''); return; }
+    const tpl = templates.find(t => t.id===selectedTpl);
+    if (!tpl) return;
+    const r = sendModal.row;
+    const link = payLink(r);
+    const vars: Record<string,string> = {
+      student_name:  r.student_name  ?? '',
+      parent_name:   r.parent_name   ?? '',
+      class_grade:   r.class_grade   ?? '',
+      gender:        r.gender        ?? '',
+      school_name:   r.school_name   ?? '',
+      program_name:  r.program_name  ?? '',
+      city:          r.city          ?? '',
+      amount:        r.final_amount  ? fmtAmt(r.final_amount, r.country) : '',
+      contact_phone: r.contact_phone ?? '',
+      contact_email: r.contact_email ?? '',
+      payment_link:  link,
+    };
+    setPreview(tpl.body.replace(/\{\{(\w+)\}\}/g, (_:string, k:string) => vars[k]??`{{${k}}}`));
+  }, [selectedTpl, templates, sendModal]);
+
+  async function handleSend() {
+    if (!sendModal || !selectedTpl) return;
+    setSending(true);
+    const r = sendModal.row;
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/send`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          channel:         sendModal.channel,
+          template_id:     selectedTpl,
+          school_id:       r.school_id,
+          registration_id: r.id,
+          to_phone:        sendModal.channel==='whatsapp' ? toAddr : r.contact_phone,
+          to_email:        sendModal.channel==='email'    ? toAddr : r.contact_email,
+          vars: {
+            student_name:  r.student_name  ?? '',
+            parent_name:   r.parent_name   ?? '',
+            class_grade:   r.class_grade   ?? '',
+            gender:        r.gender        ?? '',
+            school_name:   r.school_name   ?? '',
+            program_name:  r.program_name  ?? '',
+            city:          r.city          ?? '',
+            amount:        r.final_amount  ? fmtAmt(r.final_amount, r.country) : '',
+            contact_phone: r.contact_phone ?? '',
+            contact_email: r.contact_email ?? '',
+            payment_link:  payLink(r),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSendModal(null); setSelectedTpl(''); setPreview('');
+        showToastGlobal?.(`${sendModal.channel==='whatsapp'?'WhatsApp':'Email'} sent!`, '✅');
+      } else {
+        showToastGlobal?.(`Send failed: ${data.error}`, '❌');
+      }
+    } catch(e:any) { showToastGlobal?.(e.message, '❌'); }
+    setSending(false);
+  }
 
   const filtered = rows.filter(r => {
     const s = search.toLowerCase();
@@ -1797,55 +2036,102 @@ function FollowUpList({ rows, onRowClick }: { rows: Row[]; onRowClick: (r: Row) 
 
   if (!rows.length) return <div className="empty-state"><div className="emoji">🎉</div><p>No pending follow-ups!</p></div>;
 
-  const payLink = (r: Row) => `${BACKEND}/api/payment/retry?reg=${r.id}`;
+  const inp: React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', borderRadius:9, padding:'9px 12px', fontSize:13, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--card)', boxSizing:'border-box' };
 
   return (
     <div>
-      {/* Channel tabs + search */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 10, padding: 3 }}>
-          {([['all','🕐 All'],['whatsapp','💬 WhatsApp'],['email','✉️ Email']] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setChannel(id)}
-              style={{ padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, borderRadius: 8, fontFamily: 'DM Sans,sans-serif', background: channel === id ? 'var(--acc)' : 'transparent', color: channel === id ? '#fff' : 'var(--m)', transition: 'all .15s' }}>
-              {label}
-            </button>
-          ))}
+      {/* Send modal */}
+      {sendModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+          onClick={e => { if(e.target===e.currentTarget){setSendModal(null);setSelectedTpl('');setPreview('');} }}>
+          <div style={{ background:'var(--card)', borderRadius:18, width:'100%', maxWidth:460, maxHeight:'88vh', overflowY:'auto', boxShadow:'0 24px 64px rgba(0,0,0,.25)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 22px', borderBottom:'1.5px solid var(--bd)' }}>
+              <div>
+                <div style={{ fontFamily:'Sora,sans-serif', fontSize:16, fontWeight:800 }}>
+                  {sendModal.channel==='whatsapp'?'💬 Send WhatsApp':'✉️ Send Email'}
+                </div>
+                <div style={{ fontSize:12, color:'var(--m)', marginTop:2 }}>{sendModal.row.student_name}</div>
+              </div>
+              <button onClick={()=>{setSendModal(null);setSelectedTpl('');setPreview('');}} style={{ border:'none', background:'none', cursor:'pointer', fontSize:20, color:'var(--m)' }}>✕</button>
+            </div>
+            <div style={{ padding:'18px 22px', display:'flex', flexDirection:'column', gap:14 }}>
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:700, color:'var(--m)', marginBottom:5, textTransform:'uppercase', letterSpacing:'.05em' }}>
+                  {sendModal.channel==='whatsapp'?'Phone Number':'Email Address'}
+                </label>
+                <input style={inp} value={toAddr} onChange={e=>setToAddr(e.target.value)}
+                  placeholder={sendModal.channel==='whatsapp'?'91XXXXXXXXXX':'parent@email.com'} />
+              </div>
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:700, color:'var(--m)', marginBottom:5, textTransform:'uppercase', letterSpacing:'.05em' }}>Select Template *</label>
+                <select style={{ ...inp, cursor:'pointer' }} value={selectedTpl} onChange={e=>setSelectedTpl(e.target.value)}>
+                  <option value="">— Choose template —</option>
+                  {channelTpls.length===0
+                    ? <option disabled>No active {sendModal.channel} templates</option>
+                    : channelTpls.map(t=><option key={t.id} value={t.id}>{t.name}</option>)
+                  }
+                </select>
+              </div>
+              {preview && (
+                <div style={{ background:sendModal.channel==='whatsapp'?'rgba(26,184,168,.07)':'rgba(79,70,229,.07)', borderRadius:9, padding:'10px 14px', border:`1px solid ${sendModal.channel==='whatsapp'?'rgba(26,184,168,.25)':'rgba(79,70,229,.2)'}` }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:'var(--m)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Preview</div>
+                  <div style={{ fontSize:12, color:'var(--text)', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{preview}</div>
+                </div>
+              )}
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={()=>{setSendModal(null);setSelectedTpl('');setPreview('');}}
+                  style={{ flex:1, padding:'10px 0', borderRadius:9, border:'1.5px solid var(--bd)', background:'var(--card)', fontFamily:'DM Sans,sans-serif', fontSize:13, fontWeight:700, cursor:'pointer', color:'var(--m)' }}>
+                  Cancel
+                </button>
+                <button onClick={handleSend}
+                  disabled={sending||!selectedTpl||!toAddr}
+                  style={{ flex:2, padding:'10px 0', borderRadius:9, background:sendModal.channel==='whatsapp'?'#1ab8a8':'var(--acc)', border:'none', color:'#fff', fontFamily:'DM Sans,sans-serif', fontSize:13, fontWeight:700, cursor:sending?'not-allowed':'pointer', opacity:(sending||!selectedTpl||!toAddr)?0.6:1 }}>
+                  {sending?'⏳ Sending…':`Send ${sendModal.channel==='whatsapp'?'WhatsApp':'Email'}`}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search students…"
-          style={{ flex: 1, minWidth: 180, border: '1.5px solid var(--bd)', borderRadius: 9, padding: '8px 12px', fontSize: 12, fontFamily: 'DM Sans,sans-serif', outline: 'none', color: 'var(--text)', background: 'var(--card)' }} />
-        <span style={{ fontSize: 12, color: 'var(--m)', fontWeight: 600 }}>{filtered.length} students</span>
+      )}
+
+      {/* Toolbar */}
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search students…"
+          style={{ flex:1, minWidth:180, border:'1.5px solid var(--bd)', borderRadius:9, padding:'8px 12px', fontSize:12, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--card)' }} />
+        <span style={{ fontSize:12, color:'var(--m)', fontWeight:600 }}>{filtered.length} students</span>
       </div>
 
       <div className="followup-card">
         {filtered.map(r => {
-          const st = r.payment_status ?? 'pending';
+          const st = r.payment_status??'pending';
           const link = payLink(r);
           return (
-            <div key={r.id} className="followup-item" onClick={() => onRowClick(r)}>
-              <div className={`fu-avatar ${st}`}>{(r.student_name ?? '?')[0].toUpperCase()}</div>
+            <div key={r.id} className="followup-item" onClick={()=>onRowClick(r)}>
+              <div className={`fu-avatar ${st}`}>{(r.student_name??'?')[0].toUpperCase()}</div>
               <div className="fu-info">
                 <div className="fu-name">{r.student_name} <span className={`fu-tag ${st}`}>{r.payment_status}</span></div>
-                <div className="fu-meta">{r.class_grade} · {r.school_name ?? r.parent_school} · {r.city}</div>
+                <div className="fu-meta">{r.class_grade} · {r.school_name??r.parent_school} · {r.city}</div>
               </div>
-              <div className="fu-actions" onClick={e => e.stopPropagation()}>
-                {(channel === 'all' || channel === 'whatsapp') && (
-                  <a className="fu-btn wa" href={`https://wa.me/91${r.contact_phone}?text=${encodeURIComponent(`Hi ${r.student_name ?? ''}, your registration is pending. Please complete payment: ${link}`)}`} target="_blank" rel="noreferrer">💬 WA</a>
-                )}
-                {(channel === 'all' || channel === 'email') && r.contact_email && (
-                  <a className="fu-btn call" href={`mailto:${r.contact_email}?subject=Complete your registration&body=${encodeURIComponent(`Hi ${r.student_name ?? ''},\n\nPlease complete your registration payment:\n${link}\n\nThank you`)}`}
-                    style={{ background: 'rgba(79,70,229,0.1)', color: 'var(--acc)', borderColor: 'rgba(79,70,229,0.3)' }}>
-                    ✉️ Email
-                  </a>
-                )}
-                <a className="fu-btn call" href={`tel:${r.contact_phone}`}>📞 Call</a>
-                <button onClick={() => { navigator.clipboard.writeText(link); }}
-                  style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #10b981', background: 'rgba(16,185,129,0.08)', color: '#10b981', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
-                  🔗 Pay Link
+              <div className="fu-actions" onClick={e=>e.stopPropagation()}>
+                <button className="fu-btn wa"
+                  onClick={()=>{ setSendModal({row:r,channel:'whatsapp'}); setToAddr(r.contact_phone??''); setSelectedTpl(''); setPreview(''); }}>
+                  💬 WA
                 </button>
+                <button className="fu-btn call"
+                  style={{ background:'rgba(79,70,229,0.1)', color:'var(--acc)', borderColor:'rgba(79,70,229,0.3)' }}
+                  onClick={()=>{ setSendModal({row:r,channel:'email'}); setToAddr(r.contact_email??''); setSelectedTpl(''); setPreview(''); }}>
+                  ✉️ Email
+                </button>
+                <a className="fu-btn call" href={`tel:${r.contact_phone}`} onClick={e=>e.stopPropagation()}>📞 Call</a>
+                {link && <button
+                  onClick={()=>navigator.clipboard.writeText(link)}
+                  style={{ padding:'4px 8px', borderRadius:6, border:'1.5px solid #10b981', background:'rgba(16,185,129,0.08)', color:'#10b981', fontSize:10, fontWeight:700, cursor:'pointer' }}>
+                  🔗 Pay Link
+                </button>}
               </div>
-              <div style={{ textAlign: 'right', marginLeft: 8 }}>
-                <div className="amt" style={{ fontSize: 13 }}>{fmtAmt(r.final_amount ?? 0, r.country)}</div>
-                <div style={{ fontSize: 10, color: 'var(--m2)' }}>{r.gateway}</div>
+              <div style={{ textAlign:'right', marginLeft:8 }}>
+                <div className="amt" style={{ fontSize:13 }}>{fmtAmt(r.final_amount??0, r.country)}</div>
+                <div style={{ fontSize:10, color:'var(--m2)' }}>{r.gateway}</div>
               </div>
             </div>
           );
@@ -1854,6 +2140,9 @@ function FollowUpList({ rows, onRowClick }: { rows: Row[]; onRowClick: (r: Row) 
     </div>
   );
 }
+
+// Global toast ref for FollowUpList (since it's outside the main component)
+let showToastGlobal: ((msg:string, icon?:string)=>void) | null = null;
 
 function CityHeatmap({ rows }:{ rows:Row[] }) {
   const [metric,setMetric]=useState<'total'|'paid'|'revenue'>('total');
