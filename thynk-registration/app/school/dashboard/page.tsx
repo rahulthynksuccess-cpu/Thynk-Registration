@@ -32,7 +32,7 @@ const SCRIPT_ID   = '__chartjs_singleton__';
 
 /** Load Chart.js exactly once across the lifetime of the page. */
 function useChartJsLoader(): boolean {
-  const [ready, setReady] = useState<boolean>(() => !!(window as any).Chart);
+  const [ready, setReady] = useState<boolean>(false);
 
   useEffect(() => {
     if ((window as any).Chart) { setReady(true); return; }
@@ -378,12 +378,7 @@ const CSS = `
 `;
 
 // Inject CSS once at module level — never inside a component or effect
-if (typeof document !== 'undefined' && !document.getElementById('__school-dash-css__')) {
-  const style = document.createElement('style');
-  style.id = '__school-dash-css__';
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
+// CSS injected once via useEffect in the component below
 
 /* ─── Main Dashboard ─────────────────────────────────────────────────────── */
 export default function SchoolDashboard() {
@@ -401,6 +396,15 @@ export default function SchoolDashboard() {
 
   // Load Chart.js once — guaranteed single script tag
   const chartJsReady = useChartJsLoader();
+
+  // Inject CSS once on mount
+  useEffect(() => {
+    if (document.getElementById('__school-dash-css__')) return;
+    const style = document.createElement('style');
+    style.id = '__school-dash-css__';
+    style.textContent = CSS;
+    document.head.appendChild(style);
+  }, []);
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data: d }) => {
