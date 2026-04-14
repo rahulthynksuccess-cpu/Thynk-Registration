@@ -524,56 +524,263 @@ export default function AdminDashboard() {
         {/* ── Main ────────────────────────────────────────────────── */}
         <main className="main-content">
 
+       // ─────────────────────────────────────────────────────────────────────────────
+// PASTE THIS to replace the entire  {/* ── OVERVIEW ── */}  <div className="page">
+// block inside AdminDashboard's return statement.
+// It uses all the same state/helpers already in scope.
+// ─────────────────────────────────────────────────────────────────────────────
+
           {/* ── OVERVIEW ────────────────────────────────────────────── */}
           <div className={`page${activePage==='overview'?' active':''}`}>
             <div className="topbar">
-              <div className="topbar-left"><h1>Overview <span>Dashboard</span></h1><p>{lastUpdated}</p></div>
+              <div className="topbar-left">
+                <h1>Overview <span>Dashboard</span></h1>
+                <p>{lastUpdated}</p>
+              </div>
               <div className="topbar-right">
-                <select value={overviewProgram} onChange={e=>setOverviewProgram(e.target.value)} style={{border:'1.5px solid var(--bd)',borderRadius:10,padding:'7px 14px',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',color:'var(--text)',background:'var(--card)',cursor:'pointer',minWidth:160}}>
+                <select
+                  value={overviewProgram}
+                  onChange={e => setOverviewProgram(e.target.value)}
+                  style={{ border:'1.5px solid var(--bd)', borderRadius:10, padding:'7px 14px', fontSize:13, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--card)', cursor:'pointer', minWidth:160 }}
+                >
                   <option value="">All Programs</option>
-                  {programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                  {programs.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                 </select>
                 <div className="badge-live"><div className="dot"/>Live Data</div>
                 <button className="btn btn-outline" onClick={loadRegistrations}>🔄 Refresh</button>
                 <button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button>
               </div>
             </div>
-            <div className="revenue-hero">
-              <div>
-                <div className="rev-label">💰 Total Revenue Collected</div>
-                <div className="rev-val">₹{fmtR(inrRevOv)}{usdRevOv > 0 && <span style={{marginLeft:12,fontSize:'0.65em',color:'#22c55e',fontWeight:700}}> + ${fmtR(usdRevOv)} USD</span>}</div>
-                <div className="rev-sub">From {paid.length} confirmed payments{overviewProgram ? ` · ${overviewProgram}` : ''}</div>
-              </div>
-              <div className="rev-stats">
-                <div className="rev-stat"><div className="rev-stat-val">{conv}%</div><div className="rev-stat-lbl">Conversion</div></div>
-                <div className="rev-stat"><div className="rev-stat-val">₹{fmtR(inrPaidOv.length ? Math.round(inrRevOv/inrPaidOv.length) : 0)}</div><div className="rev-stat-lbl">Avg ticket</div></div>
-                <div className="rev-stat"><div className="rev-stat-val">{ovRows.filter(r=>r.created_at?.slice(0,10)===today).length}</div><div className="rev-stat-lbl">Today</div></div>
+
+            {/* ── Hero Revenue Banner ──────────────────────────────── */}
+            <div style={{
+              background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #1e3a5f 100%)',
+              borderRadius: 20, padding: '28px 32px', marginBottom: 20,
+              position: 'relative', overflow: 'hidden',
+              boxShadow: '0 8px 32px rgba(79,70,229,0.25)',
+            }}>
+              {/* decorative blobs */}
+              <div style={{ position:'absolute', top:-40, right:-40, width:200, height:200, borderRadius:'50%', background:'rgba(139,92,246,0.15)', pointerEvents:'none' }}/>
+              <div style={{ position:'absolute', bottom:-60, right:200, width:160, height:160, borderRadius:'50%', background:'rgba(16,185,129,0.1)', pointerEvents:'none' }}/>
+
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:24, position:'relative', zIndex:1 }}>
+                {/* Left: main revenue */}
+                <div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.55)', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:8 }}>
+                    💰 Total Revenue Collected{overviewProgram ? ` · ${overviewProgram}` : ''}
+                  </div>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:12, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:44, fontWeight:800, fontFamily:'Sora,sans-serif', color:'#fff', letterSpacing:'-1px', lineHeight:1 }}>
+                      ₹{fmtR(inrRevOv)}
+                    </span>
+                    {usdRevOv > 0 && (
+                      <span style={{ fontSize:22, fontWeight:700, color:'#4ade80', fontFamily:'Sora,sans-serif' }}>
+                        + ${fmtR(usdRevOv)} USD
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:13, color:'rgba(255,255,255,0.5)', marginTop:8 }}>
+                    From <strong style={{ color:'#a5f3fc' }}>{paid.length}</strong> confirmed payments
+                    &nbsp;·&nbsp; {ovRows.length} total registrations
+                  </div>
+                </div>
+
+                {/* Right: quick stats strip */}
+                <div style={{ display:'flex', gap:2, flexWrap:'wrap' }}>
+                  {[
+                    { icon:'📈', label:'Conversion', val:`${conv}%`,          color:'#a78bfa' },
+                    { icon:'🎯', label:'Avg Ticket',  val:`₹${fmtR(avg)}`,    color:'#34d399' },
+                    { icon:'📅', label:'Today',       val:ovRows.filter(r=>r.created_at?.slice(0,10)===today).length, color:'#fbbf24' },
+                    { icon:'📆', label:'This Week',   val:thisWeek,            color:'#60a5fa' },
+                    { icon:'🏷️', label:'Discounts',   val:ovRows.filter(r=>r.discount_code).length, color:'#f472b6' },
+                  ].map(s => (
+                    <div key={s.label} style={{
+                      background: 'rgba(255,255,255,0.07)', backdropFilter:'blur(4px)',
+                      borderRadius:14, padding:'14px 18px', textAlign:'center', minWidth:90,
+                      border:'1px solid rgba(255,255,255,0.12)',
+                    }}>
+                      <div style={{ fontSize:18, marginBottom:4 }}>{s.icon}</div>
+                      <div style={{ fontSize:20, fontWeight:800, fontFamily:'Sora,sans-serif', color:s.color, lineHeight:1 }}>{s.val}</div>
+                      <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', marginTop:4, fontWeight:600, letterSpacing:'.04em' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="stats-grid">
+
+            {/* ── Status Cards Row ──────────────────────────────────── */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:10, marginBottom:20 }}>
               {[
-                {color:'blue',  icon:'📋',label:'Total',    val:ovRows.length,  sub:'All registrations'},
-                {color:'green', icon:'✅',label:'Paid',     val:paid.length,     sub:'Confirmed'},
-                {color:'orange',icon:'⏳',label:'Pending',  val:pending.length,  sub:'Awaiting payment'},
-                {color:'red',   icon:'❌',label:'Failed',   val:failed.length,   sub:'Cancelled/failed'},
-                {color:'purple',icon:'🏷️',label:'Discounts',val:ovRows.filter(r=>r.discount_code).length,sub:'Used codes'},
-                {color:'blue',  icon:'📅',label:'This Week',val:thisWeek,        sub:'Last 7 days'},
-              ].map(c=>(
-                <div key={c.label} className={`stat-card ${c.color}`}>
-                  <div className="stat-icon">{c.icon}</div>
-                  <div className="stat-label">{c.label}</div>
-                  <div className="stat-val">{c.val}</div>
-                  <div className="stat-sub">{c.sub}</div>
+                { color:'#4f46e5', bg:'rgba(79,70,229,0.08)',  border:'rgba(79,70,229,0.2)',  icon:'📋', label:'Total',     val:ovRows.length,  sub:'All registrations',       pct: null },
+                { color:'#10b981', bg:'rgba(16,185,129,0.08)', border:'rgba(16,185,129,0.2)', icon:'✅', label:'Paid',      val:paid.length,     sub:'Confirmed payments',      pct: ovRows.length ? Math.round(paid.length/ovRows.length*100) : 0 },
+                { color:'#f59e0b', bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.2)', icon:'⏳', label:'Pending',   val:pending.length,  sub:'Awaiting payment',        pct: ovRows.length ? Math.round(pending.length/ovRows.length*100) : 0 },
+                { color:'#ef4444', bg:'rgba(239,68,68,0.08)',  border:'rgba(239,68,68,0.2)',  icon:'❌', label:'Failed',    val:failed.length,   sub:'Cancelled/failed',        pct: ovRows.length ? Math.round(failed.length/ovRows.length*100) : 0 },
+                { color:'#8b5cf6', bg:'rgba(139,92,246,0.08)', border:'rgba(139,92,246,0.2)', icon:'🏷️', label:'Discounts', val:ovRows.filter(r=>r.discount_code).length, sub:'Used codes', pct: ovRows.length ? Math.round(ovRows.filter(r=>r.discount_code).length/ovRows.length*100) : 0 },
+                { color:'#06b6d4', bg:'rgba(6,182,212,0.08)',  border:'rgba(6,182,212,0.2)',  icon:'🏫', label:'Schools',   val:[...new Set(ovRows.map(r=>r.school_name??r.parent_school).filter(Boolean))].length, sub:'Unique schools', pct: null },
+              ].map(c => (
+                <div key={c.label} style={{
+                  background: c.bg, border:`1.5px solid ${c.border}`,
+                  borderRadius:16, padding:'16px 14px',
+                  display:'flex', flexDirection:'column', gap:4,
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:2 }}>
+                    <span style={{ fontSize:20 }}>{c.icon}</span>
+                    {c.pct !== null && (
+                      <span style={{ fontSize:10, fontWeight:700, color:c.color, background:`${c.color}18`, padding:'2px 7px', borderRadius:20 }}>
+                        {c.pct}%
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:28, fontWeight:800, fontFamily:'Sora,sans-serif', color:c.color, lineHeight:1 }}>{c.val}</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text)' }}>{c.label}</div>
+                  <div style={{ fontSize:10, color:'var(--m)', marginTop:1 }}>{c.sub}</div>
                 </div>
               ))}
             </div>
-            <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center'}}>
-              <span style={{fontSize:13,color:'var(--m)',fontWeight:600}}>Show:</span>
-              <div className="period-tabs">{[7,14,30].map(d=><button key={d} className={`period-tab${trendDays===d?' active':''}`} onClick={()=>setTrendDays(d)}>{d}d</button>)}</div>
+
+            {/* ── Period tabs + Secondary metrics ──────────────────── */}
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+              <span style={{ fontSize:12, color:'var(--m)', fontWeight:600 }}>Period:</span>
+              <div className="period-tabs">
+                {[7,14,30].map(d => (
+                  <button key={d} className={`period-tab${trendDays===d?' active':''}`} onClick={() => setTrendDays(d)}>{d}d</button>
+                ))}
+              </div>
+              <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+                {/* Payment method breakdown pills */}
+                {[...new Set(ovRows.map(r=>r.gateway).filter(Boolean))].slice(0,4).map(gw => {
+                  const gwPaid = paid.filter(r=>r.gateway===gw).length;
+                  const gwRev  = paid.filter(r=>r.gateway===gw).reduce((s,r)=>s+(r.final_amount??0),0);
+                  return (
+                    <div key={gw} style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:10, padding:'6px 12px', fontSize:11, display:'flex', alignItems:'center', gap:6 }}>
+                      <span style={{ fontWeight:700, color:'var(--text)' }}>{gw}</span>
+                      <span style={{ color:'#10b981', fontWeight:700 }}>{gwPaid} paid</span>
+                      <span style={{ color:'var(--m)' }}>·</span>
+                      <span style={{ color:'var(--acc)', fontWeight:700 }}>₹{fmtR(gwRev)}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="charts-grid">
-              <div className="chart-card wide"><div className="chart-header"><div><div className="chart-title">📅 Daily Registrations</div></div></div><div className="chart-wrap"><canvas id="chartDaily"/></div></div>
-              <div className="chart-card"><div className="chart-header"><div><div className="chart-title">📊 Payment Status</div></div></div><div className="chart-wrap"><canvas id="chartStatus"/></div></div>
+
+            {/* ── Charts Row ────────────────────────────────────────── */}
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:14, marginBottom:14 }}>
+              {/* Daily Bar + mini stats overlay */}
+              <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>📅 Daily Registrations</div>
+                    <div style={{ fontSize:11, color:'var(--m)', marginTop:2 }}>Last {trendDays} days — total vs paid</div>
+                  </div>
+                  <div style={{ display:'flex', gap:12 }}>
+                    {/* mini legend */}
+                    {[{color:'#4f46e5',label:'Total'},{color:'#10b981',label:'Paid'}].map(l=>(
+                      <div key={l.label} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'var(--m)', fontWeight:600 }}>
+                        <div style={{ width:10, height:10, borderRadius:3, background:l.color }}/>
+                        {l.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ height:220, position:'relative' }}>
+                  <canvas id="chartDaily"/>
+                </div>
+              </div>
+
+              {/* Status doughnut + conversion meter */}
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px', flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:12 }}>📊 Payment Status</div>
+                  <div style={{ height:160, position:'relative' }}>
+                    <canvas id="chartStatus"/>
+                  </div>
+                </div>
+
+                {/* Conversion rate card */}
+                <div style={{ background:'linear-gradient(135deg,rgba(16,185,129,0.1),rgba(6,182,212,0.07))', border:'1.5px solid rgba(16,185,129,0.25)', borderRadius:16, padding:'16px 18px' }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--m)', marginBottom:6 }}>⚡ Quick Metrics</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {[
+                      { label:'Conversion Rate', val:`${conv}%`, color:'#10b981' },
+                      { label:'Avg Ticket (INR)', val:`₹${fmtR(avg)}`, color:'#4f46e5' },
+                      { label:'Follow-Up Queue', val:followUpCount, color:'#f59e0b' },
+                    ].map(m => (
+                      <div key={m.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:'var(--m)', fontWeight:500 }}>{m.label}</span>
+                        <span style={{ fontSize:14, fontWeight:800, color:m.color, fontFamily:'Sora,sans-serif' }}>{m.val}</span>
+                      </div>
+                    ))}
+                    {/* Progress bar for conversion */}
+                    <div style={{ marginTop:4, height:6, background:'var(--bd)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ width:`${Math.min(conv,100)}%`, height:'100%', background:'linear-gradient(90deg,#10b981,#06b6d4)', borderRadius:3, transition:'width .4s ease' }}/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── School leaderboard + Top cities ──────────────────── */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              {/* Top schools by registrations */}
+              <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+                <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>🏆 Top Schools by Paid Registrations</div>
+                {(() => {
+                  const schoolMap: Record<string, number> = {};
+                  paid.forEach(r => { const k = r.school_name ?? r.parent_school ?? 'Unknown'; schoolMap[k] = (schoolMap[k] ?? 0) + 1; });
+                  const sorted = Object.entries(schoolMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+                  const max = sorted[0]?.[1] ?? 1;
+                  const medals = ['🥇','🥈','🥉'];
+                  return (
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {sorted.map(([name, count], i) => (
+                        <div key={name} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          <span style={{ fontSize: i<3?16:11, width:20, flexShrink:0, textAlign:'center', fontWeight:700, color:'#f59e0b' }}>
+                            {i<3 ? medals[i] : i+1}
+                          </span>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--text)' }} title={name}>{name}</div>
+                            <div style={{ marginTop:3, height:5, background:'var(--bd)', borderRadius:3, overflow:'hidden' }}>
+                              <div style={{ width:`${Math.round(count/max*100)}%`, height:'100%', background: i===0?'#fbbf24':i===1?'#9ca3af':i===2?'#b45309':'var(--acc)', borderRadius:3 }}/>
+                            </div>
+                          </div>
+                          <span style={{ fontSize:13, fontWeight:800, color:'#10b981', fontFamily:'Sora', flexShrink:0 }}>{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* City distribution */}
+              <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+                <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>🗺️ Top Cities (Paid)</div>
+                {(() => {
+                  const cityMap: Record<string, number> = {};
+                  paid.forEach(r => { const k = r.city ?? 'Unknown'; cityMap[k] = (cityMap[k] ?? 0) + 1; });
+                  const sorted = Object.entries(cityMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
+                  const max = sorted[0]?.[1] ?? 1;
+                  return (
+                    <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                      {sorted.map(([city, count], i) => (
+                        <div key={city} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                              <span style={{ fontSize:12, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{city}</span>
+                              <span style={{ fontSize:11, fontWeight:700, color:'var(--acc)', marginLeft:8 }}>{count}</span>
+                            </div>
+                            <div style={{ height:5, background:'var(--bd)', borderRadius:3, overflow:'hidden' }}>
+                              <div style={{
+                                width:`${Math.round(count/max*100)}%`, height:'100%', borderRadius:3,
+                                background: `hsl(${220+i*22},70%,60%)`,
+                              }}/>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           </div>
 
@@ -613,7 +820,10 @@ export default function AdminDashboard() {
             <div className="topbar">
               <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payments + school registrations</p></div>
               <div className="topbar-right">
-                <button className="btn btn-outline" onClick={()=>api('/api/admin/activity-logs?limit=200').then((d:any)=>setActivityLogs(d.logs??[])).catch(()=>{})}>🔄 Refresh</button>
+                <button className="btn btn-outline" onClick={()=>api('Promise.all([
+  api('/api/admin/activity-logs?limit=200'),
+  api('/api/admin/schools?limit=200'),          // for school names
+]).then(([d]) => setActivityLogs(d.logs ?? [])).catch(() => {});}>🔄 Refresh</button>
               </div>
             </div>
             <UnifiedTimeline paymentRows={allRows.slice(0,100)} activityLogs={activityLogs} onRowClick={setModal} />
@@ -1411,31 +1621,293 @@ function CityHeatmap({ rows }:{ rows:Row[] }) {
   <div className="heatmap-grid">{sorted.map(([city,data])=>{const val=data[metric];const pct=val/mx;const ci=Math.min(Math.floor(pct*colors.length),colors.length-1);return(<div key={city} className="heatmap-cell" style={{background:colors[ci]+'22',border:`2px solid ${colors[ci]}66`}}><div className="heatmap-name">{city}</div><div className="heatmap-count" style={{color:colors[ci]}}>{metric==='revenue'?`₹${fmtR(val)}`:val}</div><div className="heatmap-rev">{data.paid} paid · {data.total} total</div></div>);})}</div></>;
 }
 
-function UnifiedTimeline({ paymentRows, activityLogs, onRowClick }:{ paymentRows:Row[]; activityLogs:Row[]; onRowClick:(r:Row)=>void }) {
-  const [filter, setFilter] = React.useState<'all'|'payments'|'schools'>('all');
-  const payEvents = paymentRows.map(r => ({ id:`pay-${r.id}`, type:'payment' as const, ts:r.created_at, dot:r.payment_status==='paid'?'paid':r.payment_status==='failed'?'failed':'initiated', icon:r.payment_status==='paid'?'✅':r.payment_status==='failed'?'❌':r.payment_status==='cancelled'?'🚫':'⏳', title:r.student_name??'—', sub:`${r.class_grade??''} · ${r.school_name??r.parent_school??''}`, meta:`${r.gateway??'—'} · ${r.city??'—'} · ${r.contact_phone??''}`, badge:r.payment_status, amount:r.final_amount??0, raw:r }));
-  const ACTION_MAP: Record<string,{icon:string;dot:string;label:string}> = { 'school.self_registered':{icon:'🏫',dot:'initiated',label:'School Registered'}, 'school.approved':{icon:'✅',dot:'paid',label:'School Approved'}, 'school.rejected':{icon:'❌',dot:'failed',label:'School Rejected'}, 'school.registered':{icon:'🏫',dot:'initiated',label:'School Registered'} };
-  const logEvents = activityLogs.filter(l=>l.action?.startsWith('school.')).map(l=>{ const am=ACTION_MAP[l.action]??{icon:'📋',dot:'initiated',label:l.action}; const m=l.metadata??{}; return { id:`log-${l.id}`, type:'school' as const, ts:l.created_at, dot:am.dot, icon:am.icon, title:m.name??l.schools?.name??'—', sub:am.label, meta:[m.city,m.country,m.project_name].filter(Boolean).join(' · ')||(l.schools?.school_code?`Code: ${l.schools.school_code}`:''), badge:am.dot==='paid'?'badge-paid':am.dot==='failed'?'badge-cancelled':'badge-initiated', amount:0, raw:null }; });
-  const all = [...payEvents, ...logEvents].sort((a,b)=>new Date(b.ts).getTime()-new Date(a.ts).getTime());
-  const filtered = filter==='payments'?all.filter(e=>e.type==='payment'):filter==='schools'?all.filter(e=>e.type==='school'):all;
-  const schoolCount = logEvents.length;
-  const payCount    = payEvents.filter(e=>e.raw?.payment_status==='paid').length;
+// ─────────────────────────────────────────────────────────────────────────────
+// REPLACE the entire UnifiedTimeline function at the bottom of admin/page.tsx
+// Also: in the "recent" activePage useEffect, add loadSchools() call AND change
+// the activity-logs fetch to include a broader action filter param if your API
+// supports it, OR just fetch all logs and filter client-side.
+//
+// ALSO replace the activePage==='recent' useEffect block with:
+//
+//   if (activePage === 'recent') {
+//     loadSchools();
+//     api('/api/admin/activity-logs?limit=500').then((d:any) => setActivityLogs(d.logs ?? [])).catch(() => {});
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Unified Activity Timeline ─────────────────────────────────────────────────
+function UnifiedTimeline({
+  paymentRows,
+  activityLogs,
+  onRowClick,
+}: {
+  paymentRows: Row[];
+  activityLogs: Row[];
+  onRowClick: (r: Row) => void;
+}) {
+  const [filter, setFilter] = React.useState<'all' | 'payments' | 'schools'>('all');
+  const [search, setSearch] = React.useState('');
+
+  // ── School action config — expanded to cover all known action types ─────
+  const ACTION_MAP: Record<string, { icon: string; dot: string; label: string; accent: string }> = {
+    'school.self_registered': { icon: '🏫', dot: 'initiated', label: 'School Self-Registered', accent: '#f59e0b' },
+    'school.registered':      { icon: '🏫', dot: 'initiated', label: 'School Registered',       accent: '#f59e0b' },
+    'school.approved':        { icon: '✅', dot: 'paid',      label: 'School Approved',          accent: '#10b981' },
+    'school.rejected':        { icon: '❌', dot: 'failed',    label: 'School Rejected',          accent: '#ef4444' },
+    'school.updated':         { icon: '✏️', dot: 'initiated', label: 'School Updated',           accent: '#8b5cf6' },
+    'school.deactivated':     { icon: '🚫', dot: 'failed',    label: 'School Deactivated',       accent: '#94a3b8' },
+    'school.activated':       { icon: '🟢', dot: 'paid',      label: 'School Activated',         accent: '#10b981' },
+    'school.registration_opened':  { icon: '🔓', dot: 'paid', label: 'Registration Opened',  accent: '#06b6d4' },
+    'school.registration_closed':  { icon: '🔒', dot: 'failed',label: 'Registration Closed', accent: '#f59e0b' },
+    'admin.approved_school':  { icon: '✅', dot: 'paid',      label: 'Admin Approved School',    accent: '#10b981' },
+    'admin.rejected_school':  { icon: '❌', dot: 'failed',    label: 'Admin Rejected School',    accent: '#ef4444' },
+  };
+
+  // ── Payment events ───────────────────────────────────────────────
+  const payEvents = paymentRows.map(r => ({
+    id:     `pay-${r.id}`,
+    type:   'payment' as const,
+    ts:     r.created_at,
+    dot:    r.payment_status === 'paid' ? 'paid' : r.payment_status === 'failed' ? 'failed' : 'initiated',
+    icon:   r.payment_status === 'paid' ? '✅' : r.payment_status === 'failed' ? '❌' : r.payment_status === 'cancelled' ? '🚫' : '⏳',
+    accent: r.payment_status === 'paid' ? '#10b981' : r.payment_status === 'failed' ? '#ef4444' : '#4f46e5',
+    title:  r.student_name ?? '—',
+    sub:    `${r.class_grade ?? ''} · ${r.school_name ?? r.parent_school ?? ''}`,
+    meta:   `${r.gateway ?? '—'} · ${r.city ?? '—'} · ${r.contact_phone ?? ''}`,
+    badge:  r.payment_status,
+    amount: r.final_amount ?? 0,
+    country: r.country,
+    raw:    r,
+  }));
+
+  // ── School/admin log events — catch ALL school.* AND admin.* actions ──
+  const logEvents = activityLogs
+    .filter(l => {
+      const a = l.action ?? '';
+      return a.startsWith('school.') || a.startsWith('admin.') || a.includes('school');
+    })
+    .map(l => {
+      const am = ACTION_MAP[l.action] ?? {
+        icon: '📋', dot: 'initiated', label: l.action ?? 'Activity', accent: '#8b5cf6',
+      };
+      const m = l.metadata ?? {};
+      const schoolName = m.name ?? m.school_name ?? l.schools?.name ?? l.school_name ?? '—';
+      const metaParts = [m.city, m.country, m.project_name, m.program_name].filter(Boolean);
+      return {
+        id:      `log-${l.id}`,
+        type:    'school' as const,
+        ts:      l.created_at,
+        dot:     am.dot,
+        icon:    am.icon,
+        accent:  am.accent,
+        title:   schoolName,
+        sub:     am.label,
+        meta:    metaParts.join(' · ') || (l.schools?.school_code ? `Code: ${l.schools.school_code}` : ''),
+        badge:   am.dot === 'paid' ? 'badge-paid' : am.dot === 'failed' ? 'badge-cancelled' : 'badge-initiated',
+        amount:  0,
+        country: undefined,
+        raw:     null as Row | null,
+        action:  l.action,
+        actor:   l.actor_email ?? l.performed_by ?? '',
+      };
+    });
+
+  // ── Merge & sort newest-first ────────────────────────────────────
+  const all = [...payEvents, ...logEvents].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+
+  const filtered = (() => {
+    let list = filter === 'payments' ? all.filter(e => e.type === 'payment')
+             : filter === 'schools'  ? all.filter(e => e.type === 'school')
+             : all;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(e =>
+        e.title.toLowerCase().includes(q) ||
+        e.sub.toLowerCase().includes(q) ||
+        e.meta.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  })();
+
+  const schoolCount  = logEvents.length;
+  const paidCount    = payEvents.filter(e => e.raw?.payment_status === 'paid').length;
+  const approvedCount = logEvents.filter(e => ['school.approved','admin.approved_school'].includes((e as any).action ?? '')).length;
+  const pendingApprovalCount = logEvents.filter(e => e.action === 'school.self_registered').length;
+
+  const DOT_STYLE: Record<string, React.CSSProperties> = {
+    paid:      { background:'#10b981', boxShadow:'0 0 8px rgba(16,185,129,0.5)' },
+    failed:    { background:'#ef4444', boxShadow:'0 0 8px rgba(239,68,68,0.4)' },
+    initiated: { background:'#4f46e5', boxShadow:'0 0 8px rgba(79,70,229,0.4)' },
+  };
+
   return (
     <div>
-      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
-        {([['all','All Activity',all.length,'var(--acc)'],['payments','💳 Payments',payEvents.length,'#10b981'],['schools','🏫 School Registrations',schoolCount,'#f59e0b']] as const).map(([key,label,count,color])=>(
-          <button key={key} onClick={()=>setFilter(key as any)} style={{padding:'7px 14px',borderRadius:9,border:`1.5px solid ${filter===key?color:'var(--bd)'}`,background:filter===key?`${color}18`:'transparent',color:filter===key?color:'var(--m)',fontSize:12,fontWeight:700,cursor:'pointer'}}>
-            {label} <span style={{marginLeft:4,background:filter===key?color:'var(--bd)',color:'#fff',borderRadius:20,fontSize:10,padding:'1px 6px',fontWeight:800}}>{count}</span>
+      {/* ── Header stats + filters ───────────────────────────────── */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+        {/* Filter tabs */}
+        {([
+          ['all',      '🕐 All Activity',             all.length,          'var(--acc)'],
+          ['payments', '💳 Payments',                  payEvents.length,    '#10b981'],
+          ['schools',  '🏫 School Events',             schoolCount,         '#f59e0b'],
+        ] as const).map(([key, label, count, color]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key as any)}
+            style={{
+              padding:'8px 16px', borderRadius:10, border:`1.5px solid ${filter===key ? color : 'var(--bd)'}`,
+              background: filter===key ? `${color}18` : 'transparent',
+              color: filter===key ? color : 'var(--m)',
+              fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:8,
+            }}
+          >
+            {label}
+            <span style={{ background: filter===key ? color : 'var(--bd)', color:'#fff', borderRadius:20, fontSize:10, padding:'1px 7px', fontWeight:800, minWidth:20, textAlign:'center' }}>
+              {count}
+            </span>
           </button>
         ))}
-        <span style={{marginLeft:'auto',fontSize:11,color:'var(--m)'}}>{filtered.length} events · {payCount} paid · {schoolCount} school events</span>
+
+        {/* Search */}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search activity…"
+          style={{ marginLeft:'auto', border:'1.5px solid var(--bd)', borderRadius:10, padding:'8px 14px', fontSize:12, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--card)', width:220 }}
+        />
       </div>
-      {filtered.length===0&&<div style={{textAlign:'center',padding:'48px 0',color:'var(--m)',fontSize:14}}>{filter==='schools'?'🏫 No school registration activity yet':'📭 No activity yet'}</div>}
-      <div>{filtered.map(e=>(<div key={e.id} className="tl-item" onClick={()=>e.raw&&onRowClick(e.raw)} style={{cursor:e.raw?'pointer':'default'}}>
-        <div style={{position:'relative',flexShrink:0}}><div className={`tl-dot ${e.dot}`}>{e.icon}</div>{e.type==='school'&&<div style={{position:'absolute',top:-2,right:-2,width:10,height:10,borderRadius:'50%',background:'#f59e0b',border:'2px solid var(--bg)',fontSize:7,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800}}>S</div>}</div>
-        <div className="tl-info"><div className="tl-name">{e.title}{e.type==='school'&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:20,background:'rgba(245,158,11,0.12)',color:'#d97706'}}>School</span>}{e.type==='payment'&&e.raw&&<span className={`badge badge-${e.raw.payment_status}`} style={{marginLeft:6,fontSize:10}}>{e.raw.payment_status}</span>}</div><div className="tl-meta">{e.sub}</div>{e.meta&&<div className="tl-meta" style={{fontSize:10,marginTop:1,opacity:.7}}>{e.meta}</div>}</div>
-        <div style={{textAlign:'right',flexShrink:0}}>{e.amount>0&&<div className="tl-amt">{fmtAmt(e.amount, e.raw?.country)}</div>}{e.type==='school'&&<div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>Registration</div>}<div className="tl-time">{new Date(e.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div><div style={{fontSize:10,color:'var(--m2)'}}>{new Date(e.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div></div>
-      </div>))}</div>
+
+      {/* ── Approval summary strip (shows when there are pending approvals) ── */}
+      {pendingApprovalCount > 0 && filter !== 'payments' && (
+        <div style={{
+          background:'rgba(245,158,11,0.09)', border:'1.5px solid rgba(245,158,11,0.3)',
+          borderRadius:12, padding:'12px 18px', marginBottom:16,
+          display:'flex', alignItems:'center', gap:14, flexWrap:'wrap',
+        }}>
+          <span style={{ fontSize:22 }}>🏫</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#d97706' }}>
+              School Registration Activity
+            </div>
+            <div style={{ fontSize:11, color:'var(--m)', marginTop:2 }}>
+              {pendingApprovalCount} self-registered &nbsp;·&nbsp;
+              {approvedCount} approved &nbsp;·&nbsp;
+              {logEvents.filter(e => (e as any).action === 'school.rejected' || (e as any).action === 'admin.rejected_school').length} rejected
+            </div>
+          </div>
+          <div style={{ fontSize:11, color:'var(--m)' }}>
+            {paidCount} paid payments &nbsp;·&nbsp; {filtered.length} total events shown
+          </div>
+        </div>
+      )}
+
+      {/* ── Empty state ───────────────────────────────────────────── */}
+      {filtered.length === 0 && (
+        <div style={{ textAlign:'center', padding:'64px 0', color:'var(--m)' }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>{filter === 'schools' ? '🏫' : '📭'}</div>
+          <div style={{ fontSize:14, fontWeight:600 }}>
+            {search ? 'No results match your search' : filter === 'schools' ? 'No school activity yet' : 'No activity yet'}
+          </div>
+          <div style={{ fontSize:12, marginTop:6, color:'var(--m2)' }}>
+            {filter === 'schools' ? 'School registrations and approvals will appear here' : 'Student payments will appear here'}
+          </div>
+        </div>
+      )}
+
+      {/* ── Timeline list ─────────────────────────────────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+        {filtered.map((e, idx) => {
+          const isSchool = e.type === 'school';
+          const dotStyle = DOT_STYLE[e.dot] ?? DOT_STYLE.initiated;
+
+          return (
+            <div
+              key={e.id}
+              style={{
+                display:'flex', gap:16, alignItems:'flex-start',
+                padding:'14px 0',
+                borderBottom: idx < filtered.length - 1 ? '1px solid var(--bd)' : 'none',
+                cursor: e.raw ? 'pointer' : 'default',
+                transition:'background .12s',
+              }}
+              onClick={() => e.raw && onRowClick(e.raw)}
+              onMouseEnter={ev => { if (e.raw) (ev.currentTarget as HTMLElement).style.background = 'var(--bg)'; }}
+              onMouseLeave={ev => { (ev.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            >
+              {/* Timeline dot + line */}
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0, paddingTop:2 }}>
+                <div style={{
+                  width:36, height:36, borderRadius:'50%',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:16, flexShrink:0,
+                  background: `${e.accent}18`,
+                  border:`2px solid ${e.accent}40`,
+                  ...dotStyle,
+                  boxShadow: 'none',
+                  background: `${e.accent}15`,
+                }}>
+                  {e.icon}
+                </div>
+              </div>
+
+              {/* Content */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:14, fontWeight:700, color:'var(--text)' }}>{e.title}</span>
+                  {isSchool && (
+                    <span style={{
+                      fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
+                      background:`${e.accent}18`, color:e.accent, border:`1px solid ${e.accent}33`,
+                    }}>
+                      {e.sub}
+                    </span>
+                  )}
+                  {!isSchool && e.badge && (
+                    <span className={`badge badge-${e.badge}`} style={{ fontSize:10 }}>{e.badge}</span>
+                  )}
+                </div>
+
+                <div style={{ fontSize:12, color:'var(--m)', marginTop:4 }}>
+                  {!isSchool ? e.sub : ''}
+                  {e.meta && (
+                    <span style={{ marginLeft: !isSchool ? 8 : 0, fontSize:11, color:'var(--m2)' }}>
+                      {!isSchool ? '·' : ''} {e.meta}
+                    </span>
+                  )}
+                </div>
+
+                {/* Actor for school events */}
+                {isSchool && (e as any).actor && (
+                  <div style={{ fontSize:10, color:'var(--m2)', marginTop:3 }}>
+                    by {(e as any).actor}
+                  </div>
+                )}
+              </div>
+
+              {/* Right: amount / label + time */}
+              <div style={{ textAlign:'right', flexShrink:0 }}>
+                {e.amount > 0 && (
+                  <div style={{ fontSize:15, fontWeight:800, color:'#f59e0b', fontFamily:'Sora,sans-serif' }}>
+                    {fmtAmt(e.amount, e.country)}
+                  </div>
+                )}
+                {isSchool && (
+                  <div style={{ fontSize:11, fontWeight:700, color:e.accent }}>
+                    School Event
+                  </div>
+                )}
+                <div style={{ fontSize:11, color:'var(--m)', marginTop:4 }}>
+                  {new Date(e.ts).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
+                </div>
+                <div style={{ fontSize:10, color:'var(--m2)' }}>
+                  {new Date(e.ts).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
