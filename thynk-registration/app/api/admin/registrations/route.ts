@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
         org_name,
         country,
         state,
+        project_slug,
         pricing(program_name, base_amount, currency)
       ),
       payments(
@@ -126,6 +127,7 @@ export async function GET(req: NextRequest) {
       school_code:     school.school_code ?? null,
       school_name:     school.name       ?? null,
       org_name:        school.org_name   ?? null,
+      project_slug:    school.project_slug ?? null,
       country:         school.country    ?? 'India',
       state:           school.state      ?? null,
       // FIX: program_name and currency now come from school.pricing
