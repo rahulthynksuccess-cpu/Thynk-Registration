@@ -19,6 +19,42 @@ type Row   = Record<string,any>;
 const PALETTE = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899'];
 const BACKEND  = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 
+/**
+ * Build a payment link for a non-paid student registration.
+ * Uses the school's stored redirectURL (set at creation time via programs.base_url).
+ * Appends pre-fill query params so the registration page opens directly at the
+ * payment step with all student data filled in — user only selects PG and pays.
+ *
+ * URL format: {base_url}/registration/{project_slug}/{school_code}
+ *   ?prefill=1
+ *   &reg={registration_id}      ← tells the page to skip to payment step
+ *   &name={student_name}
+ *   &phone={contact_phone}
+ *   &email={contact_email}
+ *   &class={class_grade}
+ *   &gender={gender}
+ */
+function buildPayLink(r: Row): string {
+  if (r.payment_status === 'paid') return '';
+  // Prefer the stored redirectURL (most accurate — set when school was created)
+  const base = r.registration_url
+    ?? (r.project_slug && r.school_code
+        ? `https://www.thynksuccess.com/registration/${r.project_slug}/${r.school_code}`
+        : '');
+  if (!base) return '';
+  const params = new URLSearchParams({
+    prefill: '1',
+    ...(r.id             ? { reg:    r.id             } : {}),
+    ...(r.student_name   ? { name:   r.student_name   } : {}),
+    ...(r.contact_phone  ? { phone:  r.contact_phone  } : {}),
+    ...(r.contact_email  ? { email:  r.contact_email  } : {}),
+    ...(r.class_grade    ? { class:  r.class_grade    } : {}),
+    ...(r.gender         ? { gender: r.gender         } : {}),
+    ...(r.parent_name    ? { parent: r.parent_name    } : {}),
+  });
+  return `${base}?${params.toString()}`;
+}
+
 const NAV = [
   { section:'Analytics' },
   { id:'overview',      icon:'🏠', label:'Overview'       },
@@ -94,7 +130,7 @@ function StudentDetailModal({
       txn_id:        student.gateway_txn_id ?? '',
       contact_phone: student.contact_phone ?? '',
       contact_email: student.contact_email ?? '',
-      payment_link:  (student.payment_status !== 'paid' && student.school_code) ? `${BACKEND}/registration/${student.project_slug ?? student.program_name?.toLowerCase().replace(/\s+/g,'-') ?? ''}/${student.school_code}` : '',
+      payment_link:  buildPayLink(student),
     };
     const rendered = tpl.body.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
     setPreview(rendered);
@@ -126,7 +162,7 @@ function StudentDetailModal({
             txn_id:        student.gateway_txn_id ?? '',
             contact_phone: student.contact_phone ?? '',
             contact_email: student.contact_email ?? '',
-            payment_link:  (student.payment_status !== 'paid' && student.school_code) ? `${BACKEND}/registration/${student.project_slug ?? student.program_name?.toLowerCase().replace(/\s+/g,'-') ?? ''}/${student.school_code}` : '',
+            payment_link:  buildPayLink(student),
           },
         }),
       });
@@ -1891,12 +1927,7 @@ function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: 
             ? <tr><td colSpan={16} className="table-empty">No records found</td></tr>
             : filtered.map((r, i) => {
               const needsPayLink = r.payment_status !== 'paid';
-              const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
-              const payLink = needsPayLink && r.school_code && r.project_slug
-                ? `${baseUrl}/registration/${r.project_slug}/${r.school_code}`
-                : needsPayLink && r.school_code
-                  ? `${baseUrl}/registration/${r.program_name?.toLowerCase().replace(/\s+/g,'-') ?? ''}/${r.school_code}`
-                  : null;
+              const payLink = needsPayLink ? buildPayLink(r) : null;
               return (
                 <tr key={r.id} onClick={() => onRowClick(r)}>
                   <td style={{ color: 'var(--m2)', fontSize: 11 }}>{i + 1}</td>
@@ -1957,12 +1988,12 @@ function FollowUpList({ rows, onRowClick }: { rows: Row[]; onRowClick: (r: Row) 
       .catch(()=>{});
   }, []);
 
-  const payLink = (r: Row) => {
-    const base = BACKEND;
-    if (r.school_code && r.project_slug) return `${base}/registration/${r.project_slug}/${r.school_code}`;
-    if (r.school_code) return `${base}/registration/${r.program_name?.toLowerCase().replace(/\s+/g,'-')??''}/${r.school_code}`;
-    return '';
-  };
+  const payLink = (r: Row) => buildPayLink(r);
+
+
+
+
+
 
   const channelTpls = templates.filter(t => t.channel === sendModal?.channel);
 
