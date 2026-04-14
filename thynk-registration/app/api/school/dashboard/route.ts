@@ -22,8 +22,30 @@ export async function GET(req: NextRequest) {
   if (!isSuperAdmin && !schoolRole)
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const schoolId = schoolRole?.school_id;
-  const school   = (schoolRole as any)?.schools;
+  // Super admin can view any school's dashboard by passing ?school_id=
+  const { searchParams } = new URL(req.url);
+  const requestedSchoolId = searchParams.get('school_id');
+
+  let schoolId: string | undefined;
+  let school: any;
+
+  if (isSuperAdmin && requestedSchoolId) {
+    // Super admin viewing a specific school
+    schoolId = requestedSchoolId;
+    const { data: schoolData } = await service
+      .from('schools')
+      .select('id, school_code, name, org_name, city, state, country, is_active, project_slug')
+      .eq('id', requestedSchoolId)
+      .single();
+    school = schoolData;
+  } else if (isSuperAdmin) {
+    // Super admin with no school_id = view all
+    schoolId = undefined;
+    school = null;
+  } else {
+    schoolId = schoolRole?.school_id;
+    school   = (schoolRole as any)?.schools;
+  }
 
   let query = service
     .from('registrations')
@@ -36,7 +58,7 @@ export async function GET(req: NextRequest) {
     `)
     .order('created_at', { ascending: false });
 
-  if (!isSuperAdmin && schoolId) {
+  if (schoolId) {
     query = query.eq('school_id', schoolId);
   }
 
