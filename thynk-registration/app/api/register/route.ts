@@ -353,8 +353,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Fire triggers: registration created + payment paid (PayPal is synchronous)
-    void fireTriggers('registration.created', registration.id, schoolId).catch(e => console.error('[trigger] registration.created PayPal:', e?.message));
-    void fireTriggers('payment.paid',         registration.id, schoolId).catch(e => console.error('[trigger] payment.paid PayPal:', e?.message));
+    await fireTriggers('registration.created', registration.id, schoolId);
+    await fireTriggers('payment.paid',         registration.id, schoolId);
 
     return NextResponse.json({
       gateway:         'paypal',
@@ -410,7 +410,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Fire registration.created trigger immediately (payment may still be pending)
-  void fireTriggers('registration.created', registration.id, schoolId).catch(e => console.error('[trigger] registration.created:', e?.message));
+  await fireTriggers('registration.created', registration.id, schoolId);
 
   const appUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://thynk-registration.vercel.app';
 

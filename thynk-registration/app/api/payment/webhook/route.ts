@@ -52,9 +52,9 @@ export async function POST(req: NextRequest) {
 
     if (status === 'paid') {
       await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id });
-      void fireTriggers('payment.paid',   payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.paid razorpay webhook:', e?.message));
+      await fireTriggers('payment.paid',   payment.registration_id, payment.school_id ?? '');
     } else {
-      void fireTriggers('payment.failed', payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.failed razorpay webhook:', e?.message));
+      await fireTriggers('payment.failed', payment.registration_id, payment.school_id ?? '');
     }
 
     return new Response('ok');
@@ -93,9 +93,9 @@ export async function POST(req: NextRequest) {
 
     if (cfStatus === 'paid') {
       await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id });
-      void fireTriggers('payment.paid',   payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.paid cashfree webhook:', e?.message));
+      await fireTriggers('payment.paid',   payment.registration_id, payment.school_id ?? '');
     } else {
-      void fireTriggers('payment.failed', payment.registration_id, payment.school_id ?? '').catch(e => console.error('[trigger] payment.failed cashfree webhook:', e?.message));
+      await fireTriggers('payment.failed', payment.registration_id, payment.school_id ?? '');
     }
 
     return new Response('ok');

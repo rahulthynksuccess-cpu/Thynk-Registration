@@ -154,9 +154,7 @@ export async function POST(req: NextRequest) {
 
   // ── Fire school.registered trigger ────────────────────────────
   // Sends confirmation to school contact + optional admin alert
-  void fireTriggers('school.registered', '', school.id).catch(e =>
-    console.error('[trigger] school.registered:', e?.message)
-  );
+  await fireTriggers('school.registered', '', school.id);
 
   return NextResponse.json(
     {

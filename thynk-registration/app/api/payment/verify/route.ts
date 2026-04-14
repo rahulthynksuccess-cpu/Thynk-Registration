@@ -97,9 +97,9 @@ export async function POST(req: NextRequest) {
 
   if (newStatus === 'paid') {
     try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
-    void fireTriggers('payment.paid',   payment.registration_id, payment.school_id).catch(e => console.error('[trigger] payment.paid verify POST:', e?.message));
+    await fireTriggers('payment.paid',   payment.registration_id, payment.school_id);
   } else {
-    void fireTriggers('payment.failed', payment.registration_id, payment.school_id).catch(e => console.error('[trigger] payment.failed verify POST:', e?.message));
+    await fireTriggers('payment.failed', payment.registration_id, payment.school_id);
   }
 
   return NextResponse.json({ success: true, status: newStatus });
@@ -159,9 +159,9 @@ export async function GET(req: NextRequest) {
 
       if (newStatus === 'paid') {
         try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
-        void fireTriggers('payment.paid',   payment.registration_id, payment.school_id).catch(e => console.error('[trigger] payment.paid cashfree:', e?.message));
+        await fireTriggers('payment.paid',   payment.registration_id, payment.school_id);
       } else {
-        void fireTriggers('payment.failed', payment.registration_id, payment.school_id).catch(e => console.error('[trigger] payment.failed cashfree:', e?.message));
+        await fireTriggers('payment.failed', payment.registration_id, payment.school_id);
       }
 
       if (poll) return NextResponse.json({ status: newStatus, gateway: 'cashfree' });
@@ -188,9 +188,9 @@ export async function GET(req: NextRequest) {
 
     if (newStatus === 'paid') {
       try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
-      void fireTriggers('payment.paid',   payment.registration_id, payment.school_id).catch(e => console.error('[trigger] payment.paid easebuzz:', e?.message));
+      await fireTriggers('payment.paid',   payment.registration_id, payment.school_id);
     } else {
-      void fireTriggers('payment.failed', payment.registration_id, payment.school_id).catch(e => console.error('[trigger] payment.failed easebuzz:', e?.message));
+      await fireTriggers('payment.failed', payment.registration_id, payment.school_id);
     }
 
     if (poll) return NextResponse.json({ status: newStatus, gateway: 'easebuzz' });

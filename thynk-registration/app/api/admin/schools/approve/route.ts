@@ -189,9 +189,7 @@ export async function PATCH(req: NextRequest) {
   });
 
   // Fire school.approved triggers (sends welcome email/WhatsApp to school contact)
-  void fireTriggers('school.approved', '', id).catch(e =>
-    console.error('[trigger] school.approved:', e?.message)
-  );
+  await fireTriggers('school.approved', '', id);
 
   return NextResponse.json({
     success: true,
