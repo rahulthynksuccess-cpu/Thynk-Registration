@@ -407,6 +407,11 @@ export default function SchoolDashboard() {
   }, []);
 
   useEffect(() => {
+    // In preview mode (admin link), skip auth check entirely
+    const isPreview = typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('preview_token');
+    if (isPreview) { setUser({ id: 'preview' }); return; }
+
     createClient().auth.getUser().then(({ data: d }) => {
       if (!d.user) { router.push('/school/login'); return; }
       setUser(d.user);
@@ -416,6 +421,21 @@ export default function SchoolDashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Preview mode: token passed in URL by admin — no Supabase session needed
+      const previewToken = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('preview_token')
+        : null;
+
+      if (previewToken) {
+        const res  = await fetch(`${BACKEND}/api/school/preview-token?token=${encodeURIComponent(previewToken)}`);
+        const json = await res.json();
+        if (!res.ok) { showToast(json.error ?? 'Invalid preview link'); setLoading(false); return; }
+        setData(json);
+        setLoading(false);
+        return;
+      }
+
+      // Normal mode: requires Supabase session
       const res  = await authFetch(`${BACKEND}/api/school/dashboard`);
       if (res.status === 401) { router.push('/school/login'); return; }
       if (res.status === 403) { showToast('Access denied — account not linked to a school'); return; }
@@ -600,6 +620,15 @@ export default function SchoolDashboard() {
       {toast && (
         <div style={{ position:'fixed', top:20, right:20, background:'#1e293b', color:'#fff', borderRadius:12, padding:'12px 20px', fontSize:13, fontWeight:600, zIndex:9999, boxShadow:'0 8px 30px rgba(0,0,0,.3)', animation:'floatUp .3s ease', fontFamily:'DM Sans,sans-serif' }}>
           {toast}
+        </div>
+      )}
+
+      {/* Preview mode banner — shown when admin opens via dashboard link */}
+      {data?.preview_mode && (
+        <div style={{ background:'linear-gradient(90deg,#f59e0b,#d97706)', color:'#fff', padding:'10px 24px', fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:10, justifyContent:'center', fontFamily:'DM Sans,sans-serif' }}>
+          <span>👁️ Admin Preview Mode</span>
+          <span style={{ opacity:0.8, fontWeight:400 }}>— Read-only view. Link expires in 15 minutes.</span>
+          <span style={{ opacity:0.8, fontWeight:400 }}>School: {data?.school?.name}</span>
         </div>
       )}
 
