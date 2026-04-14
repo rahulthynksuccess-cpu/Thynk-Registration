@@ -74,7 +74,15 @@ create table if not exists notification_triggers (
   id          uuid primary key default gen_random_uuid(),
   school_id   uuid references schools(id) on delete cascade,
   event_type  text not null
-                check (event_type in ('registration_created','payment_success','payment_failed')),
+                check (event_type in (
+                  'registration.created',
+                  'payment.paid',
+                  'payment.failed',
+                  'payment.cancelled',
+                  'discount.applied',
+                  'school.registered',
+                  'school.approved'
+                )),
   channel     text not null check (channel in ('email','whatsapp')),
   template_id uuid references notification_templates(id) on delete set null,
   is_active   boolean not null default true,
