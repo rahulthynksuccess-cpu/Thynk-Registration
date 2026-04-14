@@ -8,7 +8,7 @@ import { ReportingPage } from '@/components/admin/ReportingPage';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-
+import Script from 'next/script';
 const fmt  = (n: any) => { const v = parseFloat(String(n??0).replace(/[^0-9.]/g,'')); return isNaN(v)?'0':v.toLocaleString('en-IN'); };
 const fmtR = (p: number) => fmt(p/100);
 // Currency helpers — India = INR (₹), everywhere else = USD ($)
@@ -484,7 +484,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" async />
+<Script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" strategy="beforeInteractive" />
       <div id="admin-toast" className={`${toast.text?'show':''}${toast.type==='ok'?' tok':toast.type==='err'?' terr':''}`}>{toast.text}</div>
 
       <div className="admin-layout">
