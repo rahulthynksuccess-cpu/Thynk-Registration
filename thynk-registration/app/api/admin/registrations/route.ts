@@ -101,9 +101,10 @@ export async function GET(req: NextRequest) {
     // paid > pending/initiated > failed/cancelled > anything else
     // This prevents a failed-payment record shadowing a later paid one.
     const allPayments: any[] = Array.isArray(r.payments) ? r.payments : r.payments ? [r.payments] : [];
-    const STATUS_RANK: Record<string, number> = { paid: 0, pending: 1, initiated: 1, failed: 2, cancelled: 2 };
-    const payment = allPayments.sort((a, b) =>
-      (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9)
+    const PAY_RANK: Record<string, number> = { paid: 0, pending: 1, initiated: 1, failed: 2, cancelled: 2 };
+    // [...spread] before sort — never mutate the original Supabase response object
+    const payment = [...allPayments].sort((a, b) =>
+      (PAY_RANK[a.status] ?? 9) - (PAY_RANK[b.status] ?? 9)
     )[0] ?? {};
     const school  = r.schools ?? {};
     // FIX: pricing lives under schools
