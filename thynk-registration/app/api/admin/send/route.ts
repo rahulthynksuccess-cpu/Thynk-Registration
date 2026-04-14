@@ -240,7 +240,6 @@ async function dispatchEmail(
   subject: string,
   body: string
 ): Promise<string> {
-  // Try platform_settings SMTP first
   const { data: platformRow } = await service
     .from('integration_configs')
     .select('config')
@@ -248,14 +247,40 @@ async function dispatchEmail(
     .is('school_id', null)
     .maybeSingle();
 
-  const emailCfg = platformRow?.config?.email_settings;
+  // ── Multi-SMTP routing by program ─────────────────────────────────────────
+  const smtpConfigs: any[] = platformRow?.config?.email_smtp_configs ?? [];
+  if (smtpConfigs.length > 0) {
+    let programId: string | null = null;
+    if (schoolId) {
+      const { data: school } = await service
+        .from('schools').select('project_id').eq('id', schoolId).single();
+      programId = school?.project_id ?? null;
+    }
+    // Priority 1: program-specific SMTP
+    let smtpCfg = programId
+      ? smtpConfigs.find((c: any) => c.enabled && c.program_id === programId)
+      : null;
+    // Priority 2: default SMTP
+    if (!smtpCfg)
+      smtpCfg = smtpConfigs.find((c: any) => c.enabled && (!c.program_id || c.program_id === ''));
+    // Priority 3: any enabled
+    if (!smtpCfg)
+      smtpCfg = smtpConfigs.find((c: any) => c.enabled);
 
+    if (smtpCfg?.smtpHost && smtpCfg?.smtpUser) {
+      await sendViaSMTP(smtpCfg, { to, subject, body });
+      return `smtp:${smtpCfg.name || smtpCfg.smtpUser}`;
+    }
+  }
+
+  // ── Legacy single email_settings ─────────────────────────────────────────
+  const emailCfg = platformRow?.config?.email_settings;
   if (emailCfg?.smtpHost && emailCfg?.smtpUser) {
     await sendViaSMTP(emailCfg, { to, subject, body });
     return 'smtp';
   }
 
-  // Fall back to integration_configs
+  // ── integration_configs table fallback ────────────────────────────────────
   const { data: configs } = await service
     .from('integration_configs')
     .select('provider, config')
@@ -267,21 +292,11 @@ async function dispatchEmail(
     .limit(1);
 
   const cfg = configs?.[0];
+  if (!cfg || cfg.provider === 'smtp') { await sendViaSMTP(cfg?.config ?? {}, { to, subject, body }); return 'smtp'; }
+  if (cfg.provider === 'sendgrid')     { await sendViaSendGrid(cfg.config, { to, subject, body });    return 'sendgrid'; }
+  if (cfg.provider === 'aws_ses')      { await sendViaSES(cfg.config, { to, subject, body });         return 'aws_ses'; }
 
-  if (!cfg || cfg.provider === 'smtp') {
-    await sendViaSMTP(cfg?.config ?? {}, { to, subject, body });
-    return 'smtp';
-  }
-  if (cfg.provider === 'sendgrid') {
-    await sendViaSendGrid(cfg.config, { to, subject, body });
-    return 'sendgrid';
-  }
-  if (cfg.provider === 'aws_ses') {
-    await sendViaSES(cfg.config, { to, subject, body });
-    return 'aws_ses';
-  }
-
-  throw new Error('No email provider configured');
+  throw new Error('No email provider configured. Add SMTP in Admin → Integrations → Email / SMTP.');
 }
 
 async function sendViaSMTP(config: any, { to, subject, body }: { to: string; subject: string; body: string }) {
