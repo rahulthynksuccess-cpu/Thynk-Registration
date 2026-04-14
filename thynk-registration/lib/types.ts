@@ -168,7 +168,8 @@ export interface TemplateVars {
   paid_at?: string;
 
   // Utility
-  retry_link?: string;      // populated for payment.failed event
+  retry_link?: string;      // backward compat alias for payment_link
+  payment_link?: string;    // payment/registration page URL for this school
 
   [key: string]: any;
 }
