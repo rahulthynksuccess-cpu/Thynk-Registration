@@ -525,12 +525,6 @@ export default function AdminDashboard() {
         {/* ── Main ────────────────────────────────────────────────── */}
         <main className="main-content">
 
-       // ─────────────────────────────────────────────────────────────────────────────
-// PASTE THIS to replace the entire  {/* ── OVERVIEW ── */}  <div className="page">
-// block inside AdminDashboard's return statement.
-// It uses all the same state/helpers already in scope.
-// ─────────────────────────────────────────────────────────────────────────────
-
           {/* ── OVERVIEW ────────────────────────────────────────────── */}
           <div className={`page${activePage==='overview'?' active':''}`}>
             <div className="topbar">
@@ -821,10 +815,7 @@ export default function AdminDashboard() {
             <div className="topbar">
               <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payments + school registrations</p></div>
               <div className="topbar-right">
-                <button className="btn btn-outline" onClick={()=>api('Promise.all([
-  api('/api/admin/activity-logs?limit=200'),
-  api('/api/admin/schools?limit=200'),          // for school names
-]).then(([d]) => setActivityLogs(d.logs ?? [])).catch(() => {});}>🔄 Refresh</button>
+                <button className="btn btn-outline" onClick={()=>{ api('/api/admin/activity-logs?limit=200').then((d:any)=>setActivityLogs(d.logs??[])).catch(()=>{}); }}>🔄 Refresh</button>
               </div>
             </div>
             <UnifiedTimeline paymentRows={allRows.slice(0,100)} activityLogs={activityLogs} onRowClick={setModal} />
