@@ -49,76 +49,174 @@ function CheckDropdown({ label, options, selected, onChange }: {
 }
 
 // ── School Analytics ─────────────────────────────────────────────────────────
+// ── School Analytics — CRM Dashboard ────────────────────────────────────────
 function SchoolAnalytics({ schools, programs }: { schools: Row[]; programs: Row[] }) {
-  const approved   = schools.filter(s => !s.status || s.status === 'approved');
-  const pending    = schools.filter(s => s.status && s.status !== 'approved');
-  const regOpen    = approved.filter(s => s.is_registration_active);
-  const regClosed  = approved.filter(s => !s.is_registration_active);
-  const COLORS = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899'];
+  const progList = [...new Set(schools.map(s => {
+    const p = programs.find(p => p.id===s.project_id||p.slug===s.project_slug);
+    return p?.name ?? s.project_slug ?? '';
+  }).filter(Boolean))].sort();
+  const [selProgram, setSelProgram] = React.useState<string>('__all__');
 
-  const byProgram: Record<string,number>  = {};
-  const byCountry: Record<string,number>  = {};
-  const byState:   Record<string,number>  = {};
-  const byCity:    Record<string,number>  = {};
-  const byStatus:  Record<string,number>  = {};
-  const byRegState: Record<string,number> = { Open: regOpen.length, Closed: regClosed.length };
-
-  schools.forEach(s => {
-    const prog = programs.find(p => p.id === s.project_id || p.slug === s.project_slug);
-    const pn = prog?.name ?? s.project_slug ?? 'Unknown';
-    byProgram[pn] = (byProgram[pn] ?? 0) + 1;
-    const co = s.country ?? 'Unknown'; byCountry[co] = (byCountry[co] ?? 0) + 1;
-    const st = s.state   ?? 'Unknown'; byState[st]   = (byState[st]   ?? 0) + 1;
-    const ci = s.city    ?? 'Unknown'; byCity[ci]    = (byCity[ci]    ?? 0) + 1;
-    const sv = s.status  ?? 'approved';byStatus[sv]  = (byStatus[sv]  ?? 0) + 1;
+  const base = selProgram==='__all__' ? schools : schools.filter(s => {
+    const p = programs.find(p => p.id===s.project_id||p.slug===s.project_slug);
+    return (p?.name??s.project_slug??'')=== selProgram;
   });
 
-  function BarChart({ data, label }: { data: Record<string,number>; label: string }) {
-    const sorted = Object.entries(data).sort((a,b) => b[1]-a[1]).slice(0,10);
-    const max = sorted[0]?.[1] ?? 1;
+  const approved  = base.filter(s => !s.status||s.status==='approved');
+  const pending   = base.filter(s => s.status&&s.status!=='approved');
+  const regOpen   = approved.filter(s => s.is_registration_active);
+  const regClosed = approved.filter(s => !s.is_registration_active);
+  const COLORS = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#84cc16'];
+
+  const mkBreakdown = (key: (s: Row) => string) => {
+    const m: Record<string,{total:number;open:number}> = {};
+    base.forEach(s => {
+      const k = key(s)||'Unknown';
+      if(!m[k]) m[k]={total:0,open:0};
+      m[k].total++;
+      if(s.is_registration_active) m[k].open++;
+    });
+    return Object.keys(m).sort((a,b)=>m[b].total-m[a].total).slice(0,8)
+      .map(k => ({ label:k, total:m[k].total, open:m[k].open, pct: Math.round(m[k].open/m[k].total*100) }));
+  };
+
+  const byProgram  = mkBreakdown(s => { const p=programs.find(p=>p.id===s.project_id||p.slug===s.project_slug); return p?.name??s.project_slug??'Unknown'; });
+  const byCountry  = mkBreakdown(s => s.country);
+  const byState    = mkBreakdown(s => s.state);
+  const byCity     = mkBreakdown(s => s.city);
+
+  function BarRow({ label, total, open, pct, color }: {label:string;total:number;open:number;pct:number;color:string}) {
+    const maxT = base.length||1;
     return (
-      <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:14, padding:'16px 18px' }}>
-        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>{label}</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {sorted.map(([k,v],i) => (
-            <div key={k} style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <span style={{ fontSize:11, color:'var(--m)', minWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={k}>{k}</span>
-              <div style={{ flex:1, height:8, background:'var(--bd)', borderRadius:4, overflow:'hidden' }}>
-                <div style={{ width:`${Math.round(v/max*100)}%`, height:'100%', background:COLORS[i%COLORS.length], borderRadius:4 }} />
-              </div>
-              <span style={{ fontSize:12, fontWeight:700, color:COLORS[i%COLORS.length], minWidth:28, textAlign:'right' }}>{v}</span>
-            </div>
-          ))}
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid var(--bd)' }}>
+        <span style={{ fontSize:12, color:'var(--text)', minWidth:120, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontWeight:500 }} title={label}>{label}</span>
+        <div style={{ flex:1, height:10, background:'var(--bg)', borderRadius:5, overflow:'hidden', position:'relative' }}>
+          <div style={{ position:'absolute', left:0, top:0, width:`${Math.round(total/maxT*100)}%`, height:'100%', background:`${color}25`, borderRadius:5 }} />
+          <div style={{ position:'absolute', left:0, top:0, width:`${Math.round(open/maxT*100)}%`, height:'100%', background:color, borderRadius:5 }} />
         </div>
+        <span style={{ fontSize:11, color:'var(--m)', minWidth:24, textAlign:'right' }}>{total}</span>
+        <span style={{ fontSize:11, color:'#10b981', fontWeight:800, minWidth:24, textAlign:'right' }}>{open}</span>
+        <span style={{ fontSize:10, fontWeight:700, minWidth:36, textAlign:'right', background:pct>=60?'#d1fae5':pct>=30?'#fef3c7':'#fee2e2', color:pct>=60?'#10b981':pct>=30?'#f59e0b':'#ef4444', padding:'1px 5px', borderRadius:4 }}>{pct}%</span>
+      </div>
+    );
+  }
+
+  function ChartCard({ title, children }: {title:string;children:React.ReactNode}) {
+    return (
+      <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4 }}>{title}</div>
+        <div style={{ fontSize:10, color:'var(--m2)', marginBottom:14, display:'flex', gap:14 }}>
+          <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#4f46e520', border:'1px solid #4f46e5', display:'inline-block' }}/> Total Schools</span>
+          <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#10b981', display:'inline-block' }}/> Reg Open</span>
+          <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#fef3c7', border:'1px solid #f59e0b', display:'inline-block' }}/> Open%</span>
+        </div>
+        {children}
       </div>
     );
   }
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      {progList.length>1 && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:12, fontWeight:600, color:'var(--m)' }}>Filter by Program:</span>
+          {['__all__',...progList].map(p => (
+            <button key={p} onClick={()=>setSelProgram(p)}
+              style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', cursor:'pointer', fontSize:12, fontWeight:600, transition:'all .15s', fontFamily:'DM Sans,sans-serif',
+                background:selProgram===p?'var(--acc)':'transparent',
+                borderColor:selProgram===p?'var(--acc)':'var(--bd)',
+                color:selProgram===p?'#fff':'var(--m)',
+              }}>
+              {p==='__all__'?'🌐 All Programs':p}
+              <span style={{ marginLeft:5, opacity:.7, fontSize:10 }}>({p==='__all__'?schools.length:base.length})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* KPI strip */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:12 }}>
         {[
-          { label:'Total Schools',    val:schools.length,                       color:'#4f46e5', icon:'🏫' },
-          { label:'Approved',         val:approved.length,                      color:'#10b981', icon:'✅' },
-          { label:'Pending Approval', val:pending.length,                       color:'#f59e0b', icon:'⏳' },
-          { label:'Reg Open',         val:regOpen.length,                       color:'#06b6d4', icon:'🔓' },
-          { label:'Reg Closed',       val:regClosed.length,                     color:'#94a3b8', icon:'🔒' },
-          { label:'Countries',        val:Object.keys(byCountry).length,        color:'#8b5cf6', icon:'🌍' },
+          { label:'Total Schools',    val:base.length,    sub:'in selection',       color:'#4f46e5', bg:'#eef2ff', icon:'🏫' },
+          { label:'Approved',         val:approved.length,sub:'fully onboarded',    color:'#10b981', bg:'#ecfdf5', icon:'✅' },
+          { label:'Pending Approval', val:pending.length, sub:'awaiting review',    color:'#f59e0b', bg:'#fffbeb', icon:'⏳' },
+          { label:'Reg Open',         val:regOpen.length, sub:'accepting students', color:'#06b6d4', bg:'#ecfeff', icon:'🔓' },
+          { label:'Reg Closed',       val:regClosed.length,sub:'not accepting',    color:'#94a3b8', bg:'#f8fafc', icon:'🔒' },
+          { label:'Countries',        val:[...new Set(base.map(s=>s.country).filter(Boolean))].length, sub:'unique countries', color:'#8b5cf6', bg:'#f5f3ff', icon:'🌍' },
         ].map(m => (
-          <div key={m.label} style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:12, padding:'14px 16px' }}>
-            <span style={{ fontSize:20 }}>{m.icon}</span>
-            <div style={{ fontSize:22, fontWeight:900, color:m.color, fontFamily:'Sora,sans-serif', lineHeight:1, marginTop:4 }}>{m.val}</div>
-            <div style={{ fontSize:11, color:'var(--m)', fontWeight:500, marginTop:3 }}>{m.label}</div>
+          <div key={m.label} style={{ background:m.bg, border:`1.5px solid ${m.color}30`, borderRadius:14, padding:'16px 14px 12px' }}>
+            <div style={{ fontSize:22, marginBottom:8 }}>{m.icon}</div>
+            <div style={{ fontSize:26, fontWeight:900, color:m.color, fontFamily:'Sora,sans-serif', lineHeight:1 }}>{m.val}</div>
+            <div style={{ fontSize:12, fontWeight:700, color:m.color, marginTop:5, opacity:.9 }}>{m.label}</div>
+            <div style={{ fontSize:10, color:'var(--m)', marginTop:2 }}>{m.sub}</div>
           </div>
         ))}
       </div>
+
+      {/* Approval + Reg status side by side */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-        <BarChart data={byProgram}  label="📚 By Program" />
-        <BarChart data={byStatus}   label="📋 By Approval Status" />
-        <BarChart data={byCountry}  label="🌍 By Country" />
-        <BarChart data={byState}    label="📍 By State (Top 10)" />
-        <BarChart data={byCity}     label="🗺️ By City (Top 10)" />
-        <BarChart data={byRegState} label="🔓 Registration Status" />
+        <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, marginBottom:14 }}>📋 Approval Status</div>
+          {[
+            { label:'Approved',    val:approved.length, color:'#10b981' },
+            { label:'Pending',     val:pending.length,  color:'#f59e0b' },
+          ].map(({label,val,color}) => {
+            const pct = base.length>0?Math.round(val/base.length*100):0;
+            return (
+              <div key={label} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                <span style={{ width:10, height:10, borderRadius:'50%', background:color, flexShrink:0 }} />
+                <span style={{ fontSize:12, flex:1, fontWeight:500 }}>{label}</span>
+                <div style={{ width:90, height:8, background:'var(--bg)', borderRadius:4, overflow:'hidden' }}>
+                  <div style={{ width:`${pct}%`, height:'100%', background:color, borderRadius:4 }} />
+                </div>
+                <span style={{ fontSize:13, fontWeight:800, color, minWidth:28, textAlign:'right' }}>{val}</span>
+                <span style={{ fontSize:10, color:'var(--m)', minWidth:32, textAlign:'right' }}>{pct}%</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, marginBottom:14 }}>🔓 Registration Status</div>
+          {[
+            { label:'Registration Open',   val:regOpen.length,  color:'#10b981' },
+            { label:'Registration Closed',  val:regClosed.length, color:'#94a3b8' },
+          ].map(({label,val,color}) => {
+            const pct = approved.length>0?Math.round(val/approved.length*100):0;
+            return (
+              <div key={label} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                <span style={{ width:10, height:10, borderRadius:'50%', background:color, flexShrink:0 }} />
+                <span style={{ fontSize:12, flex:1, fontWeight:500 }}>{label}</span>
+                <div style={{ width:90, height:8, background:'var(--bg)', borderRadius:4, overflow:'hidden' }}>
+                  <div style={{ width:`${pct}%`, height:'100%', background:color, borderRadius:4 }} />
+                </div>
+                <span style={{ fontSize:13, fontWeight:800, color, minWidth:28, textAlign:'right' }}>{val}</span>
+                <span style={{ fontSize:10, color:'var(--m)', minWidth:32, textAlign:'right' }}>{pct}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Geographic + program breakdowns */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        {selProgram==='__all__' && progList.length>1 && (
+          <ChartCard title="📚 By Program">
+            {byProgram.map((d,i)=><BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          </ChartCard>
+        )}
+        <ChartCard title="🌍 By Country">
+          {byCountry.map((d,i)=><BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byCountry.length===0&&<div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
+        <ChartCard title="📍 By State (Top 8)">
+          {byState.map((d,i)=><BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byState.length===0&&<div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
+        <ChartCard title="🗺️ By City (Top 8)">
+          {byCity.map((d,i)=><BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
+          {byCity.length===0&&<div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
+        </ChartCard>
       </div>
     </div>
   );
