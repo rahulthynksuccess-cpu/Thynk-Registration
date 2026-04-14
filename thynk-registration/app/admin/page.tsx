@@ -1833,7 +1833,6 @@ function UnifiedTimeline({
                   width:36, height:36, borderRadius:'50%',
                   display:'flex', alignItems:'center', justifyContent:'center',
                   fontSize:16, flexShrink:0,
-                  background: `${e.accent}18`,
                   border:`2px solid ${e.accent}40`,
                   ...dotStyle,
                   boxShadow: 'none',
