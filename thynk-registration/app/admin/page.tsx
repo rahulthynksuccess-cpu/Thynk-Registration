@@ -94,6 +94,7 @@ function StudentDetailModal({
       txn_id:        student.gateway_txn_id ?? '',
       contact_phone: student.contact_phone ?? '',
       contact_email: student.contact_email ?? '',
+      payment_link:  student.payment_status !== 'paid' ? `${BACKEND}/api/payment/retry?reg=${student.id}` : '',
     };
     const rendered = tpl.body.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
     setPreview(rendered);
@@ -125,13 +126,13 @@ function StudentDetailModal({
             txn_id:        student.gateway_txn_id ?? '',
             contact_phone: student.contact_phone ?? '',
             contact_email: student.contact_email ?? '',
+            payment_link:  student.payment_status !== 'paid' ? `${BACKEND}/api/payment/retry?reg=${student.id}` : '',
           },
         }),
       });
       const data = await res.json();
       if (res.ok) {
         showToast(`\u2705 ${sendChannel === 'whatsapp' ? 'WhatsApp' : 'Email'} sent via ${data.provider}!`, '\u2705');
-        setSendChannel(null);
         setSelectedTpl('');
         setPreview('');
       } else {
@@ -813,12 +814,12 @@ export default function AdminDashboard() {
           {/* ── RECENT ──────────────────────────────────────────────── */}
           <div className={`page${activePage==='recent'?' active':''}`}>
             <div className="topbar">
-              <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payments + school registrations</p></div>
+              <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payment transactions only</p></div>
               <div className="topbar-right">
                 <button className="btn btn-outline" onClick={()=>{ api('/api/admin/activity-logs?limit=200').then((d:any)=>setActivityLogs(d.logs??[])).catch(()=>{}); }}>🔄 Refresh</button>
               </div>
             </div>
-            <UnifiedTimeline paymentRows={allRows.slice(0,100)} activityLogs={activityLogs} onRowClick={setModal} />
+            <UnifiedTimeline paymentRows={allRows.slice(0,100)} activityLogs={[]} onRowClick={setModal} />
           </div>
 
           {/* ── PROGRAMS ────────────────────────────────────────────── */}
@@ -1516,90 +1517,342 @@ function LocationMasterPage({ rows, BACKEND, onReload, showToast }:{ rows:Row[];
   );
 }
 
+// ── Checkbox Dropdown ───────────────────────────────────────────────
+function CheckDropdown({ label, options, selected, onChange }: {
+  label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  const toggle = (v: string) => onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
+  const hasFilter = selected.length > 0;
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${hasFilter ? 'var(--acc)' : 'var(--bd)'}`,
+          background: hasFilter ? 'var(--acc3)' : 'var(--card)', cursor: 'pointer',
+          fontSize: 12, fontWeight: 600, color: hasFilter ? 'var(--acc)' : 'var(--m)',
+          display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+          fontFamily: 'DM Sans,sans-serif',
+        }}
+      >
+        {label}{hasFilter && <span style={{ background: 'var(--acc)', color: '#fff', borderRadius: 20, fontSize: 10, padding: '1px 6px', fontWeight: 800 }}>{selected.length}</span>}
+        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '110%', left: 0, zIndex: 200,
+          background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 180, maxHeight: 260, overflowY: 'auto',
+          padding: 6,
+        }}>
+          {selected.length > 0 && (
+            <button onClick={() => onChange([])} style={{ width: '100%', padding: '6px 10px', border: 'none', background: 'rgba(239,68,68,0.08)', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 4, textAlign: 'left' }}>
+              ✕ Clear all
+            </button>
+          )}
+          {options.map(opt => (
+            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: selected.includes(opt) ? 700 : 500, color: 'var(--text)', background: selected.includes(opt) ? 'var(--acc3)' : 'transparent' }}>
+              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: 'var(--acc)', width: 14, height: 14, flexShrink: 0 }} />
+              {opt}
+            </label>
+          ))}
+          {options.length === 0 && <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--m)' }}>No options</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Students Analytics ──────────────────────────────────────────────
+function StudentsAnalytics({ rows }: { rows: Row[] }) {
+  const paid    = rows.filter(r => r.payment_status === 'paid');
+  const unpaid  = rows.filter(r => r.payment_status !== 'paid');
+  const failed  = rows.filter(r => ['failed','cancelled'].includes(r.payment_status));
+  const pending = rows.filter(r => ['pending','initiated'].includes(r.payment_status));
+  const totalRev = paid.reduce((s,r) => s + (r.final_amount ?? 0), 0);
+  const conv = rows.length ? Math.round(paid.length / rows.length * 100) : 0;
+
+  // Breakdowns
+  const byStatus:  Record<string,number> = {};
+  const byProgram: Record<string,number> = {};
+  const byGender:  Record<string,number> = {};
+  const byClass:   Record<string,number> = {};
+  const byGateway: Record<string,number> = {};
+  const byCountry: Record<string,number> = {};
+  const byCity:    Record<string,number> = {};
+  const bySchool:  Record<string,number> = {};
+
+  rows.forEach(r => {
+    const s = r.payment_status ?? 'unknown'; byStatus[s]  = (byStatus[s]  ?? 0) + 1;
+    const p = r.program_name   ?? 'Unknown'; byProgram[p] = (byProgram[p] ?? 0) + 1;
+    const g = r.gender         ?? 'Unknown'; byGender[g]  = (byGender[g]  ?? 0) + 1;
+    const c = r.class_grade    ?? 'Unknown'; byClass[c]   = (byClass[c]   ?? 0) + 1;
+    const gw= r.gateway        ?? 'Unknown'; byGateway[gw]= (byGateway[gw]?? 0) + 1;
+    const co= r.country        ?? 'Unknown'; byCountry[co]= (byCountry[co]?? 0) + 1;
+    const ci= r.city           ?? 'Unknown'; byCity[ci]   = (byCity[ci]   ?? 0) + 1;
+    const sc= r.school_name ?? r.parent_school ?? 'Unknown'; bySchool[sc] = (bySchool[sc] ?? 0) + 1;
+  });
+
+  const STAT_COLOR = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
+
+  function BarChart({ data, color = '#4f46e5', label }: { data: Record<string,number>; color?: string; label: string }) {
+    const sorted = Object.entries(data).sort((a,b) => b[1] - a[1]).slice(0, 10);
+    const max = sorted[0]?.[1] ?? 1;
+    return (
+      <div style={{ background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 14, padding: '16px 18px' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>{label}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {sorted.map(([k, v], i) => (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 11, color: 'var(--m)', minWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={k}>{k}</span>
+              <div style={{ flex: 1, height: 8, background: 'var(--bd)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.round(v/max*100)}%`, height: '100%', background: STAT_COLOR[i % STAT_COLOR.length], borderRadius: 4, transition: 'width .6s ease' }} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: STAT_COLOR[i % STAT_COLOR.length], minWidth: 28, textAlign: 'right' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* KPI strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+        {[
+          { label: 'Total Students',  val: rows.length,           color: '#4f46e5', icon: '👨‍🎓' },
+          { label: 'Paid',            val: paid.length,           color: '#10b981', icon: '✅' },
+          { label: 'Pending',         val: pending.length,        color: '#f59e0b', icon: '⏳' },
+          { label: 'Failed',          val: failed.length,         color: '#ef4444', icon: '❌' },
+          { label: 'Conversion',      val: `${conv}%`,            color: '#06b6d4', icon: '📊' },
+          { label: 'Total Revenue',   val: `₹${fmtR(totalRev)}`, color: '#8b5cf6', icon: '💰' },
+        ].map(m => (
+          <div key={m.label} style={{ background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 20 }}>{m.icon}</span>
+            <span style={{ fontSize: 22, fontWeight: 900, color: m.color, fontFamily: 'Sora,sans-serif', lineHeight: 1 }}>{m.val}</span>
+            <span style={{ fontSize: 11, color: 'var(--m)', fontWeight: 500 }}>{m.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Charts grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <BarChart data={byProgram} label="📚 By Program" color="#4f46e5" />
+        <BarChart data={byStatus}  label="💳 By Payment Status" color="#10b981" />
+        <BarChart data={byClass}   label="🎓 By Class / Grade" color="#8b5cf6" />
+        <BarChart data={byGender}  label="⚧ By Gender" color="#ec4899" />
+        <BarChart data={byGateway} label="🔧 By Payment Gateway" color="#f59e0b" />
+        <BarChart data={byCountry} label="🌍 By Country" color="#06b6d4" />
+        <BarChart data={byCity}    label="🗺️ By City (Top 10)" color="#4f46e5" />
+        <BarChart data={bySchool}  label="🏫 By School (Top 10)" color="#10b981" />
+      </div>
+    </div>
+  );
+}
+
 // ── Students Table ──────────────────────────────────────────────────
-function StudentsTable({ rows, programs, onRowClick }:{ rows:Row[]; programs:Row[]; onRowClick:(r:Row)=>void }) {
-  const [search,  setSearch]  = useState('');
-  const [status,  setStatus]  = useState('');
-  const [gateway, setGateway] = useState('');
-  const [program, setProgram] = useState('');
-  const [country, setCountry] = useState('');
-  const [state,   setState]   = useState('');
-  const [city,    setCity]    = useState('');
-  const [school,  setSchool]  = useState('');
-  const [cls,     setCls]     = useState('');
-  const [gender,  setGender]  = useState('');
+function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: Row[]; onRowClick: (r: Row) => void }) {
+  const [studentPageTab, setStudentPageTab] = useState<'analytics' | 'list'>('list');
+  const [search,   setSearch]   = useState('');
+  const [statuses, setStatuses_f] = useState<string[]>([]);
+  const [gateways, setGateways_f] = useState<string[]>([]);
+  const [programs_f, setPrograms_f] = useState<string[]>([]);
+  const [countries_f, setCountries_f] = useState<string[]>([]);
+  const [states_f,  setStates_f]  = useState<string[]>([]);
+  const [cities_f,  setCities_f]  = useState<string[]>([]);
+  const [schools_f, setSchools_f] = useState<string[]>([]);
+  const [classes_f, setClasses_f] = useState<string[]>([]);
+  const [genders_f, setGenders_f] = useState<string[]>([]);
 
-  const statuses  = [...new Set(rows.map(r=>r.payment_status).filter(Boolean))];
-  const gateways  = [...new Set(rows.map(r=>r.gateway).filter(Boolean))];
-  const countries = [...new Set(rows.map(r=>r.country).filter(Boolean))].sort();
-  const classes   = [...new Set(rows.map(r=>r.class_grade).filter(Boolean))].sort();
-  const statesForCountry = [...new Set(rows.filter(r=>!country||r.country===country).map(r=>r.state).filter(Boolean))].sort();
-  const citiesForState   = [...new Set(rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)).map(r=>r.city).filter(Boolean))].sort();
-  const schoolsFiltered  = [...new Set(rows.filter(r=>(!country||r.country===country)&&(!state||r.state===state)&&(!city||r.city===city)).map(r=>r.school_name??r.parent_school).filter(Boolean))].sort();
-
-  const handleCountryChange = (v:string) => { setCountry(v); setState(''); setCity(''); setSchool(''); };
-  const handleStateChange   = (v:string) => { setState(v);   setCity(''); setSchool(''); };
-  const handleCityChange    = (v:string) => { setCity(v);    setSchool(''); };
+  const allStatuses  = [...new Set(rows.map(r => r.payment_status).filter(Boolean))];
+  const allGateways  = [...new Set(rows.map(r => r.gateway).filter(Boolean))];
+  const allPrograms  = [...new Set(rows.map(r => r.program_name).filter(Boolean))].sort();
+  const allCountries = [...new Set(rows.map(r => r.country).filter(Boolean))].sort();
+  const allClasses   = [...new Set(rows.map(r => r.class_grade).filter(Boolean))].sort();
+  const allStates    = [...new Set(rows.filter(r => !countries_f.length || countries_f.includes(r.country)).map(r => r.state).filter(Boolean))].sort();
+  const allCities    = [...new Set(rows.filter(r => (!countries_f.length || countries_f.includes(r.country)) && (!states_f.length || states_f.includes(r.state))).map(r => r.city).filter(Boolean))].sort();
+  const allSchools   = [...new Set(rows.filter(r => (!countries_f.length || countries_f.includes(r.country)) && (!states_f.length || states_f.includes(r.state)) && (!cities_f.length || cities_f.includes(r.city))).map(r => r.school_name ?? r.parent_school).filter(Boolean))].sort() as string[];
 
   const filtered = rows.filter(r => {
-    const hay = [r.student_name,r.parent_name,r.contact_phone,r.contact_email,r.parent_school,r.city,r.gateway_txn_id,r.school_name].join(' ').toLowerCase();
-    const schoolName = r.school_name??r.parent_school??'';
+    const hay = [r.student_name, r.parent_name, r.contact_phone, r.contact_email, r.parent_school, r.city, r.gateway_txn_id, r.school_name].join(' ').toLowerCase();
+    const sn = r.school_name ?? r.parent_school ?? '';
     return (
-      (!search  || hay.includes(search.toLowerCase())) &&
-      (!status  || r.payment_status===status) &&
-      (!gateway || r.gateway===gateway) &&
-      (!program || r.program_name===program) &&
-      (!country || r.country===country) &&
-      (!state   || r.state===state) &&
-      (!city    || r.city===city) &&
-      (!school  || schoolName===school) &&
-      (!cls     || r.class_grade===cls) &&
-      (!gender  || r.gender===gender)
+      (!search         || hay.includes(search.toLowerCase())) &&
+      (!statuses.length  || statuses.includes(r.payment_status)) &&
+      (!gateways.length  || gateways.includes(r.gateway)) &&
+      (!programs_f.length || programs_f.includes(r.program_name)) &&
+      (!countries_f.length || countries_f.includes(r.country)) &&
+      (!states_f.length  || states_f.includes(r.state)) &&
+      (!cities_f.length  || cities_f.includes(r.city)) &&
+      (!schools_f.length || schools_f.includes(sn)) &&
+      (!classes_f.length || classes_f.includes(r.class_grade)) &&
+      (!genders_f.length || genders_f.includes(r.gender))
     );
   });
 
-  return (<>
-    <div className="table-toolbar">
-      <input placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)}/>
-      <select value={status}  onChange={e=>setStatus(e.target.value)}><option value="">All Status</option>{statuses.map(s=><option key={s}>{s}</option>)}</select>
-      <select value={gateway} onChange={e=>setGateway(e.target.value)}><option value="">All Gateways</option>{gateways.map(g=><option key={g}>{g}</option>)}</select>
-      <select value={program} onChange={e=>setProgram(e.target.value)}><option value="">All Programs</option>{programs.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select>
-      <select value={country} onChange={e=>handleCountryChange(e.target.value)}><option value="">All Countries</option>{countries.map(c=><option key={c}>{c}</option>)}</select>
-      <select value={state}   onChange={e=>handleStateChange(e.target.value)}><option value="">All States</option>{statesForCountry.map(s=><option key={s}>{s}</option>)}</select>
-      <select value={city}    onChange={e=>handleCityChange(e.target.value)}><option value="">All Cities</option>{citiesForState.map(c=><option key={c}>{c}</option>)}</select>
-      <select value={school}  onChange={e=>setSchool(e.target.value)}><option value="">All Schools</option>{schoolsFiltered.map(s=><option key={s}>{s}</option>)}</select>
-      <select value={cls}     onChange={e=>setCls(e.target.value)}><option value="">All Classes</option>{classes.map(c=><option key={c}>{c}</option>)}</select>
-      <select value={gender}  onChange={e=>setGender(e.target.value)}><option value="">All Gender</option>{['Male','Female','Other'].map(g=><option key={g}>{g}</option>)}</select>
-      <span style={{fontSize:12,color:'var(--m)',marginLeft:'auto'}}>{filtered.length} of {rows.length}</span>
-    </div>
-    <div className="tbl-wrap"><table>
-      <thead><tr>{['#','Date','Status','Student','Gender','Class','Program','Country','School','City','Parent','Phone','Gateway','Amount','Discount'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-      <tbody>{filtered.length===0?<tr><td colSpan={15} className="table-empty">No records found</td></tr>:filtered.map((r,i)=>(
-        <tr key={r.id} onClick={()=>onRowClick(r)}>
-          <td style={{color:'var(--m2)',fontSize:11}}>{i+1}</td>
-          <td style={{color:'var(--m)',fontSize:11}}>{r.created_at?.slice(0,10)}</td>
-          <td><span className={`badge badge-${r.payment_status??'pending'}`}>{r.payment_status??'pending'}</span></td>
-          <td><div style={{fontWeight:700}}>{r.student_name}</div></td>
-          <td><span style={{fontSize:11,padding:'2px 8px',borderRadius:6,fontWeight:600,background:r.gender==='Male'?'#eff6ff':r.gender==='Female'?'#fdf2f8':'var(--bg)',color:r.gender==='Male'?'#2563eb':r.gender==='Female'?'#db2777':'var(--m)'}}>{r.gender??'—'}</span></td>
-          <td><span style={{fontSize:11,background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontWeight:600}}>{r.class_grade??'—'}</span></td>
-          <td><span style={{fontSize:11,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',padding:'2px 8px',borderRadius:6,fontWeight:600,whiteSpace:'nowrap'}}>{r.program_name??'—'}</span></td>
-          <td style={{fontSize:12,whiteSpace:'nowrap'}}>{r.country??'—'}</td>
-          <td style={{fontSize:12}}>{r.school_name??r.parent_school??'—'}</td>
-          <td style={{fontSize:12}}>{r.city??'—'}</td>
-          <td style={{fontSize:12}}>{r.parent_name??'—'}</td>
-          <td><a href={`tel:${r.contact_phone}`} onClick={e=>e.stopPropagation()} style={{color:'var(--acc)',fontSize:12,textDecoration:'none',fontWeight:600}}>{r.contact_phone}</a></td>
-          <td><span className="gw-tag">{r.gateway??'—'}</span></td>
-<td><span className="amt">{fmtAmt(r.final_amount??0, r.country)}</span></td>
-          <td style={{fontSize:11,color:'var(--red)',fontWeight:600}}>{r.discount_code?`🏷️ ${r.discount_code}`:'—'}</td>
-        </tr>
-      ))}</tbody>
-    </table></div>
-  </>);
+  const activeFilterCount = [statuses, gateways, programs_f, countries_f, states_f, cities_f, schools_f, classes_f, genders_f].filter(a => a.length > 0).length;
+
+  return (
+    <>
+      {/* Page tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18, background: 'var(--bg)', borderRadius: 12, padding: 4, width: 'fit-content' }}>
+        {([['analytics','📊 Analytics'],['list','👨‍🎓 Student List']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setStudentPageTab(id)}
+            style={{ padding: '8px 18px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, borderRadius: 9, transition: 'all .18s', fontFamily: 'DM Sans,sans-serif', background: studentPageTab === id ? 'var(--acc)' : 'transparent', color: studentPageTab === id ? '#fff' : 'var(--m)', boxShadow: studentPageTab === id ? '0 2px 8px rgba(79,70,229,0.3)' : 'none' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {studentPageTab === 'analytics' && <StudentsAnalytics rows={rows} />}
+
+      {studentPageTab === 'list' && (<>
+        <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <input placeholder="🔍 Search name, phone, email, txn…" value={search} onChange={e => setSearch(e.target.value)} style={{ minWidth: 220 }} />
+          <CheckDropdown label="Status"   options={allStatuses}  selected={statuses}    onChange={setStatuses_f} />
+          <CheckDropdown label="Gateway"  options={allGateways}  selected={gateways}    onChange={setGateways_f} />
+          <CheckDropdown label="Program"  options={allPrograms}  selected={programs_f}  onChange={setPrograms_f} />
+          <CheckDropdown label="Country"  options={allCountries} selected={countries_f} onChange={v => { setCountries_f(v); setStates_f([]); setCities_f([]); setSchools_f([]); }} />
+          <CheckDropdown label="State"    options={allStates}    selected={states_f}    onChange={v => { setStates_f(v); setCities_f([]); setSchools_f([]); }} />
+          <CheckDropdown label="City"     options={allCities}    selected={cities_f}    onChange={v => { setCities_f(v); setSchools_f([]); }} />
+          <CheckDropdown label="School"   options={allSchools}   selected={schools_f}   onChange={setSchools_f} />
+          <CheckDropdown label="Class"    options={allClasses}   selected={classes_f}   onChange={setClasses_f} />
+          <CheckDropdown label="Gender"   options={['Male','Female','Other']} selected={genders_f} onChange={setGenders_f} />
+          {activeFilterCount > 0 && (
+            <button onClick={() => { setStatuses_f([]); setGateways_f([]); setPrograms_f([]); setCountries_f([]); setStates_f([]); setCities_f([]); setSchools_f([]); setClasses_f([]); setGenders_f([]); setSearch(''); }}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid #ef4444', background: 'rgba(239,68,68,0.07)', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#ef4444', fontFamily: 'DM Sans,sans-serif' }}>
+              ✕ Clear all ({activeFilterCount})
+            </button>
+          )}
+          <span style={{ fontSize: 12, color: 'var(--m)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{filtered.length} of {rows.length}</span>
+        </div>
+        <div className="tbl-wrap"><table>
+          <thead><tr>{['#','Date','Status','Student','Gender','Class','Program','Country','School','City','Parent','Phone','Gateway','Amount','Discount','Pay Link'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+          <tbody>{filtered.length === 0
+            ? <tr><td colSpan={16} className="table-empty">No records found</td></tr>
+            : filtered.map((r, i) => {
+              const needsPayLink = r.payment_status !== 'paid';
+              const payLink = needsPayLink
+                ? `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ''}/api/payment/retry?reg=${r.id}`
+                : null;
+              return (
+                <tr key={r.id} onClick={() => onRowClick(r)}>
+                  <td style={{ color: 'var(--m2)', fontSize: 11 }}>{i + 1}</td>
+                  <td style={{ color: 'var(--m)', fontSize: 11 }}>{r.created_at?.slice(0, 10)}</td>
+                  <td><span className={`badge badge-${r.payment_status ?? 'pending'}`}>{r.payment_status ?? 'pending'}</span></td>
+                  <td><div style={{ fontWeight: 700 }}>{r.student_name}</div></td>
+                  <td><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, fontWeight: 600, background: r.gender === 'Male' ? '#eff6ff' : r.gender === 'Female' ? '#fdf2f8' : 'var(--bg)', color: r.gender === 'Male' ? '#2563eb' : r.gender === 'Female' ? '#db2777' : 'var(--m)' }}>{r.gender ?? '—'}</span></td>
+                  <td><span style={{ fontSize: 11, background: 'var(--acc3)', color: 'var(--acc)', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>{r.class_grade ?? '—'}</span></td>
+                  <td><span style={{ fontSize: 11, background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', padding: '2px 8px', borderRadius: 6, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.program_name ?? '—'}</span></td>
+                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.country ?? '—'}</td>
+                  <td style={{ fontSize: 12 }}>{r.school_name ?? r.parent_school ?? '—'}</td>
+                  <td style={{ fontSize: 12 }}>{r.city ?? '—'}</td>
+                  <td style={{ fontSize: 12 }}>{r.parent_name ?? '—'}</td>
+                  <td><a href={`tel:${r.contact_phone}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--acc)', fontSize: 12, textDecoration: 'none', fontWeight: 600 }}>{r.contact_phone}</a></td>
+                  <td><span className="gw-tag">{r.gateway ?? '—'}</span></td>
+                  <td><span className="amt">{fmtAmt(r.final_amount ?? 0, r.country)}</span></td>
+                  <td style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600 }}>{r.discount_code ? `🏷️ ${r.discount_code}` : '—'}</td>
+                  <td onClick={e => e.stopPropagation()}>
+                    {payLink ? (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(payLink); }}
+                          title={payLink}
+                          style={{ padding: '3px 8px', borderRadius: 6, border: '1.5px solid #4f46e5', background: 'var(--acc3)', color: 'var(--acc)', fontSize: 10, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          📋 Copy
+                        </button>
+                        <a href={payLink} target="_blank" rel="noreferrer"
+                          style={{ padding: '3px 8px', borderRadius: 6, border: '1.5px solid #10b981', background: 'rgba(16,185,129,0.08)', color: '#10b981', fontSize: 10, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                          🔗 Open
+                        </a>
+                      </div>
+                    ) : <span style={{ fontSize: 11, color: 'var(--m2)' }}>—</span>}
+                  </td>
+                </tr>
+              );
+            })
+          }</tbody>
+        </table></div>
+      </>)}
+    </>
+  );
 }
 
-function FollowUpList({ rows, onRowClick }:{ rows:Row[]; onRowClick:(r:Row)=>void }) {
-  if(!rows.length) return <div className="empty-state"><div className="emoji">🎉</div><p>No pending follow-ups!</p></div>;
-  return <div className="followup-card">{rows.map(r=>{const st=r.payment_status??'pending';return(<div key={r.id} className="followup-item" onClick={()=>onRowClick(r)}><div className={`fu-avatar ${st}`}>{(r.student_name??'?')[0].toUpperCase()}</div><div className="fu-info"><div className="fu-name">{r.student_name} <span className={`fu-tag ${st}`}>{r.payment_status}</span></div><div className="fu-meta">{r.class_grade} · {r.school_name??r.parent_school} · {r.city}</div></div><div className="fu-actions"><a className="fu-btn wa" href={`https://wa.me/91${r.contact_phone}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}>💬 WA</a><a className="fu-btn call" href={`tel:${r.contact_phone}`} onClick={e=>e.stopPropagation()}>📞 Call</a></div><div style={{textAlign:'right',marginLeft:8}}><div className="amt" style={{fontSize:13}}>{fmtAmt(r.final_amount??0, r.country)}</div><div style={{fontSize:10,color:'var(--m2)'}}>{r.gateway}</div></div></div>);})}</div>;
+function FollowUpList({ rows, onRowClick }: { rows: Row[]; onRowClick: (r: Row) => void }) {
+  const [channel, setChannel] = useState<'all' | 'whatsapp' | 'email'>('all');
+  const [search,  setSearch]  = useState('');
+
+  const filtered = rows.filter(r => {
+    const s = search.toLowerCase();
+    return !s || [r.student_name, r.contact_phone, r.contact_email, r.school_name, r.parent_school, r.city].join(' ').toLowerCase().includes(s);
+  });
+
+  if (!rows.length) return <div className="empty-state"><div className="emoji">🎉</div><p>No pending follow-ups!</p></div>;
+
+  const payLink = (r: Row) => `${BACKEND}/api/payment/retry?reg=${r.id}`;
+
+  return (
+    <div>
+      {/* Channel tabs + search */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 10, padding: 3 }}>
+          {([['all','🕐 All'],['whatsapp','💬 WhatsApp'],['email','✉️ Email']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setChannel(id)}
+              style={{ padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, borderRadius: 8, fontFamily: 'DM Sans,sans-serif', background: channel === id ? 'var(--acc)' : 'transparent', color: channel === id ? '#fff' : 'var(--m)', transition: 'all .15s' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search students…"
+          style={{ flex: 1, minWidth: 180, border: '1.5px solid var(--bd)', borderRadius: 9, padding: '8px 12px', fontSize: 12, fontFamily: 'DM Sans,sans-serif', outline: 'none', color: 'var(--text)', background: 'var(--card)' }} />
+        <span style={{ fontSize: 12, color: 'var(--m)', fontWeight: 600 }}>{filtered.length} students</span>
+      </div>
+
+      <div className="followup-card">
+        {filtered.map(r => {
+          const st = r.payment_status ?? 'pending';
+          const link = payLink(r);
+          return (
+            <div key={r.id} className="followup-item" onClick={() => onRowClick(r)}>
+              <div className={`fu-avatar ${st}`}>{(r.student_name ?? '?')[0].toUpperCase()}</div>
+              <div className="fu-info">
+                <div className="fu-name">{r.student_name} <span className={`fu-tag ${st}`}>{r.payment_status}</span></div>
+                <div className="fu-meta">{r.class_grade} · {r.school_name ?? r.parent_school} · {r.city}</div>
+              </div>
+              <div className="fu-actions" onClick={e => e.stopPropagation()}>
+                {(channel === 'all' || channel === 'whatsapp') && (
+                  <a className="fu-btn wa" href={`https://wa.me/91${r.contact_phone}?text=${encodeURIComponent(`Hi ${r.student_name ?? ''}, your registration is pending. Please complete payment: ${link}`)}`} target="_blank" rel="noreferrer">💬 WA</a>
+                )}
+                {(channel === 'all' || channel === 'email') && r.contact_email && (
+                  <a className="fu-btn call" href={`mailto:${r.contact_email}?subject=Complete your registration&body=${encodeURIComponent(`Hi ${r.student_name ?? ''},\n\nPlease complete your registration payment:\n${link}\n\nThank you`)}`}
+                    style={{ background: 'rgba(79,70,229,0.1)', color: 'var(--acc)', borderColor: 'rgba(79,70,229,0.3)' }}>
+                    ✉️ Email
+                  </a>
+                )}
+                <a className="fu-btn call" href={`tel:${r.contact_phone}`}>📞 Call</a>
+                <button onClick={() => { navigator.clipboard.writeText(link); }}
+                  style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid #10b981', background: 'rgba(16,185,129,0.08)', color: '#10b981', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                  🔗 Pay Link
+                </button>
+              </div>
+              <div style={{ textAlign: 'right', marginLeft: 8 }}>
+                <div className="amt" style={{ fontSize: 13 }}>{fmtAmt(r.final_amount ?? 0, r.country)}</div>
+                <div style={{ fontSize: 10, color: 'var(--m2)' }}>{r.gateway}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function CityHeatmap({ rows }:{ rows:Row[] }) {
