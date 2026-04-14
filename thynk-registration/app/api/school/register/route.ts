@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { fireTriggers } from '@/lib/triggers/fire';
 
 function currencyForCountry(country: string): string {
   return (country || '').toLowerCase() === 'india' ? 'INR' : 'USD';
@@ -150,6 +151,12 @@ export async function POST(req: NextRequest) {
       contact_email: primaryContact?.email ?? null,
     },
   }); // non-critical
+
+  // ── Fire school.registered trigger ────────────────────────────
+  // Sends confirmation to school contact + optional admin alert
+  void fireTriggers('school.registered', '', school.id).catch(e =>
+    console.error('[trigger] school.registered:', e?.message)
+  );
 
   return NextResponse.json(
     {

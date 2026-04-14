@@ -22,8 +22,13 @@ export async function fireTriggers(
 
   if (!triggers?.length) return;
 
-  // 2. Load registration + payment + school data for template vars
-  const vars = await buildTemplateVars(registrationId, schoolId, event);
+  // 2. Load template vars — school-level events use school vars (no registration)
+  let vars: TemplateVars | null;
+  if (event === 'school.approved' || event === 'school.registered') {
+    vars = await buildSchoolVars(schoolId);
+  } else {
+    vars = await buildTemplateVars(registrationId, schoolId, event);
+  }
   if (!vars) return;
 
   // 3. Dispatch each trigger
@@ -33,7 +38,7 @@ export async function fireTriggers(
 
     // FIX #1: vars uses snake_case (contact_email, contact_phone) — use them consistently.
     const logEntry: {
-      registration_id: string;
+      registration_id: string | null;
       school_id: string;
       trigger_id: string;
       channel: string;
@@ -41,7 +46,7 @@ export async function fireTriggers(
       recipient: string;
       status: 'pending' | 'sent' | 'failed';
     } = {
-      registration_id: registrationId,
+      registration_id: registrationId || null,
       school_id: schoolId,
       trigger_id: trigger.id,
       channel: trigger.channel,
@@ -75,6 +80,29 @@ export async function fireTriggers(
   }
 }
 
+// ── School-level variable builder (for school.registered / school.approved) ───
+// Contact details live inside the contact_persons JSONB array, not top-level columns.
+async function buildSchoolVars(schoolId: string): Promise<TemplateVars | null> {
+  const supabase = createServiceClient();
+  const { data: school } = await supabase
+    .from('schools')
+    .select('name, org_name, city, country, contact_persons, school_code')
+    .eq('id', schoolId)
+    .single();
+  if (!school) return null;
+
+  // Primary contact is contact_persons[0]
+  const primary = Array.isArray(school.contact_persons) ? school.contact_persons[0] : null;
+
+  return {
+    school_name:   school.name    ?? '',
+    org_name:      school.org_name ?? '',
+    city:          school.city    ?? '',
+    contact_email: primary?.email  ?? '',
+    contact_phone: primary?.mobile ?? '',
+  };
+}
+
 // ── Template variable builder ─────────────────────────────────────
 // Returns snake_case keys matching {{contact_email}} / {{school_name}} placeholders in templates.
 async function buildTemplateVars(
@@ -86,13 +114,17 @@ async function buildTemplateVars(
 
   const { data: reg } = await supabase
     .from('registrations')
-    .select('*, schools(name, org_name), pricing(program_name), payments(gateway, gateway_txn_id, final_amount, paid_at, status)')
+    .select('*, schools(name, org_name), pricing(program_name), payments(gateway, gateway_txn_id, final_amount, paid_at, status, created_at)')
     .eq('id', registrationId)
     .single();
 
   if (!reg) return null;
 
-  const payment = reg.payments?.[0];
+  // Always use the most recent payment (sorted desc) — prevents stale data on retries
+  const payments = (reg.payments ?? []).sort(
+    (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  const payment = payments[0];
   const school  = reg.schools as any;
   const pricing = reg.pricing as any;
   const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? '';

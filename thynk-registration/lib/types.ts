@@ -133,27 +133,42 @@ export type TriggerEvent =
   | 'payment.paid'
   | 'payment.failed'
   | 'payment.cancelled'
-  | 'discount.applied';
+  | 'discount.applied'
+  | 'school.registered'
+  | 'school.approved';
 
+/**
+ * Template variable keys MUST be snake_case to match:
+ *   1. The keys returned by buildTemplateVars() in lib/triggers/fire.ts
+ *   2. The {{variable}} placeholders used in notification_templates.body / .subject
+ *
+ * Do NOT use camelCase here — it caused triggers to fire but emails/WhatsApp
+ * to send to empty recipients and templates to render unreplaced {{placeholders}}.
+ */
 export interface TemplateVars {
-  studentName?: string;
-  parentName?: string;
-  contactEmail?: string;
-  contactPhone?: string;
-  schoolName?: string;
-  programName?: string;
-  city?: string;
-  classGrade?: string;
+  // Registration fields
+  student_name?: string;
+  parent_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  class_grade?: string;
   gender?: string;
-  baseAmount?: number;
-  discountAmount?: number;
-  finalAmount?: number;
-  discountCode?: string;
+  parent_school?: string;
+  city?: string;
+
+  // School / program
+  school_name?: string;
+  org_name?: string;
+  program_name?: string;
+
+  // Payment
+  amount?: string;          // formatted e.g. "₹5,000"
+  txn_id?: string;
   gateway?: string;
-  gatewayTxnId?: string;
-  schoolCode?: string;
-  registrationId?: string;
-  paymentId?: string;
-  redirectUrl?: string;
+  paid_at?: string;
+
+  // Utility
+  retry_link?: string;      // populated for payment.failed event
+
   [key: string]: any;
 }

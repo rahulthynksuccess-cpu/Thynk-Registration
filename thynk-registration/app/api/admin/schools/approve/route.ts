@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
+import { fireTriggers } from '@/lib/triggers/fire';
 
 async function requireSuperAdmin(req: NextRequest) {
   const user = await getUserFromRequest(req);
@@ -186,6 +187,11 @@ export async function PATCH(req: NextRequest) {
       reg_url:     redirectURL,
     },
   });
+
+  // Fire school.approved triggers (sends welcome email/WhatsApp to school contact)
+  void fireTriggers('school.approved', '', id).catch(e =>
+    console.error('[trigger] school.approved:', e?.message)
+  );
 
   return NextResponse.json({
     success: true,
