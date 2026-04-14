@@ -58,8 +58,10 @@ export async function GET(req: NextRequest) {
         country,
         state,
         project_slug,
+        project_id,
         branding,
-        pricing(program_name, base_amount, currency)
+        pricing(program_name, base_amount, currency),
+        projects:project_id(slug, base_url)
       ),
       payments(
         gateway,
@@ -129,8 +131,18 @@ export async function GET(req: NextRequest) {
       school_name:     school.name       ?? null,
       org_name:        school.org_name   ?? null,
       project_slug:    school.project_slug ?? null,
-      // Use redirectURL stored in branding (set at school creation time) — most reliable source
-      registration_url: school.branding?.redirectURL ?? null,
+      // Build registration URL with priority:
+      // 1. branding.redirectURL (set at school creation — exact URL)
+      // 2. program slug + base_url from projects table join
+      // 3. school.project_slug + school_code (last resort)
+      registration_url: (() => {
+        if (school.branding?.redirectURL) return school.branding.redirectURL;
+        const prog = school.projects ?? {};
+        const slug = prog.slug ?? school.project_slug;
+        const baseUrl = prog.base_url ?? 'https://www.thynksuccess.com';
+        if (slug && school.school_code) return `${baseUrl}/registration/${slug}/${school.school_code}`;
+        return null;
+      })(),
       country:         school.country    ?? 'India',
       state:           school.state      ?? null,
       // FIX: program_name and currency now come from school.pricing
