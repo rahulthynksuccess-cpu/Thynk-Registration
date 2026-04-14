@@ -188,13 +188,67 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
+  // ── AUTO-CREATE USERS FOR ALL CONTACT PERSONS ─────────────────
+  const contacts: any[] = Array.isArray(school.contact_persons) ? school.contact_persons : [];
+  const createdUsers: { email: string; status: string }[] = [];
+
+  for (const contact of contacts) {
+    const email    = (contact.email    || '').trim();
+    const mobile   = (contact.mobile   || contact.phone || '').trim();
+
+    // Skip if no email — we need email as username
+    if (!email) continue;
+
+    // Password = mobile number; fallback to a safe default if missing
+    const password = mobile || 'ThynkSchool@123';
+
+    try {
+      const { data: newUser, error: authErr } = await service.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+      });
+
+      if (authErr) {
+        // User might already exist — skip silently
+        createdUsers.push({ email, status: authErr.message });
+        continue;
+      }
+
+      // Assign school_admin role linked to this school
+      await service.from('admin_roles').insert({
+        user_id:   newUser.user.id,
+        role:      'school_admin',
+        school_id: id,
+      });
+
+      createdUsers.push({ email, status: 'created' });
+    } catch (err: any) {
+      createdUsers.push({ email, status: err?.message ?? 'error' });
+    }
+  }
+
+  // Activity log for user creation
+  if (createdUsers.length > 0) {
+    void service.from('activity_logs').insert({
+      user_id:     user.id,
+      school_id:   id,
+      action:      'school.users_created',
+      entity_type: 'school',
+      entity_id:   id,
+      metadata:    { created_users: createdUsers },
+    });
+  }
+  // ──────────────────────────────────────────────────────────────
+
   // Fire school.approved triggers (sends welcome email/WhatsApp to school contact)
   await fireTriggers('school.approved', '', id);
 
   return NextResponse.json({
-    success: true,
-    action:  'approved',
-    school:  updated,
-    reg_url: redirectURL,
+    success:       true,
+    action:        'approved',
+    school:        updated,
+    reg_url:       redirectURL,
+    created_users: createdUsers,
   });
 }
