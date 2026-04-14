@@ -365,7 +365,7 @@ export default function SchoolDashboard() {
       @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     `;
     document.head.appendChild(style);
-    return () => document.head.removeChild(style);
+ return () => { document.head.removeChild(style); };
   }, []);
 
   /* ── Loading screen ── */
