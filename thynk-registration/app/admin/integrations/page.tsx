@@ -222,67 +222,289 @@ function WhatsAppTab({showToast}:{showToast:(m:string)=>void}) {
   );
 }
 
-function EmailTab({showToast}:{showToast:(m:string)=>void}) {
-  const [email,setEmail]=useState({fromName:'Thynk Registration',fromEmail:'',smtpHost:'smtp.gmail.com',smtpPort:'587',smtpUser:'',smtpPass:'',enabled:false});
-  const [showPass,setShowPass]=useState(false);
-  const [saving,setSaving]=useState(false);
-  const [testTo,setTestTo]=useState('');
-  const [testing,setTesting]=useState(false);
-  const [testResult,setTestResult]=useState<{ok:boolean;msg:string}|null>(null);
+// ── Multi-SMTP Email Configuration ──────────────────────────────────────────
+interface SmtpConfig {
+  id:        string;   // local uuid for React key
+  name:      string;   // display label e.g. "Mental Math SMTP"
+  program_id: string;  // projects.id or "" for Default
+  fromName:  string;
+  fromEmail: string;
+  smtpHost:  string;
+  smtpPort:  string;
+  smtpUser:  string;
+  smtpPass:  string;
+  enabled:   boolean;
+}
 
-  useEffect(()=>{authFetch(`${BACKEND}/api/admin/settings`).then(r=>r.ok?r.json():null).then(d=>{if(d?.email_settings)setEmail(p=>({...p,...d.email_settings}));}).catch(()=>{});}, []);
-
-  const save=async()=>{
-    setSaving(true);
-    try{
-      const res=await authFetch(`${BACKEND}/api/admin/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email_settings:email})});
-      if(res.ok)showToast('✅ Email settings saved!');
-      else showToast('❌ Save failed');
-    }catch{showToast('❌ Save failed');}
-    setSaving(false);
+function newSmtp(overrides: Partial<SmtpConfig> = {}): SmtpConfig {
+  return {
+    id: Math.random().toString(36).slice(2),
+    name: 'New SMTP',
+    program_id: '',
+    fromName: 'Thynk Registration',
+    fromEmail: '',
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: '587',
+    smtpUser: '',
+    smtpPass: '',
+    enabled: true,
+    ...overrides,
   };
+}
 
-  const testSmtp=async()=>{
-    if(!testTo.trim()){showToast('❌ Enter a recipient email');return;}
-    if(!email.smtpUser||!email.smtpPass){showToast('❌ Fill SMTP credentials first');return;}
-    setTesting(true);setTestResult(null);
-    try{
-      const res=await authFetch(`${BACKEND}/api/admin/settings/test`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:testTo.trim(),...email})});
-      const d=await res.json();
-      setTestResult({ok:!!d.success,msg:d.message||d.error||'Unknown result'});
-      if(d.success)showToast('✅ Test email sent!');else showToast('❌ SMTP test failed');
-    }catch(e:any){setTestResult({ok:false,msg:'Network error: '+e.message});}
-    setTesting(false);
-  };
+function SmtpCard({
+  cfg, programs, index, total,
+  onChange, onDelete, onTest, testing, testResult,
+}: {
+  cfg: SmtpConfig;
+  programs: Row[];
+  index: number;
+  total: number;
+  onChange: (patch: Partial<SmtpConfig>) => void;
+  onDelete: () => void;
+  onTest:   (to: string) => void;
+  testing:  boolean;
+  testResult: {ok:boolean;msg:string} | null;
+}) {
+  const [expanded, setExpanded] = useState(index === 0);
+  const [showPass, setShowPass] = useState(false);
+  const [testTo,   setTestTo]   = useState('');
+  const isDefault = cfg.program_id === '';
+  const prog = programs.find(p => p.id === cfg.program_id);
+
   return (
-    <div style={{background:'var(--card)',borderRadius:16,border:'1.5px solid var(--bd)',padding:28}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-        <div><div style={{fontSize:16,fontWeight:700,color:'var(--text)',fontFamily:'Sora,sans-serif'}}>Gmail SMTP</div><div style={{fontSize:13,color:'var(--m)',fontFamily:'DM Sans,sans-serif',marginTop:2}}>Send confirmation & payment emails via Gmail using an App Password</div></div>
-        <button onClick={()=>setEmail(p=>({...p,enabled:!p.enabled}))} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid var(--bd)',background:email.enabled?'var(--text)':'var(--bg)',color:email.enabled?'#fff':'var(--m)',fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,cursor:'pointer'}}>{email.enabled?'✓ Enabled':'Disabled'}</button>
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-        {[{k:'fromName',l:'Sender Name',ph:'Thynk Registration'},{k:'fromEmail',l:'From Email',ph:'noreply@yourdomain.com'},{k:'smtpHost',l:'SMTP Host',ph:'smtp.gmail.com'},{k:'smtpPort',l:'SMTP Port',ph:'587'},{k:'smtpUser',l:'Gmail Address',ph:'your@gmail.com'}].map(f=>(<div key={f.k}><label style={lbl}>{f.l}</label><input value={(email as any)[f.k]} onChange={e=>setEmail(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph} style={inp}/></div>))}
-        <div><label style={lbl}>App Password</label><div style={{position:'relative'}}><input type={showPass?'text':'password'} value={email.smtpPass} onChange={e=>setEmail(p=>({...p,smtpPass:e.target.value}))} placeholder="xxxx xxxx xxxx xxxx" style={{...inp,paddingRight:40}}/><button type="button" onClick={()=>setShowPass(!showPass)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button></div><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}><a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer" style={{color:'var(--acc)'}}>How to create a Gmail App Password →</a></p></div>
-      </div>
-      <div style={{marginTop:20,padding:'16px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
-        <div style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,color:'var(--text)',marginBottom:12}}>📤 Send Test Email</div>
-        <div style={{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
-          <div style={{flex:1,minWidth:200}}>
-            <label style={lbl}>Send test to</label>
-            <input value={testTo} onChange={e=>setTestTo(e.target.value)} placeholder="your@email.com" style={inp}/>
+    <div style={{background:'var(--card)',border:`1.5px solid ${cfg.enabled?'rgba(79,70,229,.4)':'var(--bd)'}`,borderRadius:14,overflow:'hidden',marginBottom:10}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',cursor:'pointer',background:cfg.enabled?'rgba(79,70,229,.04)':'transparent'}} onClick={()=>setExpanded(e=>!e)}>
+        <div style={{width:32,height:32,borderRadius:'50%',background:isDefault?'linear-gradient(135deg,#10b981,#059669)':'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:800,flexShrink:0}}>
+          {isDefault ? '★' : index + 1}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <span style={{fontWeight:700,fontSize:14,color:'var(--text)'}}>{cfg.name || 'Unnamed SMTP'}</span>
+            {isDefault
+              ? <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(16,185,129,.12)',color:'#15803d'}}>★ Default (Fallback)</span>
+              : prog
+                ? <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(99,102,241,.12)',color:'var(--acc)'}}>{prog.name}</span>
+                : <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(245,158,11,.12)',color:'#b45309'}}>⚠ No program assigned</span>
+            }
+            {cfg.smtpUser && <span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(16,185,129,.08)',color:'#15803d'}}>✓ {cfg.smtpUser}</span>}
           </div>
-          <div style={{display:'flex',flexDirection:'column',gap:6,paddingTop:22}}>
-            <button onClick={testSmtp} disabled={testing} style={{display:'flex',alignItems:'center',gap:6,padding:'10px 20px',borderRadius:9,border:'1.5px solid var(--acc)',background:'transparent',color:'var(--acc)',cursor:testing?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:testing?0.6:1,whiteSpace:'nowrap'}}>
-              {testing?'⏳ Sending…':'🔌 Test SMTP'}
+          <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{cfg.smtpHost || '—'}:{cfg.smtpPort || '—'} · from {cfg.fromEmail || cfg.smtpUser || '—'}</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8}} onClick={e=>e.stopPropagation()}>
+          <button onClick={()=>onChange({enabled:!cfg.enabled})}
+            style={{padding:'5px 12px',borderRadius:7,border:'1.5px solid var(--bd)',background:cfg.enabled?'var(--text)':'transparent',color:cfg.enabled?'#fff':'var(--m)',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+            {cfg.enabled?'Enabled':'Disabled'}
+          </button>
+          {total > 1 && (
+            <button onClick={onDelete}
+              style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.07)',color:'#dc2626',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+              🗑
             </button>
+          )}
+          <span style={{color:'var(--m)',fontSize:14}}>{expanded?'▲':'▼'}</span>
+        </div>
+      </div>
+
+      {/* Body */}
+      {expanded && (
+        <div style={{padding:'0 18px 18px',borderTop:'1px solid var(--bd)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginTop:16}}>
+            {/* Config name */}
+            <div><label style={lbl}>Config Name *</label>
+              <input value={cfg.name} onChange={e=>onChange({name:e.target.value})} placeholder="e.g. Mental Math SMTP" style={inp}/></div>
+            {/* Program assignment */}
+            <div><label style={lbl}>Assigned Program</label>
+              <select value={cfg.program_id} onChange={e=>onChange({program_id:e.target.value})}
+                style={{...inp,cursor:'pointer',appearance:'none' as any}}>
+                <option value="">★ Default (used when no program match)</option>
+                {programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>
+                {isDefault?'This SMTP is the fallback for all programs without a dedicated config.':'Emails for this program will use this SMTP.'}
+              </p>
+            </div>
+            {/* SMTP fields */}
+            <div><label style={lbl}>Sender Name</label><input value={cfg.fromName} onChange={e=>onChange({fromName:e.target.value})} placeholder="Thynk Registration" style={inp}/></div>
+            <div><label style={lbl}>From Email</label><input value={cfg.fromEmail} onChange={e=>onChange({fromEmail:e.target.value})} placeholder="noreply@yourdomain.com" style={inp}/></div>
+            <div><label style={lbl}>SMTP Host</label><input value={cfg.smtpHost} onChange={e=>onChange({smtpHost:e.target.value})} placeholder="smtp.gmail.com" style={inp}/></div>
+            <div><label style={lbl}>SMTP Port</label><input value={cfg.smtpPort} onChange={e=>onChange({smtpPort:e.target.value})} placeholder="587" style={inp}/></div>
+            <div><label style={lbl}>SMTP Username</label><input value={cfg.smtpUser} onChange={e=>onChange({smtpUser:e.target.value})} placeholder="your@gmail.com" style={inp}/></div>
+            <div><label style={lbl}>Password / App Password</label>
+              <div style={{position:'relative'}}>
+                <input type={showPass?'text':'password'} value={cfg.smtpPass} onChange={e=>onChange({smtpPass:e.target.value})} placeholder="xxxx xxxx xxxx xxxx" style={{...inp,paddingRight:40}}/>
+                <button type="button" onClick={()=>setShowPass(s=>!s)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button>
+              </div>
+              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}><a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer" style={{color:'var(--acc)'}}>Gmail: use App Password →</a></p>
+            </div>
+          </div>
+
+          {/* Test section */}
+          <div style={{marginTop:16,padding:'14px 16px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
+            <div style={{fontWeight:700,fontSize:13,color:'var(--text)',marginBottom:10}}>📤 Send Test Email</div>
+            <div style={{display:'flex',gap:10,alignItems:'flex-end',flexWrap:'wrap'}}>
+              <div style={{flex:1,minWidth:180}}>
+                <label style={lbl}>Send test to</label>
+                <input value={testTo} onChange={e=>setTestTo(e.target.value)} placeholder="your@email.com" style={inp}/>
+              </div>
+              <button onClick={()=>onTest(testTo)} disabled={testing||!testTo.trim()}
+                style={{padding:'10px 18px',borderRadius:9,border:'1.5px solid var(--acc)',background:'transparent',color:'var(--acc)',cursor:(testing||!testTo)?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:(testing||!testTo)?0.6:1,whiteSpace:'nowrap'}}>
+                {testing?'⏳ Sending…':'🔌 Test This SMTP'}
+              </button>
+            </div>
+            {testResult && (
+              <div style={{marginTop:10,padding:'10px 14px',borderRadius:8,background:testResult.ok?'rgba(16,185,129,.07)':'rgba(239,68,68,.07)',border:`1px solid ${testResult.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'}`,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:testResult.ok?'#15803d':'var(--red)'}}>
+                {testResult.ok?'✅':'❌'} {testResult.msg}
+              </div>
+            )}
           </div>
         </div>
-        {testResult&&<div style={{marginTop:10,padding:'10px 14px',borderRadius:8,background:testResult.ok?'rgba(16,185,129,.07)':'rgba(239,68,68,.07)',border:`1px solid ${testResult.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'}`,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:testResult.ok?'#15803d':'var(--red)'}}>{testResult.ok?'✅':'❌'} {testResult.msg}</div>}
-      </div>
-      <button onClick={save} disabled={saving} style={{marginTop:16,display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>{saving?'⏳ Saving…':'💾 Save Email Settings'}</button>
+      )}
     </div>
   );
 }
+
+function EmailTab({showToast}:{showToast:(m:string)=>void}) {
+  const [configs,  setConfigs]  = useState<SmtpConfig[]>([newSmtp({name:'Default SMTP'})]);
+  const [programs, setPrograms] = useState<Row[]>([]);
+  const [saving,   setSaving]   = useState(false);
+  const [testingId,setTestingId]= useState<string|null>(null);
+  const [testResults, setTestResults] = useState<Record<string,(({ok:boolean;msg:string})|null)>>({});
+
+  // Load programs and saved configs
+  useEffect(()=>{
+    authFetch(`${BACKEND}/api/admin/projects`).then(r=>r.ok?r.json():null).then(d=>setPrograms(d?.projects??[])).catch(()=>{});
+    authFetch(`${BACKEND}/api/admin/settings`).then(r=>r.ok?r.json():null).then(d=>{
+      const saved:SmtpConfig[] = d?.email_smtp_configs;
+      if (saved?.length) {
+        setConfigs(saved.map(c=>({...newSmtp(), ...c, id: c.id || Math.random().toString(36).slice(2)})));
+      } else if (d?.email_settings) {
+        // Migrate legacy single SMTP config
+        const legacy = d.email_settings;
+        setConfigs([newSmtp({
+          name: 'Default SMTP',
+          program_id: '',
+          fromName:  legacy.fromName  || 'Thynk Registration',
+          fromEmail: legacy.fromEmail || '',
+          smtpHost:  legacy.smtpHost  || 'smtp.gmail.com',
+          smtpPort:  legacy.smtpPort  || '587',
+          smtpUser:  legacy.smtpUser  || '',
+          smtpPass:  legacy.smtpPass  || '',
+          enabled:   legacy.enabled   ?? true,
+        })]);
+      }
+    }).catch(()=>{});
+  },[]);
+
+  const update = (id:string, patch:Partial<SmtpConfig>) =>
+    setConfigs(p=>p.map(c=>c.id===id?{...c,...patch}:c));
+
+  const add = () => {
+    const usedPrograms = configs.map(c=>c.program_id).filter(Boolean);
+    const nextProg = programs.find(p=>!usedPrograms.includes(p.id));
+    setConfigs(p=>[...p, newSmtp({
+      name: nextProg ? `${nextProg.name} SMTP` : `SMTP ${p.length+1}`,
+      program_id: nextProg?.id ?? '',
+    })]);
+  };
+
+  const remove = (id:string) => setConfigs(p=>p.filter(c=>c.id!==id));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/settings`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email_smtp_configs: configs }),
+      });
+      if (res.ok) showToast('✅ Email SMTP configurations saved!');
+      else        showToast('❌ Save failed');
+    } catch { showToast('❌ Save failed'); }
+    setSaving(false);
+  };
+
+  const testSmtp = async (cfg: SmtpConfig, to: string) => {
+    if (!to.trim())            { showToast('❌ Enter a test recipient'); return; }
+    if (!cfg.smtpUser || !cfg.smtpPass) { showToast('❌ Fill SMTP credentials first'); return; }
+    setTestingId(cfg.id);
+    setTestResults(p=>({...p,[cfg.id]:null}));
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/settings/test`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ to, smtpHost:cfg.smtpHost, smtpPort:cfg.smtpPort, smtpUser:cfg.smtpUser, smtpPass:cfg.smtpPass, fromName:cfg.fromName, fromEmail:cfg.fromEmail }),
+      });
+      const d = await res.json();
+      const result = {ok:!!d.success, msg: d.message||d.error||'Unknown'};
+      setTestResults(p=>({...p,[cfg.id]:result}));
+      showToast(d.success?'✅ Test email sent!':'❌ SMTP test failed');
+    } catch(e:any) {
+      setTestResults(p=>({...p,[cfg.id]:{ok:false,msg:e.message}}));
+    }
+    setTestingId(null);
+  };
+
+  // Validation: warn if no default SMTP
+  const hasDefault = configs.some(c=>c.program_id===''&&c.enabled);
+  const programsWithoutSmtp = programs.filter(p=>!configs.some(c=>c.program_id===p.id&&c.enabled));
+
+  return (
+    <div>
+      {/* Info banner */}
+      <div style={{background:'rgba(79,70,229,.06)',border:'1.5px solid rgba(79,70,229,.2)',borderRadius:12,padding:'14px 18px',marginBottom:20,fontFamily:'DM Sans,sans-serif'}}>
+        <div style={{fontWeight:700,fontSize:13,color:'var(--acc)',marginBottom:6}}>📧 Multi-SMTP Routing</div>
+        <div style={{fontSize:12,color:'var(--m)',lineHeight:1.6}}>
+          Each program can have its own dedicated SMTP sender. If a program has no SMTP assigned, the <strong>Default SMTP</strong> is used as fallback.
+          <br/>Example: Mental Math 2026 → <code style={{background:'var(--bd)',padding:'1px 5px',borderRadius:4}}>mentalmath@yourdomain.com</code> · Chess Program → <code style={{background:'var(--bd)',padding:'1px 5px',borderRadius:4}}>chess@yourdomain.com</code>
+        </div>
+      </div>
+
+      {/* Warnings */}
+      {!hasDefault && (
+        <div style={{background:'rgba(239,68,68,.07)',border:'1.5px solid rgba(239,68,68,.25)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12,fontWeight:600,color:'#dc2626',fontFamily:'DM Sans,sans-serif'}}>
+          ⚠️ No Default SMTP configured. Emails for programs without a dedicated SMTP will fail. Set one config to "Default".
+        </div>
+      )}
+      {programsWithoutSmtp.length > 0 && (
+        <div style={{background:'rgba(245,158,11,.07)',border:'1.5px solid rgba(245,158,11,.25)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12,fontWeight:600,color:'#b45309',fontFamily:'DM Sans,sans-serif'}}>
+          📋 Programs using Default SMTP: {programsWithoutSmtp.map(p=>p.name).join(', ')}
+        </div>
+      )}
+
+      {/* SMTP cards */}
+      {configs.map((cfg,i)=>(
+        <SmtpCard
+          key={cfg.id}
+          cfg={cfg}
+          programs={programs}
+          index={i}
+          total={configs.length}
+          onChange={patch=>update(cfg.id,patch)}
+          onDelete={()=>remove(cfg.id)}
+          onTest={to=>testSmtp(cfg,to)}
+          testing={testingId===cfg.id}
+          testResult={testResults[cfg.id]??null}
+        />
+      ))}
+
+      {/* Add + Save */}
+      <div style={{display:'flex',gap:10,marginTop:16,alignItems:'center'}}>
+        <button onClick={add}
+          style={{display:'flex',alignItems:'center',gap:7,padding:'10px 20px',borderRadius:9,border:'1.5px solid var(--acc)',background:'transparent',color:'var(--acc)',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif'}}>
+          + Add SMTP Config
+        </button>
+        <button onClick={save} disabled={saving}
+          style={{display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>
+          {saving?'⏳ Saving…':'💾 Save All SMTP Configs'}
+        </button>
+        <span style={{fontSize:11,color:'var(--m)',fontFamily:'DM Sans,sans-serif'}}>{configs.length} SMTP config{configs.length!==1?'s':''}</span>
+      </div>
+    </div>
+  );
+}
+
 
 export default function IntegrationsPage() {
   const {toast,show:showToast}=useToast();
