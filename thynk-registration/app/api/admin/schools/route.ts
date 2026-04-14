@@ -139,7 +139,58 @@ export async function POST(req: NextRequest) {
     max_uses:        null,
   });
 
-  return NextResponse.json({ school }, { status: 201 });
+  // ── AUTO-CREATE USERS FOR ALL CONTACT PERSONS ─────────────────
+  const contacts: any[] = Array.isArray(contact_persons) ? contact_persons : [];
+  const createdUsers: { email: string; status: string }[] = [];
+
+  for (const contact of contacts) {
+    const email  = (contact.email  || '').trim();
+    const mobile = (contact.mobile || contact.phone || '').trim();
+
+    // Skip if no email — we need email as username
+    if (!email) continue;
+
+    // Password = mobile number; fallback to a safe default if missing
+    const password = mobile || 'ThynkSchool@123';
+
+    try {
+      const { data: newUser, error: authErr } = await service.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+      });
+
+      if (authErr) {
+        createdUsers.push({ email, status: authErr.message });
+        continue;
+      }
+
+      // Assign school_admin role linked to this school
+      await service.from('admin_roles').insert({
+        user_id:   newUser.user.id,
+        role:      'school_admin',
+        school_id: school.id,
+      });
+
+      createdUsers.push({ email, status: 'created' });
+    } catch (err: any) {
+      createdUsers.push({ email, status: err?.message ?? 'error' });
+    }
+  }
+
+  if (createdUsers.length > 0) {
+    void service.from('activity_logs').insert({
+      user_id:     user.id,
+      school_id:   school.id,
+      action:      'school.users_created',
+      entity_type: 'school',
+      entity_id:   school.id,
+      metadata:    { created_users: createdUsers },
+    });
+  }
+  // ──────────────────────────────────────────────────────────────
+
+  return NextResponse.json({ school, created_users: createdUsers }, { status: 201 });
 }
 
 export async function PATCH(req: NextRequest) {
