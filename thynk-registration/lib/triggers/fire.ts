@@ -31,6 +31,7 @@ export async function fireTriggers(
     const template = trigger.notification_templates;
     if (!template?.is_active) continue;
 
+    // FIX #1: vars uses snake_case (contact_email, contact_phone) — use them consistently.
     const logEntry: {
       registration_id: string;
       school_id: string;
@@ -45,7 +46,9 @@ export async function fireTriggers(
       trigger_id: trigger.id,
       channel: trigger.channel,
       provider: '',
-      recipient: trigger.channel === 'email' ? vars.contact_email : vars.contact_phone,
+      recipient: trigger.channel === 'email'
+        ? (vars.contact_email ?? '')
+        : (vars.contact_phone ?? ''),
       status: 'pending',
     };
 
@@ -73,6 +76,7 @@ export async function fireTriggers(
 }
 
 // ── Template variable builder ─────────────────────────────────────
+// Returns snake_case keys matching {{contact_email}} / {{school_name}} placeholders in templates.
 async function buildTemplateVars(
   registrationId: string,
   schoolId: string,
@@ -96,8 +100,9 @@ async function buildTemplateVars(
   return {
     student_name:  reg.student_name,
     parent_name:   reg.parent_name,
-    contact_phone: reg.contact_phone,
-    contact_email: reg.contact_email,
+    // FIX #1: Guarantee strings (never undefined) so .replace() calls never crash
+    contact_phone: reg.contact_phone ?? '',
+    contact_email: reg.contact_email ?? '',
     class_grade:   reg.class_grade,
     parent_school: reg.parent_school,
     city:          reg.city,
@@ -127,7 +132,26 @@ async function sendEmail(
 ): Promise<string> {
   const supabase = createServiceClient();
 
-  // Load active email integration for this school
+  const subject = template.subject ? renderTemplate(template.subject, vars) : `${vars.school_name} — Registration Update`;
+  const body    = renderTemplate(template.body, vars);
+  const to      = vars.contact_email ?? '';
+
+  // FIX #2: Check platform_settings SMTP first — same priority as send/route.ts.
+  // Previously this was skipped, so admin-configured SMTP (Settings UI) was ignored.
+  const { data: platformRow } = await supabase
+    .from('integration_configs')
+    .select('config')
+    .eq('provider', 'platform_settings')
+    .is('school_id', null)
+    .maybeSingle();
+
+  const emailCfg = platformRow?.config?.email_settings;
+  if (emailCfg?.smtpHost && emailCfg?.smtpUser) {
+    await sendViaSMTP(emailCfg, { to, subject, body });
+    return 'smtp';
+  }
+
+  // Fall back to integration_configs
   const { data: configs } = await supabase
     .from('integration_configs')
     .select('provider, config')
@@ -139,21 +163,17 @@ async function sendEmail(
     .limit(1);
 
   const cfg = configs?.[0];
-  const subject = template.subject ? renderTemplate(template.subject, vars) : `${vars.school_name} — Registration Update`;
-  const body    = renderTemplate(template.body, vars);
 
   if (!cfg || cfg.provider === 'smtp') {
-    await sendViaSMTP(cfg?.config ?? {}, { to: vars.contact_email, subject, body });
+    await sendViaSMTP(cfg?.config ?? {}, { to, subject, body });
     return 'smtp';
   }
-
   if (cfg.provider === 'sendgrid') {
-    await sendViaSendGrid(cfg.config, { to: vars.contact_email, subject, body });
+    await sendViaSendGrid(cfg.config, { to, subject, body });
     return 'sendgrid';
   }
-
   if (cfg.provider === 'aws_ses') {
-    await sendViaSES(cfg.config, { to: vars.contact_email, subject, body });
+    await sendViaSES(cfg.config, { to, subject, body });
     return 'aws_ses';
   }
 
@@ -168,6 +188,72 @@ async function sendWhatsApp(
 ): Promise<string> {
   const supabase = createServiceClient();
 
+  const body = renderTemplate(template.body, vars);
+
+  // FIX #5: Guard against missing phone — never crash the whole trigger loop
+  const rawPhone = vars.contact_phone ?? '';
+  if (!rawPhone) throw new Error('contact_phone is empty — cannot send WhatsApp');
+  const phone = rawPhone.replace(/\D/g, '');
+
+  // FIX #3: Check platform_settings WhatsApp first — same priority as send/route.ts.
+  // Previously this was skipped, so ThynkComm / Meta / Twilio set via Settings UI
+  // were completely ignored for triggered messages.
+  const { data: platformRow } = await supabase
+    .from('integration_configs')
+    .select('config')
+    .eq('provider', 'platform_settings')
+    .is('school_id', null)
+    .maybeSingle();
+
+  const wa = platformRow?.config?.whatsapp_settings;
+
+  if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
+    const url = wa.tcUrl.replace(/\/$/, '') + '/api/send-message';
+    const to = phone.startsWith('91') ? phone : `91${phone}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': wa.tcApiKey,
+        'x-api-secret': wa.tcApiSecret ?? '',
+      },
+      body: JSON.stringify({ to, message: body }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(`ThynkComm error: ${e.message ?? res.status}`);
+    }
+    return 'thynkcomm';
+  }
+
+  if (wa?.provider === 'meta' && wa?.metaPhoneId && wa?.metaToken) {
+    const to = phone.startsWith('91') ? phone : `91${phone}`;
+    const res = await fetch(`https://graph.facebook.com/v19.0/${wa.metaPhoneId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${wa.metaToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(`Meta WhatsApp error: ${JSON.stringify(e)}`);
+    }
+    return 'meta_whatsapp';
+  }
+
+  if (wa?.provider === 'twilio' && wa?.accountSid && wa?.authToken && wa?.fromNumber) {
+    const to = phone.startsWith('91') ? phone : `91${phone}`;
+    const creds = Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64');
+    const from = wa.fromNumber.startsWith('whatsapp:') ? wa.fromNumber : `whatsapp:${wa.fromNumber}`;
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${wa.accountSid}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ From: from, To: `whatsapp:+${to}`, Body: body }).toString(),
+    });
+    if (!res.ok) throw new Error(`Twilio (platform) error: ${res.status}`);
+    return 'twilio';
+  }
+
+  // Fall back to integration_configs
   const { data: configs } = await supabase
     .from('integration_configs')
     .select('provider, config')
@@ -179,14 +265,11 @@ async function sendWhatsApp(
     .limit(1);
 
   const cfg = configs?.[0];
-  const body = renderTemplate(template.body, vars);
-  const phone = vars.contact_phone.replace(/\D/g, '');
 
   if (!cfg || cfg.provider === 'whatsapp_cloud') {
     await sendViaWhatsAppCloud(cfg?.config ?? {}, phone, body);
     return 'whatsapp_cloud';
   }
-
   if (cfg.provider === 'twilio') {
     await sendViaTwilio(cfg.config, phone, body);
     return 'twilio';
@@ -196,19 +279,22 @@ async function sendWhatsApp(
 }
 
 // ── SMTP sender ───────────────────────────────────────────────────
+// FIX #4: Accept BOTH key naming conventions:
+//   - smtpHost / smtpPort / smtpUser / smtpPass / fromName / fromEmail  (Admin Settings UI)
+//   - host / port / user / password / from_name / from_email            (integration_configs format)
 async function sendViaSMTP(config: any, { to, subject, body }: { to: string; subject: string; body: string }) {
   const nodemailer = await import('nodemailer');
   const transporter = nodemailer.default.createTransport({
-    host:   config.host     ?? process.env.SMTP_HOST,
-    port:   config.port     ?? Number(process.env.SMTP_PORT ?? 587),
-    secure: (config.port ?? 587) === 465,
+    host:   config.smtpHost   ?? config.host     ?? process.env.SMTP_HOST,
+    port:   Number(config.smtpPort ?? config.port ?? process.env.SMTP_PORT ?? 587),
+    secure: Number(config.smtpPort ?? config.port ?? 587) === 465,
     auth: {
-      user: config.user     ?? process.env.SMTP_USER,
-      pass: config.password ?? process.env.SMTP_PASSWORD,
+      user: config.smtpUser ?? config.user     ?? process.env.SMTP_USER,
+      pass: config.smtpPass ?? config.password ?? process.env.SMTP_PASSWORD,
     },
   });
   await transporter.sendMail({
-    from:    `${config.from_name ?? 'Thynk Success'} <${config.from_email ?? process.env.SMTP_FROM}>`,
+    from: `${config.fromName ?? config.from_name ?? 'Thynk Success'} <${config.fromEmail ?? config.from_email ?? process.env.SMTP_FROM}>`,
     to, subject,
     html: body.includes('<') ? body : `<p>${body.replace(/\n/g, '<br>')}</p>`,
   });
@@ -232,7 +318,6 @@ async function sendViaSendGrid(config: any, { to, subject, body }: { to: string;
 
 // ── AWS SES sender ────────────────────────────────────────────────
 async function sendViaSES(config: any, { to, subject, body }: { to: string; subject: string; body: string }) {
-  // Uses AWS SDK v3 — install: npm i @aws-sdk/client-ses
   const { SESClient, SendEmailCommand } = await import('@aws-sdk/client-ses');
   const client = new SESClient({
     region: config.region ?? process.env.AWS_SES_REGION ?? 'us-east-1',
