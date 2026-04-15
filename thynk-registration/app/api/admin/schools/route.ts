@@ -79,8 +79,7 @@ export async function POST(req: NextRequest) {
   if (!program) return NextResponse.json({ error: 'Program not found' }, { status: 400 });
 
   const code        = school_code.toLowerCase().replace(/\s+/g, '-');
-  const baseOrigin  = program.base_url || 'https://www.thynksuccess.com';
-  const redirectURL = `${baseOrigin}/registration/${program.slug}/${code}`;
+  const redirectURL = `https://thynksuccess.com/registration/${program.slug}/?school=${code}`;
   const discCode    = (discount_code || code).toUpperCase();
 
   const { data: school, error } = await service
@@ -251,8 +250,7 @@ export async function PATCH(req: NextRequest) {
     if (program) {
       updatePayload.project_id   = project_id;
       updatePayload.project_slug = program.slug;
-      const baseOrigin = program.base_url || 'https://www.thynksuccess.com';
-      branding.redirectURL = `${baseOrigin}/registration/${program.slug}/${existing?.school_code}`;
+      branding.redirectURL = `https://thynksuccess.com/registration/${program.slug}/?school=${existing?.school_code}`;
       updatePayload.branding = branding;
     }
   }
