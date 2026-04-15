@@ -37,23 +37,40 @@ const BACKEND  = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
  */
 function buildPayLink(r: Row): string {
   if (r.payment_status === 'paid') return '';
-  if (!r.school_code || !r.project_slug) return '';
 
-  // Registration is on WordPress: https://thynksuccess.com (no www)
-  // Format: /registration/{project_slug}/?school={school_code}
-  const url = new URL(
-    `https://thynksuccess.com/registration/${r.project_slug}/`
-  );
-  url.searchParams.set('school',  r.school_code);
-  url.searchParams.set('prefill', '1');
-  if (r.id)            url.searchParams.set('reg',    r.id);
-  if (r.student_name)  url.searchParams.set('name',   r.student_name);
-  if (r.contact_phone) url.searchParams.set('phone',  r.contact_phone);
-  if (r.contact_email) url.searchParams.set('email',  r.contact_email);
-  if (r.class_grade)   url.searchParams.set('class',  r.class_grade);
-  if (r.gender)        url.searchParams.set('gender', r.gender);
-  if (r.parent_name)   url.searchParams.set('parent', r.parent_name);
-  return url.toString();
+  // Use registration_url from the API — built with the correct ?school= format
+  // using the real slug extracted from branding.redirectURL.
+  // Falls back to project_slug + school_code if registration_url is missing.
+  let base = '';
+  if (r.registration_url) {
+    try {
+      const u = new URL(r.registration_url);
+      const existingSchool = u.searchParams.get('school');
+      // Rebuild clean base with just the path + ?school=
+      base = `${u.protocol}//${u.host}${u.pathname}${existingSchool ? '?school=' + existingSchool : ''}`;
+    } catch {
+      base = r.registration_url;
+    }
+  } else if (r.project_slug && r.school_code) {
+    base = `https://thynksuccess.com/registration/${r.project_slug}/?school=${r.school_code}`;
+  }
+
+  if (!base) return '';
+
+  try {
+    const url = new URL(base);
+    url.searchParams.set('prefill', '1');
+    if (r.id)            url.searchParams.set('reg',    r.id);
+    if (r.student_name)  url.searchParams.set('name',   r.student_name);
+    if (r.contact_phone) url.searchParams.set('phone',  r.contact_phone);
+    if (r.contact_email) url.searchParams.set('email',  r.contact_email);
+    if (r.class_grade)   url.searchParams.set('class',  r.class_grade);
+    if (r.gender)        url.searchParams.set('gender', r.gender);
+    if (r.parent_name)   url.searchParams.set('parent', r.parent_name);
+    return url.toString();
+  } catch {
+    return base;
+  }
 }
 
 const NAV = [
