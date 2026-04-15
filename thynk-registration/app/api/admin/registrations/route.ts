@@ -131,17 +131,32 @@ export async function GET(req: NextRequest) {
       school_name:     school.name       ?? null,
       org_name:        school.org_name   ?? null,
       project_slug:    school.project_slug ?? null,
-      // Build registration URL with priority:
-      // 1. branding.redirectURL (set at school creation — exact URL)
-      // 2. program slug + base_url from projects table join
-      // 3. school.project_slug + school_code (last resort)
+      // Build registration URL — always use ?school= query param format
+      // which works for ALL schools on thynksuccess.com (no www).
+      // Priority: branding.redirectURL base → projects.slug → school.project_slug
       registration_url: (() => {
-        if (school.branding?.redirectURL) return school.branding.redirectURL;
-        const prog = school.projects ?? {};
-        const slug = prog.slug ?? school.project_slug;
-        const baseUrl = prog.base_url ?? 'https://www.thynksuccess.com';
-        if (slug && school.school_code) return `${baseUrl}/registration/${slug}/${school.school_code}`;
-        return null;
+        const prog    = school.projects ?? {};
+        const slug    = prog.slug ?? school.project_slug;
+        const code    = school.school_code;
+        if (!slug || !code) return null;
+        // If branding.redirectURL is stored, extract the base path slug from it
+        // (it may be path-format /slug/code — we only need the slug part)
+        if (school.branding?.redirectURL) {
+          try {
+            const u = new URL(school.branding.redirectURL);
+            // URL path is /registration/{slug}/... — extract slug
+            const parts = u.pathname.split('/').filter(Boolean);
+            const regIdx = parts.findIndex((p: string) => p === 'registration');
+            const urlSlug = regIdx >= 0 ? parts[regIdx + 1] : null;
+            if (urlSlug) {
+              const base = `${u.protocol}//${u.host}`;
+              return `${base}/registration/${urlSlug}/?school=${code}`;
+            }
+          } catch {}
+        }
+        // Fallback: build from projects.base_url or default domain
+        const baseUrl = prog.base_url ?? 'https://thynksuccess.com';
+        return `${baseUrl}/registration/${slug}/?school=${code}`;
       })(),
       country:         school.country    ?? 'India',
       state:           school.state      ?? null,
