@@ -36,19 +36,12 @@ const BACKEND  = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
  */
 function buildPayLink(r: Row): string {
   if (r.payment_status === 'paid') return '';
-
-  // Always use ?school= query-param format — this works for ALL schools on thynksuccess.com.
-  // branding.redirectURL uses path-based /slug/schoolCode which only exists for new schools
-  // and breaks for schools created before that route existed. Never use it for pay links.
-  //
-  // We need: https://www.thynksuccess.com/registration/{project_slug}/?school={school_code}
-  // project_slug comes from the schools.projects join (r.project_slug from the API).
-  // school_code is always present.
-
   if (!r.school_code || !r.project_slug) return '';
 
+  // Registration is on WordPress: https://thynksuccess.com (no www)
+  // Format: /registration/{project_slug}/?school={school_code}
   const url = new URL(
-    `https://www.thynksuccess.com/registration/${r.project_slug}/`
+    `https://thynksuccess.com/registration/${r.project_slug}/`
   );
   url.searchParams.set('school',  r.school_code);
   url.searchParams.set('prefill', '1');
