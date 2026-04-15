@@ -1,34 +1,47 @@
-/**
- * POST /api/admin/schools/fix-urls
- * One-time migration: updates branding.redirectURL for ALL schools to use
- * the correct ?school= query-param format on thynksuccess.com (no www).
- * Super admin only. Safe to run multiple times.
- */
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
+import { createServiceClient, createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  const user = await getUserFromRequest(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
+  // Try cookie-based auth (works from browser) AND Bearer token
   const service = createServiceClient();
+  
+  let userId: string | null = null;
 
+  // 1. Try Bearer token
+  const authHeader = req.headers.get('authorization') ?? '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    const { data: { user } } = await service.auth.getUser(token);
+    userId = user?.id ?? null;
+  }
+
+  // 2. Try cookie session
+  if (!userId) {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id ?? null;
+    } catch {}
+  }
+
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Check super admin
   const { data: roleRow } = await service
     .from('admin_roles').select('role')
-    .eq('user_id', user.id).eq('role', 'super_admin').is('school_id', null).maybeSingle();
+    .eq('user_id', userId).eq('role', 'super_admin').is('school_id', null).maybeSingle();
   if (!roleRow) return NextResponse.json({ error: 'Super admin only' }, { status: 403 });
 
-  // Load all schools with their branding and project_slug
+  // Load all schools
   const { data: schools, error } = await service
     .from('schools')
     .select('id, school_code, project_slug, branding');
 
-  if (error || !schools) return NextResponse.json({ error: error?.message }, { status: 500 });
+  if (error || !schools) return NextResponse.json({ error: error?.message ?? 'Load failed' }, { status: 500 });
 
-  let updated = 0;
-  let skipped = 0;
+  let updated = 0, skipped = 0;
   const errors: string[] = [];
 
   for (const school of schools) {
@@ -36,29 +49,19 @@ export async function POST(req: NextRequest) {
 
     const correctUrl = `https://thynksuccess.com/registration/${school.project_slug}/?school=${school.school_code}`;
 
-    // Skip if already correct
     if (school.branding?.redirectURL === correctUrl) { skipped++; continue; }
-
-    const newBranding = { ...(school.branding ?? {}), redirectURL: correctUrl };
 
     const { error: updateErr } = await service
       .from('schools')
-      .update({ branding: newBranding })
+      .update({ branding: { ...(school.branding ?? {}), redirectURL: correctUrl } })
       .eq('id', school.id);
 
-    if (updateErr) {
-      errors.push(`${school.school_code}: ${updateErr.message}`);
-    } else {
-      updated++;
-    }
+    if (updateErr) errors.push(`${school.school_code}: ${updateErr.message}`);
+    else updated++;
   }
 
   return NextResponse.json({
-    success: true,
-    total: schools.length,
-    updated,
-    skipped,
-    errors,
+    success: true, total: schools.length, updated, skipped, errors,
     message: `Updated ${updated} schools. ${skipped} already correct or missing data.`,
   });
 }
