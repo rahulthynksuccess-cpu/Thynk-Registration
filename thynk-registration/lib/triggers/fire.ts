@@ -168,7 +168,7 @@ async function buildTemplateVars(
       .eq('id', reg.school_id ?? schoolId)
       .single();
     if (schoolData?.project_slug && schoolData?.school_code) {
-      paymentLink = `https://www.thynksuccess.com/registration/${schoolData.project_slug}/?school=${schoolData.school_code}`;
+      paymentLink = `https://thynksuccess.com/registration/${schoolData.project_slug}/?school=${schoolData.school_code}`;
     }
   }
 
