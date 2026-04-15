@@ -3,6 +3,7 @@ import Script from 'next/script';
 import { authFetch } from '@/lib/supabase/client';
 import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
 import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithApproval';
+import { ManageSchool } from '@/components/admin/ManageSchool';
 import { SchoolLogPanel } from '@/components/admin/SchoolLogPanel';
 import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
 import { ReportingPage } from '@/components/admin/ReportingPage';
@@ -68,6 +69,7 @@ const NAV = [
   { section:'Management' },
   { id:'programs',      icon:'🎯', label:'Programs'       },
   { id:'schools',       icon:'🏫', label:'Schools'        },
+  { id:'manage_school', icon:'⚙️', label:'Manage Schools' },
   { id:'discounts',     icon:'🏷️', label:'Discount Codes' },
   { id:'users',         icon:'👥', label:'Admin Users'    },
   { section:'Integrations' },
@@ -397,6 +399,7 @@ export default function AdminDashboard() {
     if (activePage === 'students')     loadPrograms();
     if (activePage === 'programs')     loadPrograms();
     if (activePage === 'schools')      loadSchools();
+    if (activePage === 'manage_school') { loadSchools(); loadPrograms(); }
     if (activePage === 'discounts')    loadDiscounts();
     if (activePage === 'users')        loadUsers();
     if (activePage === 'integrations') loadIntegrations();
@@ -894,6 +897,17 @@ export default function AdminDashboard() {
               BACKEND={BACKEND}
               authHeaders={authHeaders}
               onEdit={s => { loadPrograms(); setSchoolForm(s); }}
+              onRefresh={loadSchools}
+              showToast={(t, i) => showToast(t, i ?? '')}
+            />
+          </div>
+
+          {/* ── MANAGE SCHOOLS ──────────────────────────────────────────── */}
+          <div className={`page${activePage==='manage_school'?' active':''}`}>
+            <ManageSchool
+              schools={schools}
+              programs={programs}
+              isSuperAdmin={isSuperAdmin}
               onRefresh={loadSchools}
               showToast={(t, i) => showToast(t, i ?? '')}
             />
