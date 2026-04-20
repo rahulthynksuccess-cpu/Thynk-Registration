@@ -562,12 +562,16 @@ export default function AdminDashboard() {
   const followUpCount = allRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status)).length;
 
   const saveForm = async (path:string, data:Row, onDone:()=>void, successMsg:string) => {
-    const method = data.id ? 'PATCH' : 'POST';
-    const res = await fetch(`${BACKEND}${path}`, { credentials: 'include', method, headers: authHeaders(), body:JSON.stringify(data) });
-    const r   = await res.json();
-    if (!res.ok) { showToast(r.error ?? 'Error', '❌'); return; }
-    showToast(successMsg, '✅');
-    onDone();
+    try {
+      const method = data.id ? 'PATCH' : 'POST';
+      const res = await fetch(`${BACKEND}${path}`, { credentials: 'include', method, headers: authHeaders(), body:JSON.stringify(data) });
+      const r   = await res.json();
+      if (!res.ok) { showToast(r.error ?? 'Error', '❌'); return; }
+      showToast(successMsg, '✅');
+      onDone();
+    } catch(err) {
+      showToast('Network error — please try again', '❌');
+    }
   };
 
   if (!user) return null;
@@ -1306,23 +1310,29 @@ export default function AdminDashboard() {
   onClose={()=>setUserForm(null)}
   onSave={async(data)=>{
     const isEdit = !!(userForm as any)?.user_id;
-    if (isEdit) {
-      // PATCH — update sub_admin permissions
-      const res = await fetch(`${BACKEND}/api/admin/users`, {
-        method:'PATCH',
-        headers:{...authHeaders()},
-        body:JSON.stringify({
-          user_id:(userForm as any).user_id,
-          display_name:data.display_name,
-          all_schools:data.all_schools,
-          allowed_school_ids:data.allowed_school_ids,
-          allowed_pages:data.allowed_pages,
-        }),
-      });
-      if (res.ok) { showToast('Permissions updated!','✅'); setUserForm(null); loadUsers(); }
-      else        { const e=await res.json(); showToast('Error: '+(e.error||'Unknown'),'❌'); }
-    } else {
-      await saveForm('/api/admin/users',data,()=>{setUserForm(null);loadUsers();},'Admin user created!');
+    try {
+      if (isEdit) {
+        const res = await fetch(`${BACKEND}/api/admin/users`, {
+          method:'PATCH',
+          headers:{...authHeaders()},
+          body:JSON.stringify({
+            user_id:(userForm as any).user_id,
+            display_name:data.display_name,
+            all_schools:data.all_schools,
+            allowed_school_ids:data.allowed_school_ids,
+            allowed_pages:data.allowed_pages,
+          }),
+        });
+        setUserForm(null);
+        if (res.ok) { showToast('Permissions updated!','✅'); loadUsers(); }
+        else        { const e=await res.json(); showToast('Error: '+(e.error||'Unknown'),'❌'); }
+      } else {
+        await saveForm('/api/admin/users',data,()=>{loadUsers();},'Admin user created!');
+        setUserForm(null);
+      }
+    } catch(err) {
+      setUserForm(null);
+      showToast('Unexpected error — please try again','❌');
     }
   }}
 />}
@@ -1623,22 +1633,8 @@ function UserFormModal({ schools, initial, onClose, onSave }: {
   const isSubAdmin = f.role === 'sub_admin';
 
   return (
-    <div className="modal-overlay show" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{
-        background:'var(--card)', borderRadius:24, width:'100%', maxWidth:600,
-        margin:'16px', boxShadow:'0 24px 64px rgba(0,0,0,.22)', overflow:'hidden',
-        display:'flex', flexDirection:'column', maxHeight:'90vh',
-      }}>
-        {/* Header */}
-        <div style={{padding:'20px 24px 16px', borderBottom:'1px solid var(--bd)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0}}>
-          <h3 style={{fontFamily:"Sora,sans-serif", fontSize:17, fontWeight:800, margin:0}}>
-            {isEdit ? `Edit Permissions: ${initial?.email}` : '➕ Add Admin User'}
-          </h3>
-          <button onClick={onClose} style={{width:32,height:32,border:'none',background:'var(--bg)',borderRadius:8,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--m)'}}>✕</button>
-        </div>
-
-        {/* Scrollable body */}
-        <div style={{padding:'20px 24px', overflowY:'auto', flex:1}}>
+    <ModalShell title={isEdit ? `Edit Permissions: ${initial?.email}` : '➕ Add Admin User'} onClose={onClose}>
+      <div>
 
           {/* Email + Password — only on create */}
           {!isEdit && (<>
@@ -1818,17 +1814,14 @@ function UserFormModal({ schools, initial, onClose, onSave }: {
             </Field>
           )}
 
-        </div>{/* end scrollable body */}
-
-        {/* Sticky footer */}
-        <div style={{padding:'14px 24px', borderTop:'1px solid var(--bd)', display:'flex', gap:10, justifyContent:'flex-end', flexShrink:0, background:'var(--card)'}}>
-          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={()=>onSave(f)}>
-            {isEdit ? '💾 Save Permissions' : '✅ Create Admin User'}
-          </button>
-        </div>
       </div>
-    </div>
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
+        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={()=>onSave(f)}>
+          {isEdit ? '💾 Save Permissions' : '✅ Create Admin User'}
+        </button>
+      </div>
+    </ModalShell>
   );
 }
 
