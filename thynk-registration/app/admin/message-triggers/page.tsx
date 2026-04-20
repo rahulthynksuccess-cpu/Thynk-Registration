@@ -27,11 +27,14 @@ const EVENT_TYPES = [
 ];
 
 const TEMPLATE_VARS = [
+  // Student / registration
   '{{student_name}}','{{class_grade}}','{{gender}}','{{parent_name}}',
   '{{contact_phone}}','{{contact_email}}','{{school_name}}','{{program_name}}',
   '{{base_amount}}','{{discount_amount}}','{{final_amount}}',
   '{{discount_code}}','{{gateway}}','{{txn_id}}','{{registration_id}}',
   '{{payment_link}}',
+  // School contact person (school.registered / school.approved events)
+  '{{contact_person_name}}','{{contact_designation}}','{{org_name}}','{{city}}',
 ];
 
 const inp: React.CSSProperties = {
