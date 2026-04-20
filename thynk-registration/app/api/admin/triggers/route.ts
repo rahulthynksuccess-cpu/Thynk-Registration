@@ -9,13 +9,24 @@ async function requireAdmin(req: NextRequest) {
   return data ? { user, role: data } : null;
 }
 
+// Only these columns exist on the notification_triggers table.
+// Anything else (e.g. notification_templates from a JOIN) must be stripped
+// before insert/update or Supabase throws a schema-cache error.
+function sanitizeTrigger(raw: Record<string, any>) {
+  const { event_type, channel, template_id, school_id, is_active } = raw;
+  return { event_type, channel, template_id, school_id: school_id ?? null, is_active: is_active ?? true };
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { searchParams } = new URL(req.url);
   const schoolId = searchParams.get('schoolId');
-  let query = service.from('notification_triggers').select('*, notification_templates(id, name, channel)').order('created_at', { ascending: false });
+  let query = service
+    .from('notification_triggers')
+    .select('*, notification_templates(id, name, channel)')
+    .order('created_at', { ascending: false });
   if (schoolId) query = query.eq('school_id', schoolId);
   else if (auth.role.role !== 'super_admin') query = query.eq('school_id', auth.role.school_id);
   const { data } = await query;
@@ -27,7 +38,11 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
-  const { data, error } = await service.from('notification_triggers').insert(body).select().single();
+  const { data, error } = await service
+    .from('notification_triggers')
+    .insert(sanitizeTrigger(body))
+    .select('*, notification_templates(id, name, channel)')
+    .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ trigger: data }, { status: 201 });
 }
@@ -36,8 +51,13 @@ export async function PATCH(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
-  const { id, ...updates } = await req.json();
-  const { data, error } = await service.from('notification_triggers').update(updates).eq('id', id).select().single();
+  const { id, ...rest } = await req.json();
+  const { data, error } = await service
+    .from('notification_triggers')
+    .update(sanitizeTrigger(rest))
+    .eq('id', id)
+    .select('*, notification_templates(id, name, channel)')
+    .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ trigger: data });
 }
