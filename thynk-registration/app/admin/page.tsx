@@ -435,7 +435,7 @@ export default function AdminDashboard() {
     if (activePage === 'schools')      loadSchools();
     if (activePage === 'manage_school') { loadSchools(); loadPrograms(); }
     if (activePage === 'discounts')    loadDiscounts();
-    if (activePage === 'users')        loadUsers();
+    if (activePage === 'users')      { loadUsers(); loadSchools(); }
     if (activePage === 'integrations') loadIntegrations();
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')    loadTemplates();
@@ -1571,186 +1571,264 @@ const ALL_PAGES = [
 
 function UserFormModal({ schools, initial, onClose, onSave }: {
   schools: Row[];
-  initial?: Row;   // pass existing user to edit permissions
+  initial?: Row;
   onClose: () => void;
   onSave: (d: Row) => void;
 }) {
   const isEdit = !!initial?.user_id;
   const [f, setF] = useState({
-    email:               initial?.email        ?? '',
+    email:               initial?.email         ?? '',
     password:            '',
-    display_name:        initial?.display_name ?? '',
-    role:                initial?.role         ?? 'sub_admin',
-    school_id:           initial?.school_id    ?? '',          // legacy school_admin
-    all_schools:         initial?.all_schools  ?? false,
-    allowed_school_ids:  initial?.school_ids   ?? [] as string[],
-    allowed_pages:       initial?.allowed_pages ?? [] as string[],
+    display_name:        initial?.display_name  ?? '',
+    role:                initial?.role          ?? 'sub_admin',
+    school_id:           initial?.school_id     ?? '',
+    all_schools:         initial?.all_schools   ?? false,
+    allowed_school_ids:  (initial?.school_ids   ?? []) as string[],
+    allowed_pages:       (initial?.allowed_pages ?? []) as string[],
   });
 
   const set = (k: string, v: any) => setF(p => ({ ...p, [k]: v }));
 
-  const toggleSchool = (id: string) => {
+  const toggleSchool = (id: string) =>
     set('allowed_school_ids',
       f.allowed_school_ids.includes(id)
         ? f.allowed_school_ids.filter((x: string) => x !== id)
-        : [...f.allowed_school_ids, id]
-    );
-  };
+        : [...f.allowed_school_ids, id]);
 
-  const togglePage = (id: string) => {
+  const togglePage = (id: string) =>
     set('allowed_pages',
       f.allowed_pages.includes(id)
         ? f.allowed_pages.filter((x: string) => x !== id)
-        : [...f.allowed_pages, id]
-    );
-  };
+        : [...f.allowed_pages, id]);
 
   const selectAllPages = () => set('allowed_pages', ALL_PAGES.map(p => p.id));
   const clearAllPages  = () => set('allowed_pages', []);
-
-  // Group pages by section for display
   const sections = [...new Set(ALL_PAGES.map(p => p.section))];
 
-  const pill: React.CSSProperties = { display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px',
-    borderRadius:8, border:'1.5px solid var(--bd)', cursor:'pointer', fontSize:12, fontWeight:600,
-    fontFamily:'DM Sans,sans-serif', userSelect:'none' as const };
+  const pill: React.CSSProperties = {
+    display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px',
+    borderRadius:8, border:'1.5px solid var(--bd)', cursor:'pointer',
+    fontSize:12, fontWeight:600, fontFamily:'DM Sans,sans-serif', userSelect:'none' as const,
+  };
+
+  const sectionBox: React.CSSProperties = {
+    border:'1.5px solid var(--bd)', borderRadius:10, overflow:'hidden', marginBottom:4,
+  };
+
+  const sectionHeader: React.CSSProperties = {
+    padding:'8px 12px', background:'var(--bg)', borderBottom:'1px solid var(--bd)',
+    display:'flex', justifyContent:'space-between', alignItems:'center',
+  };
+
+  const isSubAdmin = f.role === 'sub_admin';
 
   return (
-    <ModalShell title={isEdit ? \`Edit: \${initial?.email}\` : 'Add Admin User'} onClose={onClose}>
-      {/* Basic info */}
-      {!isEdit && (
-        <>
-          <Field label="Email *">
-            <input style={IS} type="email" value={f.email} onChange={e=>set('email',e.target.value)} placeholder="user@example.com"/>
+    <div className="modal-overlay show" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{
+        background:'var(--card)', borderRadius:24, width:'100%', maxWidth:600,
+        margin:'16px', boxShadow:'0 24px 64px rgba(0,0,0,.22)', overflow:'hidden',
+        display:'flex', flexDirection:'column', maxHeight:'90vh',
+      }}>
+        {/* Header */}
+        <div style={{padding:'20px 24px 16px', borderBottom:'1px solid var(--bd)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0}}>
+          <h3 style={{fontFamily:"Sora,sans-serif", fontSize:17, fontWeight:800, margin:0}}>
+            {isEdit ? `Edit Permissions: ${initial?.email}` : '➕ Add Admin User'}
+          </h3>
+          <button onClick={onClose} style={{width:32,height:32,border:'none',background:'var(--bg)',borderRadius:8,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--m)'}}>✕</button>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{padding:'20px 24px', overflowY:'auto', flex:1}}>
+
+          {/* Email + Password — only on create */}
+          {!isEdit && (<>
+            <Field label="Email *">
+              <input style={IS} type="email" value={f.email} onChange={e=>set('email',e.target.value)} placeholder="user@example.com"/>
+            </Field>
+            <Field label="Password *">
+              <input style={IS} type="password" value={f.password} onChange={e=>set('password',e.target.value)} placeholder="Minimum 8 characters"/>
+            </Field>
+          </>)}
+
+          <Field label="Display Name (optional)">
+            <input style={IS} value={f.display_name} onChange={e=>set('display_name',e.target.value)} placeholder="e.g. City Coordinator — Delhi"/>
           </Field>
-          <Field label="Password *">
-            <input style={IS} type="password" value={f.password} onChange={e=>set('password',e.target.value)} placeholder="Minimum 8 characters"/>
+
+          {/* Role picker — always visible */}
+          <Field label="Role *">
+            {isEdit
+              ? <div style={{...IS, background:'var(--bg)', color:'var(--m)', cursor:'not-allowed'}}>
+                  {f.role === 'sub_admin' ? 'Sub Admin (restricted access)' : f.role === 'super_admin' ? 'Super Admin (full access)' : 'School Admin (single school)'}
+                </div>
+              : <select style={SS} value={f.role} onChange={e=>set('role',e.target.value)}>
+                  <option value="sub_admin">Sub Admin — assign specific schools &amp; pages</option>
+                  <option value="school_admin">School Admin — single school (legacy)</option>
+                  <option value="super_admin">Super Admin — full access</option>
+                </select>
+            }
           </Field>
-        </>
-      )}
-      <Field label="Display Name (optional)">
-        <input style={IS} value={f.display_name} onChange={e=>set('display_name',e.target.value)} placeholder="e.g. City Coordinator — Delhi"/>
-      </Field>
 
-      {!isEdit && (
-        <Field label="Role *">
-          <select style={SS} value={f.role} onChange={e=>set('role',e.target.value)}>
-            <option value="sub_admin">Sub Admin (restricted access)</option>
-            <option value="school_admin">School Admin (single school, legacy)</option>
-            <option value="super_admin">Super Admin (full access)</option>
-          </select>
-        </Field>
-      )}
+          {/* ── School Admin (legacy): single school dropdown ── */}
+          {f.role === 'school_admin' && (
+            <Field label="Assign to School *">
+              <select style={SS} value={f.school_id} onChange={e=>set('school_id',e.target.value)}>
+                <option value="">— Select a school —</option>
+                {schools.map(s => <option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
+              </select>
+              {schools.length === 0 && (
+                <div style={{fontSize:11,color:'orange',marginTop:4}}>⚠️ No schools loaded yet. Navigate away and back to reload.</div>
+              )}
+            </Field>
+          )}
 
-      {/* ── Legacy school_admin: single school ── */}
-      {f.role==='school_admin' && (
-        <Field label="Assign to School *">
-          <select style={SS} value={f.school_id} onChange={e=>set('school_id',e.target.value)}>
-            <option value="">Select school</option>
-            {schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
-          </select>
-        </Field>
-      )}
+          {/* ── Sub Admin: School Access section ── */}
+          {isSubAdmin && (
+            <Field label="🏫 School Access">
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
 
-      {/* ── Sub-admin: school access ── */}
-      {(f.role==='sub_admin') && (
-        <Field label="School Access">
-          <div style={{display:'flex',flexDirection:'column',gap:10}}>
-            {/* All Schools toggle */}
-            <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'10px 14px',
-              borderRadius:9,border:\`1.5px solid \${f.all_schools?'var(--acc)':'var(--bd)'}\`,
-              background:f.all_schools?'var(--acc3)':'var(--bg)'}}>
-              <input type="checkbox" checked={f.all_schools}
-                onChange={e=>set('all_schools',e.target.checked)}
-                style={{width:15,height:15,accentColor:'var(--acc)'}}/>
-              <span style={{fontWeight:700,fontSize:13,color:f.all_schools?'var(--acc)':'var(--text)'}}>
-                🌐 All Schools (current + future)
-              </span>
-            </label>
+                {/* All Schools toggle */}
+                <label style={{
+                  display:'flex', alignItems:'center', gap:10, cursor:'pointer',
+                  padding:'11px 14px', borderRadius:9,
+                  border:`2px solid ${f.all_schools ? 'var(--acc)' : 'var(--bd)'}`,
+                  background: f.all_schools ? 'var(--acc3)' : 'var(--bg)',
+                }}>
+                  <input type="checkbox" checked={f.all_schools}
+                    onChange={e=>set('all_schools',e.target.checked)}
+                    style={{width:16,height:16,accentColor:'var(--acc)'}}/>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:13,color:f.all_schools?'var(--acc)':'var(--text)'}}>
+                      🌐 All Schools (current + future)
+                    </div>
+                    <div style={{fontSize:11,color:'var(--m)',marginTop:1}}>
+                      User will see data for every school automatically
+                    </div>
+                  </div>
+                </label>
 
-            {/* Individual school picker — shown when all_schools is off */}
-            {!f.all_schools && (
-              <div style={{border:'1.5px solid var(--bd)',borderRadius:9,overflow:'hidden'}}>
-                <div style={{padding:'8px 12px',background:'var(--bg)',borderBottom:'1px solid var(--bd)',
-                  display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px'}}>
-                    Select Schools
-                  </span>
-                  <span style={{fontSize:11,color:'var(--m)'}}>
-                    {f.allowed_school_ids.length} selected
-                  </span>
-                </div>
-                <div style={{maxHeight:180,overflowY:'auto'}}>
-                  {schools.map(s => {
-                    const sel = f.allowed_school_ids.includes(s.id);
-                    return (
-                      <label key={s.id} style={{display:'flex',alignItems:'center',gap:10,
-                        padding:'8px 12px',cursor:'pointer',borderBottom:'1px solid var(--bd)',
-                        background:sel?'var(--acc3)':'transparent'}}>
-                        <input type="checkbox" checked={sel} onChange={()=>toggleSchool(s.id)}
-                          style={{width:14,height:14,accentColor:'var(--acc)'}}/>
-                        <span style={{fontSize:12,fontWeight:sel?700:400,color:'var(--text)'}}>
-                          {s.name}
-                        </span>
-                        <span style={{fontSize:11,color:'var(--m)',marginLeft:'auto'}}>{s.school_code}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                {/* Individual school checklist */}
+                {!f.all_schools && (
+                  <div style={sectionBox}>
+                    <div style={sectionHeader}>
+                      <span style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px'}}>
+                        Select Specific Schools
+                      </span>
+                      <span style={{fontSize:11,color:f.allowed_school_ids.length>0?'var(--acc)':'var(--m)',fontWeight:600}}>
+                        {f.allowed_school_ids.length} selected
+                      </span>
+                    </div>
+                    <div style={{maxHeight:200,overflowY:'auto'}}>
+                      {schools.length === 0
+                        ? <div style={{padding:'20px 16px',textAlign:'center',color:'var(--m)',fontSize:12}}>
+                            ⏳ Loading schools… if this persists, close and reopen the modal.
+                          </div>
+                        : schools.map(s => {
+                            const sel = f.allowed_school_ids.includes(s.id);
+                            return (
+                              <label key={s.id} style={{
+                                display:'flex', alignItems:'center', gap:10,
+                                padding:'9px 14px', cursor:'pointer',
+                                borderBottom:'1px solid var(--bd)',
+                                background: sel ? 'var(--acc3)' : 'transparent',
+                                transition:'background .1s',
+                              }}>
+                                <input type="checkbox" checked={sel} onChange={()=>toggleSchool(s.id)}
+                                  style={{width:15,height:15,accentColor:'var(--acc)',flexShrink:0}}/>
+                                <span style={{fontSize:13,fontWeight:sel?700:400,color:'var(--text)',flex:1}}>
+                                  {s.name}
+                                </span>
+                                <span style={{fontSize:11,color:'var(--m)',background:'var(--bg)',padding:'2px 7px',borderRadius:5}}>
+                                  {s.school_code}
+                                </span>
+                              </label>
+                            );
+                          })
+                      }
+                    </div>
+                    {schools.length > 0 && (
+                      <div style={{padding:'6px 14px',borderTop:'1px solid var(--bd)',display:'flex',gap:8}}>
+                        <button type="button"
+                          onClick={()=>set('allowed_school_ids', schools.map((s:any)=>s.id))}
+                          style={{...pill,fontSize:11,padding:'3px 9px',background:'var(--acc3)',color:'var(--acc)',borderColor:'var(--acc)'}}>
+                          Select All
+                        </button>
+                        <button type="button"
+                          onClick={()=>set('allowed_school_ids',[])}
+                          style={{...pill,fontSize:11,padding:'3px 9px',background:'var(--bg)',color:'var(--m)'}}>
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </Field>
-      )}
+            </Field>
+          )}
 
-      {/* ── Sub-admin: page access ── */}
-      {(f.role==='sub_admin') && (
-        <Field label="Page Access">
-          <div style={{display:'flex',flexDirection:'column',gap:10}}>
-            <div style={{display:'flex',gap:8}}>
-              <button type="button" onClick={selectAllPages} style={{...pill,background:'var(--acc3)',color:'var(--acc)',borderColor:'var(--acc)'}}>
-                ✓ Select All
-              </button>
-              <button type="button" onClick={clearAllPages} style={{...pill,background:'var(--bg)',color:'var(--m)'}}>
-                ✕ Clear All
-              </button>
-              <span style={{fontSize:12,color:'var(--m)',alignSelf:'center',marginLeft:4}}>
-                {f.allowed_pages.length} of {ALL_PAGES.length} pages
-              </span>
-            </div>
-            {sections.map(section => (
-              <div key={section}>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',
-                  color:'var(--m)',padding:'4px 2px',marginBottom:4}}>{section}</div>
-                <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-                  {ALL_PAGES.filter(p=>p.section===section).map(p => {
-                    const sel = f.allowed_pages.includes(p.id);
-                    return (
-                      <label key={p.id} onClick={()=>togglePage(p.id)} style={{
-                        ...pill,
-                        background: sel ? 'var(--acc3)' : 'var(--bg)',
-                        color:      sel ? 'var(--acc)'  : 'var(--text)',
-                        borderColor: sel ? 'var(--acc)' : 'var(--bd)',
-                      }}>
-                        <span style={{fontSize:13,width:14,textAlign:'center'}}>{sel?'✓':''}</span>
-                        {p.label}
-                      </label>
-                    );
-                  })}
+          {/* ── Sub Admin: Page Access section ── */}
+          {isSubAdmin && (
+            <Field label="📄 Page Access">
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {/* Select All / Clear bar */}
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  <button type="button" onClick={selectAllPages}
+                    style={{...pill,background:'var(--acc3)',color:'var(--acc)',borderColor:'var(--acc)'}}>
+                    ✓ Select All
+                  </button>
+                  <button type="button" onClick={clearAllPages}
+                    style={{...pill,background:'var(--bg)',color:'var(--m)'}}>
+                    ✕ Clear All
+                  </button>
+                  <span style={{fontSize:12,color:'var(--m)'}}>
+                    {f.allowed_pages.length} / {ALL_PAGES.length} pages selected
+                  </span>
                 </div>
-              </div>
-            ))}
-          </div>
-        </Field>
-      )}
 
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:4}}>
-        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave(f)}>
-          {isEdit ? 'Save Permissions' : 'Create Admin User'}
-        </button>
+                {/* Pages grouped by section */}
+                {sections.map(section => (
+                  <div key={section} style={sectionBox}>
+                    <div style={sectionHeader}>
+                      <span style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px'}}>
+                        {section}
+                      </span>
+                      <span style={{fontSize:11,color:'var(--m)'}}>
+                        {ALL_PAGES.filter(p=>p.section===section && f.allowed_pages.includes(p.id)).length}
+                        /{ALL_PAGES.filter(p=>p.section===section).length}
+                      </span>
+                    </div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6,padding:'10px 12px'}}>
+                      {ALL_PAGES.filter(p=>p.section===section).map(p => {
+                        const sel = f.allowed_pages.includes(p.id);
+                        return (
+                          <label key={p.id} onClick={()=>togglePage(p.id)} style={{
+                            ...pill,
+                            background:  sel ? 'var(--acc3)' : 'var(--bg)',
+                            color:       sel ? 'var(--acc)'  : 'var(--text)',
+                            borderColor: sel ? 'var(--acc)'  : 'var(--bd)',
+                          }}>
+                            <span style={{fontSize:12,width:14,textAlign:'center',flexShrink:0}}>{sel ? '✓' : ''}</span>
+                            {p.label}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Field>
+          )}
+
+        </div>{/* end scrollable body */}
+
+        {/* Sticky footer */}
+        <div style={{padding:'14px 24px', borderTop:'1px solid var(--bd)', display:'flex', gap:10, justifyContent:'flex-end', flexShrink:0, background:'var(--card)'}}>
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={()=>onSave(f)}>
+            {isEdit ? '💾 Save Permissions' : '✅ Create Admin User'}
+          </button>
+        </div>
       </div>
-    </ModalShell>
+    </div>
   );
 }
 
