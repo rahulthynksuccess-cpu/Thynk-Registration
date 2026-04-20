@@ -12,9 +12,13 @@ async function requireSuperAdmin(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await requireSuperAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Allow sub_admin to read programs (needed for dropdowns/filtering)
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const service = createServiceClient();
+  const { data: roleRows } = await service.from('admin_roles').select('role').eq('user_id', user.id);
+  const hasAccess = roleRows?.some((r: any) => ['super_admin','sub_admin','school_admin'].includes(r.role));
+  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { data: projects } = await service.from('projects').select('*').order('created_at', { ascending: false });
   return NextResponse.json({ projects: projects ?? [] });
 }

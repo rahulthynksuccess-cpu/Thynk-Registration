@@ -383,8 +383,13 @@ export default function AdminDashboard() {
           .eq('role', 'sub_admin');
         if (subRows?.length) {
           const allSchools = subRows.some((r: any) => r.all_schools);
-          setSubAdminPages(subRows[0]?.allowed_pages ?? []);
+          const pages = subRows[0]?.allowed_pages ?? [];
+          setSubAdminPages(pages);
           setSubAdminSchools(allSchools ? null : subRows.map((r: any) => r.school_id).filter(Boolean));
+          // Navigate to first allowed page if default 'overview' is not permitted
+          if (pages.length > 0 && !pages.includes('overview')) {
+            setActivePage(pages[0]);
+          }
         }
       }
     });
@@ -564,7 +569,7 @@ export default function AdminDashboard() {
   const avg  = paid.length   ? Math.round(totalRev/paid.length)            : 0;
   const today    = new Date().toISOString().slice(0,10);
   const thisWeek = ovRows.filter(r=>new Date(r.created_at)>=new Date(Date.now()-7*24*60*60*1000)).length;
-  const followUpCount = allRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status)).length;
+  const followUpCount = visibleRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status)).length;
 
   const saveForm = async (path:string, data:Row, onDone:()=>void, successMsg:string) => {
     try {
@@ -598,12 +603,28 @@ export default function AdminDashboard() {
           <nav className="sb-nav">
             {NAV.map((item,i) => {
               if ('section' in item) {
-                // Hide section header if no items in section are visible
-                return <div key={i} className="sb-section">{item.section}</div>;
+                // For sub_admin: hide section header if ALL items in that section are hidden
+                if (isSubAdmin && subAdminPages) {
+                  // Collect items belonging to this section (until next section header)
+                  const sectionItems = [];
+                  for (let j = i + 1; j < NAV.length; j++) {
+                    if ('section' in NAV[j]) break;
+                    sectionItems.push(NAV[j]);
+                  }
+                  // Hide section if no items are visible for sub_admin
+                  const anyVisible = sectionItems.some(si => {
+                    if ((si as any).action) return true; // actions always show
+                    if ('href' in si) return false; // href items hidden for sub_admin
+                    return si.id && subAdminPages.includes(si.id);
+                  });
+                  if (!anyVisible) return null;
+                }
+                return <div key={i} className="sb-section">{(item as any).section}</div>;
               }
-              // Sub-admin: hide pages not in their allowed list
-              if (isSubAdmin && subAdminPages && item.id && !item.action && !('href' in item)) {
-                if (!subAdminPages.includes(item.id)) return null;
+              // Sub-admin: hide pages not in their allowed list AND hide all href/external links
+              if (isSubAdmin && subAdminPages) {
+                if ('href' in item) return null; // hide Integrations, Settings, etc.
+                if (item.id && !item.action && !subAdminPages.includes(item.id)) return null;
               }
               const isActive = !item.action && !('href' in item) && activePage===item.id;
               return (
@@ -888,14 +909,14 @@ export default function AdminDashboard() {
           {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
             {activePage==='reporting' && !canSeePage('reporting') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <ReportingPage allRows={allRows} programs={programs} schools={schools} />
+            <ReportingPage allRows={visibleRows} programs={programs} schools={visibleSchools} />
           </div>
 
           {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
             {activePage==='students' && !canSeePage('students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{allRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
-            <StudentsTable rows={allRows} programs={programs} onRowClick={setModal} />
+            <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
+            <StudentsTable rows={visibleRows} programs={programs} onRowClick={setModal} />
           </div>
 
           {/* ── TRENDS ──────────────────────────────────────────────── */}
@@ -911,14 +932,14 @@ export default function AdminDashboard() {
           <div className={`page${activePage==='followup'?' active':''}`}>
             {activePage==='followup' && !canSeePage('followup') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>Follow-Up <span>Tracker</span></h1><p>{followUpCount} need follow-up</p></div></div>
-            <FollowUpList rows={allRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status))} onRowClick={setModal} />
+            <FollowUpList rows={visibleRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status))} onRowClick={setModal} />
           </div>
 
           {/* ── HEATMAP ─────────────────────────────────────────────── */}
           <div className={`page${activePage==='heatmap'?' active':''}`}>
             {activePage==='heatmap' && !canSeePage('heatmap') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>City <span>Heatmap</span></h1></div></div>
-            <CityHeatmap rows={allRows} />
+            <CityHeatmap rows={visibleRows} />
           </div>
 
           {/* ── RECENT ──────────────────────────────────────────────── */}
@@ -930,7 +951,7 @@ export default function AdminDashboard() {
                 <button className="btn btn-outline" onClick={()=>{ api('/api/admin/activity-logs?limit=200').then((d:any)=>setActivityLogs(d.logs??[])).catch(()=>{}); }}>🔄 Refresh</button>
               </div>
             </div>
-            <UnifiedTimeline paymentRows={allRows.slice(0,100)} activityLogs={[]} onRowClick={setModal} />
+            <UnifiedTimeline paymentRows={visibleRows.slice(0,100)} activityLogs={[]} onRowClick={setModal} />
           </div>
 
           {/* ── PROGRAMS ────────────────────────────────────────────── */}
@@ -964,7 +985,7 @@ export default function AdminDashboard() {
           <div className={`page${activePage==='schools'?' active':''}`}>
             {activePage==='schools' && !canSeePage('schools') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <SchoolsPageWithApproval
-              schools={schools}
+              schools={visibleSchools}
               programs={programs}
               isSuperAdmin={isSuperAdmin}
               BACKEND={BACKEND}
@@ -979,7 +1000,7 @@ export default function AdminDashboard() {
           <div className={`page${activePage==='manage_school'?' active':''}`}>
             {activePage==='manage_school' && !canSeePage('manage_school') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <ManageSchool
-              schools={schools}
+              schools={visibleSchools}
               programs={programs}
               isSuperAdmin={isSuperAdmin}
               onRefresh={loadSchools}
@@ -1164,9 +1185,9 @@ export default function AdminDashboard() {
             {activePage==='logs_schools' && (
               <div style={{padding:'0 0 24px'}}>
                 <div style={{marginBottom:16}}>
-                  <select style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:280}} value={logSelectedSchool?.id??''} onChange={e=>setLogSelectedSchool(schools.find(s=>s.id===e.target.value)??null)}>
+                  <select style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',fontSize:13,minWidth:280}} value={logSelectedSchool?.id??''} onChange={e=>setLogSelectedSchool(visibleSchools.find(s=>s.id===e.target.value)??null)}>
                     <option value="">— Select a school —</option>
-                    {schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
+                    {visibleSchools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
                   </select>
                 </div>
                 {logSelectedSchool ? <SchoolLogPanel schoolId={logSelectedSchool.id} schoolCode={logSelectedSchool.school_code} authHeaders={authHeaders} BACKEND={BACKEND} /> : <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a school above to view its logs.</div>}

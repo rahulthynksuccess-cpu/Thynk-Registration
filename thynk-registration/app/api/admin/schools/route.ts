@@ -23,13 +23,28 @@ function currencyForCountry(country: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await requireSuperAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-  const { searchParams } = new URL(req.url);
-  const statusFilter = searchParams.get('status'); // 'registered' | 'pending_approval' | 'approved' | null (= all)
+  // Allow both super_admin and sub_admin to fetch schools (sub_admin gets scoped results)
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const service = createServiceClient();
+
+  // Determine role and allowed schools
+  const { data: roleRows } = await service
+    .from('admin_roles')
+    .select('role, school_id, all_schools')
+    .eq('user_id', user.id);
+
+  const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
+  const isSubAdmin   = roleRows?.some(r => r.role === 'sub_admin');
+
+  if (!isSuperAdmin && !isSubAdmin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const statusFilter = searchParams.get('status');
+
   let query = service
     .from('schools')
     .select(`
@@ -43,6 +58,18 @@ export async function GET(req: NextRequest) {
 
   if (statusFilter) {
     query = query.eq('status', statusFilter) as any;
+  }
+
+  // Sub-admin: scope to their assigned schools only (unless all_schools = true)
+  if (isSubAdmin && !isSuperAdmin) {
+    const hasAllSchools = roleRows?.some(r => r.role === 'sub_admin' && r.all_schools);
+    if (!hasAllSchools) {
+      const allowedIds = roleRows
+        ?.filter(r => r.role === 'sub_admin' && r.school_id)
+        .map(r => r.school_id) ?? [];
+      if (!allowedIds.length) return NextResponse.json({ schools: [] });
+      query = query.in('id', allowedIds) as any;
+    }
   }
 
   const { data: schools } = await query;

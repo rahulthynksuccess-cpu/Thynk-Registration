@@ -47,10 +47,6 @@ export async function GET(req: NextRequest) {
     if (schoolId && !allowedSchoolIds.includes(schoolId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (!schoolId && !registrationId) {
-      // Must scope by school
-      return NextResponse.json({ logs: [] });
-    }
   }
 
   // ── Build query ─────────────────────────────────────────────────
@@ -76,7 +72,12 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (schoolId)       query = query.eq('school_id', schoolId) as any;
+  // Sub-admin: auto-scope to assigned schools
+  if (!isSuperAdmin && allowedSchoolIds.length > 0 && !schoolId && !registrationId) {
+    query = query.in('school_id', allowedSchoolIds) as any;
+  } else if (schoolId) {
+    query = query.eq('school_id', schoolId) as any;
+  }
   if (registrationId) query = query.eq('registration_id', registrationId) as any;
   if (channel)        query = query.eq('channel', channel) as any;
   if (status)         query = query.eq('status', status) as any;
