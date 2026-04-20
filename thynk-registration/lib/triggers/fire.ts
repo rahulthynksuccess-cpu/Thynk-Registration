@@ -126,11 +126,13 @@ async function buildSchoolVars(schoolId: string): Promise<TemplateVars | null> {
   }
   const primary = Array.isArray(school.contact_persons) ? school.contact_persons[0] : null;
   return {
-    school_name:   school.name     ?? '',
-    org_name:      school.org_name ?? '',
-    city:          school.city     ?? '',
-    contact_email: primary?.email  ?? '',
-    contact_phone: primary?.mobile ?? '',
+    school_name:          school.name     ?? '',
+    org_name:             school.org_name ?? '',
+    city:                 school.city     ?? '',
+    contact_email:        primary?.email       ?? '',
+    contact_phone:        primary?.mobile      ?? '',
+    contact_person_name:  primary?.name        ?? '',
+    contact_designation:  primary?.designation ?? '',
   };
 }
 
