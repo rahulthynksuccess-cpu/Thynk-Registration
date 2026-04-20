@@ -161,6 +161,11 @@ export interface TemplateVars {
   org_name?: string;
   program_name?: string;
 
+  // School contact person (from school registration form)
+  contact_person_name?: string;   // {{contact_person_name}}
+  contact_designation?: string;   // {{contact_designation}}
+  // contact_email and contact_phone already cover school contact too
+
   // Payment
   amount?: string;          // formatted e.g. "₹5,000"
   txn_id?: string;
