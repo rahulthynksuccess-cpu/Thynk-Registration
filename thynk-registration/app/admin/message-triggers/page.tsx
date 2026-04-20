@@ -17,13 +17,13 @@ interface Trigger  {
   notification_templates?: {id:string; name:string; channel:string};
 }
 
-// Registration-specific event types
+// ── FIX: Added school.registered + school.approved; removed never-fired events ──
 const EVENT_TYPES = [
-  {key:'registration.created',  label:'Registration Created',   desc:'Fires when a student submits the form'},
-  {key:'payment.paid',          label:'Payment Successful',     desc:'Fires when payment is confirmed'},
-  {key:'payment.failed',        label:'Payment Failed',         desc:'Fires when payment fails or is cancelled'},
-  {key:'payment.cancelled',     label:'Payment Cancelled',      desc:'Fires when a student cancels payment'},
-  {key:'discount.applied',      label:'Discount Code Applied',  desc:'Fires when a valid discount code is used'},
+  {key:'registration.created', label:'Registration Created',  desc:'Fires when a student submits the registration form'},
+  {key:'payment.paid',         label:'Payment Successful',   desc:'Fires when payment is confirmed'},
+  {key:'payment.failed',       label:'Payment Failed',       desc:'Fires when payment fails or is cancelled'},
+  {key:'school.registered',    label:'School Registered',    desc:'Fires when a new school submits registration (free flow)'},
+  {key:'school.approved',      label:'School Approved',      desc:'Fires when admin approves a school'},
 ];
 
 const TEMPLATE_VARS = [
@@ -147,7 +147,7 @@ function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>v
                 <div style={{fontSize:10,fontWeight:700,color:'#25D366',marginBottom:6,fontFamily:'DM Sans,sans-serif',letterSpacing:'0.1em',textTransform:'uppercase'}}>Preview</div>
                 <div style={{background:'#1F2C34',borderRadius:'12px 12px 12px 2px',padding:'10px 14px',maxWidth:280,display:'inline-block'}}>
                   <div style={{fontSize:12,color:'#E9EDEF',lineHeight:1.65,whiteSpace:'pre-wrap',fontFamily:'DM Sans,sans-serif'}}
-                    dangerouslySetInnerHTML={{__html:f.body.replace(/\*(.+?)\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>')}}/>
+                    dangerouslySetInnerHTML={{__html:f.body.replace(/\*(.+?)\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>')}}/> 
                   <div style={{fontSize:10,color:'#8696A0',marginTop:4,textAlign:'right'}}>12:34 ✓✓</div>
                 </div>
               </div>
@@ -182,7 +182,7 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
   initial?:Trigger; templates:Template[]; schools:Row[];
   onClose:()=>void; onSave:(d:Partial<Trigger>)=>void;
 }) {
-  const [f,setF] = useState<Partial<Trigger>>(initial??{event_type:'registration.created',channel:'email',is_active:true,school_id:null});
+  const [f,setF] = useState<Partial<Trigger>>(initial??{event_type:'school.registered',channel:'email',is_active:true,school_id:null});
   const set = (k:keyof Trigger,v:any)=>setF(p=>({...p,[k]:v}));
 
   const channelTemplates = templates.filter(t=>t.channel===f.channel&&t.is_active);
@@ -197,7 +197,7 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
         <div style={{padding:24,display:'flex',flexDirection:'column',gap:16}}>
           <div>
             <label style={lbl}>Event *</label>
-            <select value={f.event_type??'registration.created'} onChange={e=>set('event_type',e.target.value)}
+            <select value={f.event_type??'school.registered'} onChange={e=>set('event_type',e.target.value)}
               style={{...inp,cursor:'pointer'}}>
               {EVENT_TYPES.map(et=>(
                 <option key={et.key} value={et.key}>{et.label}</option>
@@ -513,7 +513,7 @@ export default function MessageTriggersPage() {
                             <div style={{fontSize:10,fontWeight:700,color:'#25D366',marginBottom:6,letterSpacing:'0.1em',textTransform:'uppercase'}}>WhatsApp Bubble</div>
                             <div style={{background:'#1F2C34',borderRadius:'12px 12px 12px 2px',padding:'10px 14px',maxWidth:280,display:'inline-block'}}>
                               <div style={{fontSize:12,color:'#E9EDEF',lineHeight:1.65,whiteSpace:'pre-wrap'}}
-                                dangerouslySetInnerHTML={{__html:tmpl.body.replace(/\*(.+?)\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>')}}/>
+                                dangerouslySetInnerHTML={{__html:tmpl.body.replace(/\*(.+?)\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>')}}/> 
                             </div>
                           </div>
                         )}
