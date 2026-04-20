@@ -368,6 +368,8 @@ export default function AdminDashboard() {
     const supabase = createClient();
     supabase.auth.getSession().then(async ({ data: sessionData }) => {
       if (!sessionData.session) { router.push('/admin/login'); return; }
+      // Guard: if we already have a user loaded, don't re-run init (prevents flicker on token refresh)
+      // This check is intentionally after the null guard above.
       accessTokenRef.current = sessionData.session.access_token;
       setUser(sessionData.session.user);
       const { data: role } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','super_admin').is('school_id',null).maybeSingle();
@@ -386,7 +388,10 @@ export default function AdminDashboard() {
         }
       }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Update token on session refresh/token events only.
+      // Never redirect here — createUser() can fire auth events on this session
+      // which would otherwise push to login and freeze the screen.
       if (session) accessTokenRef.current = session.access_token;
     });
     return () => subscription.unsubscribe();
@@ -1327,8 +1332,14 @@ export default function AdminDashboard() {
         if (res.ok) { showToast('Permissions updated!','✅'); loadUsers(); }
         else        { const e=await res.json(); showToast('Error: '+(e.error||'Unknown'),'❌'); }
       } else {
-        await saveForm('/api/admin/users',data,()=>{loadUsers();},'Admin user created!');
+        // Close modal FIRST before the API call so any Supabase auth broadcast
+        // from createUser() cannot affect the open modal state.
         setUserForm(null);
+        // Re-assert our own session token immediately after closing
+        const supabase = createClient();
+        const { data: sessionSnap } = await supabase.auth.getSession();
+        if (sessionSnap.session) accessTokenRef.current = sessionSnap.session.access_token;
+        await saveForm('/api/admin/users',data,()=>{loadUsers();},'Admin user created!');
       }
     } catch(err) {
       setUserForm(null);

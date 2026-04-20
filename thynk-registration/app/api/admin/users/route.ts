@@ -107,6 +107,8 @@ export async function POST(req: NextRequest) {
     email, password, email_confirm: true,
   });
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 400 });
+  // Note: we deliberately do NOT return any session/token data from this endpoint
+  // to prevent the browser Supabase client from picking up the new user's session.
 
   const uid = newUser.user.id;
 
