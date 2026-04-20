@@ -317,6 +317,10 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [user, setUser]               = useState<any>(null);
   const [isSuperAdmin, setSuperAdmin] = useState(false);
+  // Sub-admin permissions (null = not a sub-admin)
+  const [subAdminPages,   setSubAdminPages]   = useState<string[]|null>(null);   // null = all pages
+  const [subAdminSchools, setSubAdminSchools] = useState<string[]|null>(null);   // null = all schools
+  const isSubAdmin = subAdminPages !== null;
   const [allRows, setAllRows]         = useState<Row[]>([]);
   const [loading, setLoading]         = useState(true);
   const [activePage, setActivePage]   = useState('overview');
@@ -368,6 +372,19 @@ export default function AdminDashboard() {
       setUser(sessionData.session.user);
       const { data: role } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','super_admin').is('school_id',null).maybeSingle();
       setSuperAdmin(!!role);
+      // Load sub_admin page/school permissions if applicable
+      if (!role) {
+        const { data: subRows } = await supabase
+          .from('admin_roles')
+          .select('role, school_id, all_schools, allowed_pages')
+          .eq('user_id', sessionData.session.user.id)
+          .eq('role', 'sub_admin');
+        if (subRows?.length) {
+          const allSchools = subRows.some((r: any) => r.all_schools);
+          setSubAdminPages(subRows[0]?.allowed_pages ?? []);
+          setSubAdminSchools(allSchools ? null : subRows.map((r: any) => r.school_id).filter(Boolean));
+        }
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) accessTokenRef.current = session.access_token;
@@ -515,7 +532,21 @@ export default function AdminDashboard() {
     setActivePage(id);
   }
 
-  const ovRows  = overviewProgram ? allRows.filter(r=>r.program_name===overviewProgram) : allRows;
+  // Sub-admin school filter — narrows allRows to only assigned schools
+  const visibleRows = (isSubAdmin && subAdminSchools)
+    ? allRows.filter(r => subAdminSchools.includes(r.school_id))
+    : allRows;
+  const visibleSchools = (isSubAdmin && subAdminSchools)
+    ? schools.filter(s => subAdminSchools.includes(s.id))
+    : schools;
+
+  // Helper: block a page from rendering if sub-admin doesn't have access
+  function canSeePage(pageId: string): boolean {
+    if (!isSubAdmin) return true;
+    return !!(subAdminPages && subAdminPages.includes(pageId));
+  }
+
+  const ovRows  = overviewProgram ? visibleRows.filter(r=>r.program_name===overviewProgram) : visibleRows;
   const paid    = ovRows.filter(r=>r.payment_status==='paid');
   const pending = ovRows.filter(r=>['pending','initiated'].includes(r.payment_status));
   const failed  = ovRows.filter(r=>['failed','cancelled'].includes(r.payment_status));
@@ -557,7 +588,14 @@ export default function AdminDashboard() {
           </div>
           <nav className="sb-nav">
             {NAV.map((item,i) => {
-              if ('section' in item) return <div key={i} className="sb-section">{item.section}</div>;
+              if ('section' in item) {
+                // Hide section header if no items in section are visible
+                return <div key={i} className="sb-section">{item.section}</div>;
+              }
+              // Sub-admin: hide pages not in their allowed list
+              if (isSubAdmin && subAdminPages && item.id && !item.action && !('href' in item)) {
+                if (!subAdminPages.includes(item.id)) return null;
+              }
               const isActive = !item.action && !('href' in item) && activePage===item.id;
               return (
                 <button key={item.id} className={`sb-item${isActive?' active':''}`} onClick={()=>navAction(item.id!, (item as any).href)}>
@@ -573,7 +611,7 @@ export default function AdminDashboard() {
               <div className="sb-avatar">{user.email?.[0]?.toUpperCase()??'A'}</div>
               <div>
                 <div className="sb-user-name">{user.email?.split('@')[0]}</div>
-                <div className="sb-user-role">{isSuperAdmin?'Super Admin':'School Admin'}</div>
+                <div className="sb-user-role">{isSuperAdmin?'Super Admin':isSubAdmin?'Sub Admin':'School Admin'}</div>
               </div>
             </div>
             <button className="sb-item" onClick={doLogout} style={{color:'#fca5a5'}}><span className="icon">🚪</span>Logout</button>
@@ -585,6 +623,7 @@ export default function AdminDashboard() {
 
           {/* ── OVERVIEW ────────────────────────────────────────────── */}
           <div className={`page${activePage==='overview'?' active':''}`}>
+            {activePage==='overview' && !canSeePage('overview') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar">
               <div className="topbar-left">
                 <h1>Overview <span>Dashboard</span></h1>
@@ -839,17 +878,20 @@ export default function AdminDashboard() {
 
           {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
+            {activePage==='reporting' && !canSeePage('reporting') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <ReportingPage allRows={allRows} programs={programs} schools={schools} />
           </div>
 
           {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
+            {activePage==='students' && !canSeePage('students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{allRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
             <StudentsTable rows={allRows} programs={programs} onRowClick={setModal} />
           </div>
 
           {/* ── TRENDS ──────────────────────────────────────────────── */}
           <div className={`page${activePage==='trends'?' active':''}`}>
+            {activePage==='trends' && !canSeePage('trends') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>Trends <span>Analysis</span></h1></div></div>
             <div className="charts-grid">
               <div className="chart-card wide"><div className="chart-header"><div><div className="chart-title">📈 30-Day Trend</div></div></div><div className="chart-wrap tall"><canvas id="chartTrend"/></div></div>
@@ -858,18 +900,21 @@ export default function AdminDashboard() {
 
           {/* ── FOLLOW-UP ───────────────────────────────────────────── */}
           <div className={`page${activePage==='followup'?' active':''}`}>
+            {activePage==='followup' && !canSeePage('followup') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>Follow-Up <span>Tracker</span></h1><p>{followUpCount} need follow-up</p></div></div>
             <FollowUpList rows={allRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status))} onRowClick={setModal} />
           </div>
 
           {/* ── HEATMAP ─────────────────────────────────────────────── */}
           <div className={`page${activePage==='heatmap'?' active':''}`}>
+            {activePage==='heatmap' && !canSeePage('heatmap') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>City <span>Heatmap</span></h1></div></div>
             <CityHeatmap rows={allRows} />
           </div>
 
           {/* ── RECENT ──────────────────────────────────────────────── */}
           <div className={`page${activePage==='recent'?' active':''}`}>
+            {activePage==='recent' && !canSeePage('recent') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar">
               <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payment transactions only</p></div>
               <div className="topbar-right">
@@ -881,6 +926,7 @@ export default function AdminDashboard() {
 
           {/* ── PROGRAMS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='programs'?' active':''}`}>
+            {activePage==='programs' && !canSeePage('programs') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar">
               <div className="topbar-left"><h1>Programs <span>Management</span></h1><p>Define base programs with URLs and pricing</p></div>
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setProgramForm({})}>+ Add Program</button>}</div>
@@ -907,6 +953,7 @@ export default function AdminDashboard() {
 
           {/* ── SCHOOLS ─────────────────────────────────────────────── */}
           <div className={`page${activePage==='schools'?' active':''}`}>
+            {activePage==='schools' && !canSeePage('schools') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <SchoolsPageWithApproval
               schools={schools}
               programs={programs}
@@ -921,6 +968,7 @@ export default function AdminDashboard() {
 
           {/* ── MANAGE SCHOOLS ──────────────────────────────────────────── */}
           <div className={`page${activePage==='manage_school'?' active':''}`}>
+            {activePage==='manage_school' && !canSeePage('manage_school') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <ManageSchool
               schools={schools}
               programs={programs}
@@ -932,6 +980,7 @@ export default function AdminDashboard() {
 
           {/* ── DISCOUNT CODES ───────────────────────────────────────── */}
           <div className={`page${activePage==='discounts'?' active':''}`}>
+            {activePage==='discounts' && !canSeePage('discounts') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar">
               <div className="topbar-left"><h1>Discount <span>Codes</span></h1><p>{discounts.filter(d=>d.is_active).length} active codes</p></div>
               <div className="topbar-right"><button className="btn btn-primary" onClick={()=>setDiscountForm({})}>+ New Code</button></div>
@@ -963,6 +1012,7 @@ export default function AdminDashboard() {
 
           {/* ── ADMIN USERS ──────────────────────────────────────────── */}
           <div className={`page${activePage==='users'?' active':''}`}>
+            {activePage==='users' && !canSeePage('users') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar">
               <div className="topbar-left"><h1>Admin <span>Users</span></h1></div>
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setUserForm({})}>+ Add Admin</button>}</div>
@@ -980,17 +1030,61 @@ export default function AdminDashboard() {
               <a href="/school/login" target="_blank" rel="noreferrer" style={{padding:'8px 14px',borderRadius:9,border:'1.5px solid var(--acc)',color:'var(--acc)',fontSize:12,fontWeight:700,textDecoration:'none',flexShrink:0}}>↗ Open Portal</a>
             </div>
             <div className="tbl-wrap"><table>
-              <thead><tr><th>Email</th><th>Role</th><th>School Access</th><th>Added</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
+              <thead><tr><th>Email</th><th>Role</th><th>School Access</th><th>Pages</th><th>Added</th>{isSuperAdmin&&<th>Actions</th>}</tr></thead>
               <tbody>
                 {adminUsers.length===0
-                  ? <tr><td colSpan={5} className="table-empty">No admin users yet.</td></tr>
+                  ? <tr><td colSpan={6} className="table-empty">No admin users yet.</td></tr>
                   : adminUsers.map(u=>(
-                    <tr key={u.id}>
-                      <td style={{fontWeight:700}}>{u.email}</td>
-                      <td><span className={`badge ${u.role==='super_admin'?'badge-paid':'badge-initiated'}`}>{u.role==='super_admin'?'Super Admin':'School Admin'}</span></td>
-                      <td style={{fontSize:12}}>{u.role==='super_admin'?'All Schools':u.schools?.name??'—'}</td>
+                    <tr key={u.user_id??u.id}>
+                      <td style={{fontWeight:700}}>
+                        <div>{u.email}</div>
+                        {u.display_name&&<div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{u.display_name}</div>}
+                      </td>
+                      <td>
+                        <span className={`badge ${u.role==='super_admin'?'badge-paid':u.role==='sub_admin'?'badge-pending':'badge-initiated'}`}>
+                          {u.role==='super_admin'?'Super Admin':u.role==='sub_admin'?'Sub Admin':'School Admin'}
+                        </span>
+                      </td>
+                      <td style={{fontSize:12}}>
+                        {u.role==='super_admin'
+                          ? <span style={{color:'var(--m)'}}>All Schools</span>
+                          : u.role==='sub_admin'
+                            ? u.all_schools
+                              ? <span style={{color:'var(--acc)',fontWeight:600}}>🌐 All Schools</span>
+                              : <span>{(u.school_names??[]).join(', ')||'—'}</span>
+                            : u.schools?.name??'—'}
+                      </td>
+                      <td style={{fontSize:12,maxWidth:240}}>
+                        {u.role==='sub_admin'
+                          ? <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                              {(u.allowed_pages??[]).slice(0,4).map((p:string)=>(
+                                <span key={p} style={{fontSize:10,padding:'2px 7px',borderRadius:5,background:'var(--acc3)',color:'var(--acc)',fontWeight:600}}>{p}</span>
+                              ))}
+                              {(u.allowed_pages??[]).length>4&&<span style={{fontSize:10,color:'var(--m)'}}>+{(u.allowed_pages??[]).length-4} more</span>}
+                            </div>
+                          : <span style={{fontSize:11,color:'var(--m)'}}>Full access</span>}
+                      </td>
                       <td style={{fontSize:12,color:'var(--m)'}}>{new Date(u.created_at).toLocaleDateString('en-IN')}</td>
-                      {isSuperAdmin&&<td><button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}} onClick={async()=>{if(!confirm(`Remove ${u.email}?`))return;await fetch(`${BACKEND}/api/admin/users`,{credentials:'include',method:'DELETE',headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},body:JSON.stringify({role_id:u.id})});loadUsers();}}>Remove</button></td>}
+                      {isSuperAdmin&&<td style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        {u.role==='sub_admin'&&(
+                          <button className="btn" style={{fontSize:11,padding:'4px 10px'}}
+                            onClick={()=>setUserForm(u)}>
+                            ✏️ Edit
+                          </button>
+                        )}
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}}
+                          onClick={async()=>{
+                            if(!confirm(`Remove ${u.email}?`))return;
+                            await fetch(`${BACKEND}/api/admin/users`,{
+                              credentials:'include',method:'DELETE',
+                              headers:{...{'Content-Type':'application/json'},...(accessTokenRef.current?{'Authorization':`Bearer ${accessTokenRef.current}`}:{})},
+                              body:JSON.stringify({user_id:u.user_id??undefined,role_id:u.role!=='sub_admin'?u.id:undefined}),
+                            });
+                            loadUsers();
+                          }}>
+                          🗑 Remove
+                        </button>
+                      </td>}
                     </tr>
                   ))
                 }
@@ -1056,6 +1150,7 @@ export default function AdminDashboard() {
 
           {/* ── LOGS: SCHOOLS ─────────────────────────────────────────── */}
           <div className={`page${activePage==='logs_schools'?' active':''}`}>
+            {activePage==='logs_schools' && !canSeePage('logs_schools') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>School <span>Logs</span></h1><p>Activity, registrations, email & WhatsApp logs per school</p></div></div>
             {activePage==='logs_schools' && (
               <div style={{padding:'0 0 24px'}}>
@@ -1072,6 +1167,7 @@ export default function AdminDashboard() {
 
           {/* ── LOGS: STUDENTS ────────────────────────────────────────── */}
           <div className={`page${activePage==='logs_students'?' active':''}`}>
+            {activePage==='logs_students' && !canSeePage('logs_students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>Student <span>Logs</span></h1><p>Email & WhatsApp notification logs per student registration</p></div></div>
             {activePage==='logs_students' && (
               <div style={{padding:'0 0 24px'}}>
@@ -1088,6 +1184,7 @@ export default function AdminDashboard() {
 
           {/* ── LOGS: EMAIL ───────────────────────────────────────────── */}
           <div className={`page${activePage==='logs_email'?' active':''}`}>
+            {activePage==='logs_email' && !canSeePage('logs_email') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar">
               <div className="topbar-left"><h1>Email <span>Trigger Logs</span></h1><p>All outbound email notifications (latest 200)</p></div>
               <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogEmailLoading(true);api('/api/admin/notification-logs?channel=email&limit=200').then((d:any)=>{setLogEmailRows(d.logs??[]);setLogEmailLoading(false);}).catch(()=>setLogEmailLoading(false));}}>🔄 Refresh</button></div>
@@ -1113,6 +1210,7 @@ export default function AdminDashboard() {
 
           {/* ── LOGS: WHATSAPP ────────────────────────────────────────── */}
           <div className={`page${activePage==='logs_whatsapp'?' active':''}`}>
+            {activePage==='logs_whatsapp' && !canSeePage('logs_whatsapp') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar">
               <div className="topbar-left"><h1>WhatsApp <span>Trigger Logs</span></h1><p>All outbound WhatsApp notifications (latest 200)</p></div>
               <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogWaLoading(true);api('/api/admin/notification-logs?channel=whatsapp&limit=200').then((d:any)=>{setLogWaRows(d.logs??[]);setLogWaLoading(false);}).catch(()=>setLogWaLoading(false));}}>🔄 Refresh</button></div>
@@ -1202,7 +1300,32 @@ export default function AdminDashboard() {
       {programForm!==null&&<ProgramFormModal initial={programForm} onClose={()=>setProgramForm(null)} onSave={async(data)=>{await saveForm('/api/admin/projects',data,()=>{setProgramForm(null);loadPrograms();},data.id?'Program updated!':'Program created!');}} />}
       {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);setSchools([]);loadSchools();},data.id?'School updated!':'School created!');}} />}
       {discountForm!==null&&<DiscountFormModal initial={discountForm} schools={schools} onClose={()=>setDiscountForm(null)} onSave={async(data)=>{await saveForm('/api/admin/discounts',data,()=>{setDiscountForm(null);loadDiscounts();},data.id?'Code updated!':'Code created!');}} />}
-      {userForm!==null&&<UserFormModal schools={schools} onClose={()=>setUserForm(null)} onSave={async(data)=>{await saveForm('/api/admin/users',data,()=>{setUserForm(null);loadUsers();},'Admin user created!');}} />}
+      {userForm!==null&&<UserFormModal
+  schools={schools}
+  initial={userForm && (userForm as any).user_id ? userForm : undefined}
+  onClose={()=>setUserForm(null)}
+  onSave={async(data)=>{
+    const isEdit = !!(userForm as any)?.user_id;
+    if (isEdit) {
+      // PATCH — update sub_admin permissions
+      const res = await fetch(`${BACKEND}/api/admin/users`, {
+        method:'PATCH',
+        headers:{...authHeaders()},
+        body:JSON.stringify({
+          user_id:(userForm as any).user_id,
+          display_name:data.display_name,
+          all_schools:data.all_schools,
+          allowed_school_ids:data.allowed_school_ids,
+          allowed_pages:data.allowed_pages,
+        }),
+      });
+      if (res.ok) { showToast('Permissions updated!','✅'); setUserForm(null); loadUsers(); }
+      else        { const e=await res.json(); showToast('Error: '+(e.error||'Unknown'),'❌'); }
+    } else {
+      await saveForm('/api/admin/users',data,()=>{setUserForm(null);loadUsers();},'Admin user created!');
+    }
+  }}
+/>}
       {integrationForm!==null&&<IntegrationFormModal initial={integrationForm} schools={schools} onClose={()=>setIntegrationForm(null)} onSave={async(data)=>{await saveForm('/api/admin/integrations',data,()=>{setIntegrationForm(null);loadIntegrations();},data.id?'Integration updated!':'Integration saved!');}} />}
       {triggerForm!==null&&<TriggerFormModal initial={triggerForm} schools={schools} templates={templates} onClose={()=>setTriggerForm(null)} onSave={async(data)=>{await saveForm('/api/admin/triggers',data,()=>{setTriggerForm(null);loadTriggers();},data.id?'Trigger updated!':'Trigger created!');}} />}
       {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
@@ -1426,16 +1549,207 @@ function DiscountFormModal({ initial, schools, onClose, onSave }:{ initial:Row; 
 }
 
 // ── User Form ───────────────────────────────────────────────────────
-function UserFormModal({ schools, onClose, onSave }:{ schools:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
-  const [f,setF] = useState({ email:'', password:'', role:'school_admin', school_id:'' });
-  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
+// ─────────────────────────────────────────────────────────────────────────────
+// Page IDs that can be granted to sub-admins (mirrors the NAV array)
+const ALL_PAGES = [
+  { id:'overview',      label:'Overview Dashboard',   section:'Analytics' },
+  { id:'reporting',     label:'Reporting',             section:'Analytics' },
+  { id:'students',      label:'Students',              section:'Analytics' },
+  { id:'trends',        label:'Trends',                section:'Analytics' },
+  { id:'followup',      label:'Follow-Up',             section:'Actions'   },
+  { id:'heatmap',       label:'City Heatmap',          section:'Actions'   },
+  { id:'recent',        label:'Recent Activity',       section:'Actions'   },
+  { id:'programs',      label:'Programs',              section:'Management'},
+  { id:'schools',       label:'Schools',               section:'Management'},
+  { id:'manage_school', label:'Manage Schools',        section:'Management'},
+  { id:'discounts',     label:'Discount Codes',        section:'Management'},
+  { id:'logs_schools',  label:'School Logs',           section:'Logs'      },
+  { id:'logs_students', label:'Student Logs',          section:'Logs'      },
+  { id:'logs_email',    label:'Email Logs',            section:'Logs'      },
+  { id:'logs_whatsapp', label:'WhatsApp Logs',         section:'Logs'      },
+];
+
+function UserFormModal({ schools, initial, onClose, onSave }: {
+  schools: Row[];
+  initial?: Row;   // pass existing user to edit permissions
+  onClose: () => void;
+  onSave: (d: Row) => void;
+}) {
+  const isEdit = !!initial?.user_id;
+  const [f, setF] = useState({
+    email:               initial?.email        ?? '',
+    password:            '',
+    display_name:        initial?.display_name ?? '',
+    role:                initial?.role         ?? 'sub_admin',
+    school_id:           initial?.school_id    ?? '',          // legacy school_admin
+    all_schools:         initial?.all_schools  ?? false,
+    allowed_school_ids:  initial?.school_ids   ?? [] as string[],
+    allowed_pages:       initial?.allowed_pages ?? [] as string[],
+  });
+
+  const set = (k: string, v: any) => setF(p => ({ ...p, [k]: v }));
+
+  const toggleSchool = (id: string) => {
+    set('allowed_school_ids',
+      f.allowed_school_ids.includes(id)
+        ? f.allowed_school_ids.filter((x: string) => x !== id)
+        : [...f.allowed_school_ids, id]
+    );
+  };
+
+  const togglePage = (id: string) => {
+    set('allowed_pages',
+      f.allowed_pages.includes(id)
+        ? f.allowed_pages.filter((x: string) => x !== id)
+        : [...f.allowed_pages, id]
+    );
+  };
+
+  const selectAllPages = () => set('allowed_pages', ALL_PAGES.map(p => p.id));
+  const clearAllPages  = () => set('allowed_pages', []);
+
+  // Group pages by section for display
+  const sections = [...new Set(ALL_PAGES.map(p => p.section))];
+
+  const pill: React.CSSProperties = { display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px',
+    borderRadius:8, border:'1.5px solid var(--bd)', cursor:'pointer', fontSize:12, fontWeight:600,
+    fontFamily:'DM Sans,sans-serif', userSelect:'none' as const };
+
   return (
-    <ModalShell title="Add Admin User" onClose={onClose}>
-      <Field label="Email *"><input style={IS} type="email" value={f.email} onChange={set('email')} placeholder="admin@example.com"/></Field>
-      <Field label="Password *"><input style={IS} type="password" value={f.password} onChange={set('password')} placeholder="Minimum 8 characters"/></Field>
-      <Field label="Role *"><select style={SS} value={f.role} onChange={set('role')}><option value="school_admin">School Admin</option><option value="super_admin">Super Admin</option></select></Field>
-      {f.role==='school_admin'&&<Field label="Assign to School *"><select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">Select school</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}</select></Field>}
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>Create Admin User</button></div>
+    <ModalShell title={isEdit ? \`Edit: \${initial?.email}\` : 'Add Admin User'} onClose={onClose}>
+      {/* Basic info */}
+      {!isEdit && (
+        <>
+          <Field label="Email *">
+            <input style={IS} type="email" value={f.email} onChange={e=>set('email',e.target.value)} placeholder="user@example.com"/>
+          </Field>
+          <Field label="Password *">
+            <input style={IS} type="password" value={f.password} onChange={e=>set('password',e.target.value)} placeholder="Minimum 8 characters"/>
+          </Field>
+        </>
+      )}
+      <Field label="Display Name (optional)">
+        <input style={IS} value={f.display_name} onChange={e=>set('display_name',e.target.value)} placeholder="e.g. City Coordinator — Delhi"/>
+      </Field>
+
+      {!isEdit && (
+        <Field label="Role *">
+          <select style={SS} value={f.role} onChange={e=>set('role',e.target.value)}>
+            <option value="sub_admin">Sub Admin (restricted access)</option>
+            <option value="school_admin">School Admin (single school, legacy)</option>
+            <option value="super_admin">Super Admin (full access)</option>
+          </select>
+        </Field>
+      )}
+
+      {/* ── Legacy school_admin: single school ── */}
+      {f.role==='school_admin' && (
+        <Field label="Assign to School *">
+          <select style={SS} value={f.school_id} onChange={e=>set('school_id',e.target.value)}>
+            <option value="">Select school</option>
+            {schools.map(s=><option key={s.id} value={s.id}>{s.name} ({s.school_code})</option>)}
+          </select>
+        </Field>
+      )}
+
+      {/* ── Sub-admin: school access ── */}
+      {(f.role==='sub_admin') && (
+        <Field label="School Access">
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {/* All Schools toggle */}
+            <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'10px 14px',
+              borderRadius:9,border:\`1.5px solid \${f.all_schools?'var(--acc)':'var(--bd)'}\`,
+              background:f.all_schools?'var(--acc3)':'var(--bg)'}}>
+              <input type="checkbox" checked={f.all_schools}
+                onChange={e=>set('all_schools',e.target.checked)}
+                style={{width:15,height:15,accentColor:'var(--acc)'}}/>
+              <span style={{fontWeight:700,fontSize:13,color:f.all_schools?'var(--acc)':'var(--text)'}}>
+                🌐 All Schools (current + future)
+              </span>
+            </label>
+
+            {/* Individual school picker — shown when all_schools is off */}
+            {!f.all_schools && (
+              <div style={{border:'1.5px solid var(--bd)',borderRadius:9,overflow:'hidden'}}>
+                <div style={{padding:'8px 12px',background:'var(--bg)',borderBottom:'1px solid var(--bd)',
+                  display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px'}}>
+                    Select Schools
+                  </span>
+                  <span style={{fontSize:11,color:'var(--m)'}}>
+                    {f.allowed_school_ids.length} selected
+                  </span>
+                </div>
+                <div style={{maxHeight:180,overflowY:'auto'}}>
+                  {schools.map(s => {
+                    const sel = f.allowed_school_ids.includes(s.id);
+                    return (
+                      <label key={s.id} style={{display:'flex',alignItems:'center',gap:10,
+                        padding:'8px 12px',cursor:'pointer',borderBottom:'1px solid var(--bd)',
+                        background:sel?'var(--acc3)':'transparent'}}>
+                        <input type="checkbox" checked={sel} onChange={()=>toggleSchool(s.id)}
+                          style={{width:14,height:14,accentColor:'var(--acc)'}}/>
+                        <span style={{fontSize:12,fontWeight:sel?700:400,color:'var(--text)'}}>
+                          {s.name}
+                        </span>
+                        <span style={{fontSize:11,color:'var(--m)',marginLeft:'auto'}}>{s.school_code}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </Field>
+      )}
+
+      {/* ── Sub-admin: page access ── */}
+      {(f.role==='sub_admin') && (
+        <Field label="Page Access">
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            <div style={{display:'flex',gap:8}}>
+              <button type="button" onClick={selectAllPages} style={{...pill,background:'var(--acc3)',color:'var(--acc)',borderColor:'var(--acc)'}}>
+                ✓ Select All
+              </button>
+              <button type="button" onClick={clearAllPages} style={{...pill,background:'var(--bg)',color:'var(--m)'}}>
+                ✕ Clear All
+              </button>
+              <span style={{fontSize:12,color:'var(--m)',alignSelf:'center',marginLeft:4}}>
+                {f.allowed_pages.length} of {ALL_PAGES.length} pages
+              </span>
+            </div>
+            {sections.map(section => (
+              <div key={section}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',
+                  color:'var(--m)',padding:'4px 2px',marginBottom:4}}>{section}</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                  {ALL_PAGES.filter(p=>p.section===section).map(p => {
+                    const sel = f.allowed_pages.includes(p.id);
+                    return (
+                      <label key={p.id} onClick={()=>togglePage(p.id)} style={{
+                        ...pill,
+                        background: sel ? 'var(--acc3)' : 'var(--bg)',
+                        color:      sel ? 'var(--acc)'  : 'var(--text)',
+                        borderColor: sel ? 'var(--acc)' : 'var(--bd)',
+                      }}>
+                        <span style={{fontSize:13,width:14,textAlign:'center'}}>{sel?'✓':''}</span>
+                        {p.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:4}}>
+        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={()=>onSave(f)}>
+          {isEdit ? 'Save Permissions' : 'Create Admin User'}
+        </button>
+      </div>
     </ModalShell>
   );
 }

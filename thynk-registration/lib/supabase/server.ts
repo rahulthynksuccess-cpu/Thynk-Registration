@@ -56,3 +56,49 @@ export async function getUserFromRequest(req: NextRequest) {
 
   return null;
 }
+
+// ── Admin permission helper ───────────────────────────────────────────────────
+// Returns resolved permissions for any admin role, including sub_admin page/school scoping.
+export interface AdminPermissions {
+  isSuperAdmin:     boolean;
+  isSubAdmin:       boolean;
+  isSchoolAdmin:    boolean;
+  allowedPages:     string[] | null;  // null = all pages allowed
+  allowedSchoolIds: string[] | null;  // null = all schools allowed
+}
+
+export async function getAdminPermissions(req: NextRequest): Promise<AdminPermissions | null> {
+  const user = await getUserFromRequest(req);
+  if (!user) return null;
+
+  const service = createServiceClient();
+  const { data: rows } = await service
+    .from('admin_roles')
+    .select('role, school_id, all_schools, allowed_pages')
+    .eq('user_id', user.id);
+
+  if (!rows?.length) return null;
+
+  const isSuperAdmin  = rows.some((r: any) => r.role === 'super_admin' && !r.school_id);
+  const isSubAdmin    = rows.some((r: any) => r.role === 'sub_admin');
+  const isSchoolAdmin = rows.some((r: any) => r.role === 'school_admin');
+
+  if (isSuperAdmin) {
+    return { isSuperAdmin: true, isSubAdmin: false, isSchoolAdmin: false, allowedPages: null, allowedSchoolIds: null };
+  }
+
+  if (isSubAdmin) {
+    const subRows    = rows.filter((r: any) => r.role === 'sub_admin');
+    const allSchools = subRows.some((r: any) => r.all_schools);
+    const allowedPages = subRows[0]?.allowed_pages ?? null;
+    const schoolIds  = allSchools ? null : subRows.map((r: any) => r.school_id).filter(Boolean) as string[];
+    return { isSuperAdmin: false, isSubAdmin: true, isSchoolAdmin: false, allowedPages, allowedSchoolIds: schoolIds };
+  }
+
+  if (isSchoolAdmin) {
+    const schoolIds = rows.filter((r: any) => r.role === 'school_admin' && r.school_id).map((r: any) => r.school_id as string);
+    return { isSuperAdmin: false, isSubAdmin: false, isSchoolAdmin: true, allowedPages: null, allowedSchoolIds: schoolIds };
+  }
+
+  return null;
+}
