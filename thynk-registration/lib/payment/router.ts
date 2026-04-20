@@ -85,10 +85,13 @@ export function getCashfreeCredentials(config: Record<string, any>): { appId: st
 
 /** Extract Easebuzz credentials from config + env fallback */
 export function getEasebuzzCredentials(config: Record<string, any>): { key: string; salt: string; env: 'production' | 'test' } {
+  // Admin → Integrations UI saves: key_id = Merchant Key, key_secret = Salt, mode = 'live' | 'test'
+  const rawEnv = config.mode ?? config.eb_env ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
+  const env: 'production' | 'test' = rawEnv === 'live' ? 'production' : rawEnv === 'sandbox' ? 'test' : rawEnv;
   return {
-    key:  config.eb_key  ?? process.env.EASEBUZZ_KEY!,
-    salt: config.eb_salt ?? process.env.EASEBUZZ_SALT!,
-    env:  config.eb_env  ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production',
+    key:  (config.key_id     ?? config.eb_key  ?? process.env.EASEBUZZ_KEY!).trim(),
+    salt: (config.key_secret ?? config.eb_salt ?? process.env.EASEBUZZ_SALT!).trim(),
+    env,
   };
 }
 

@@ -51,46 +51,67 @@ export async function initEasebuzzPayment(
   ebSalt: string,
   env: 'production' | 'test' = 'production'
 ): Promise<EasebuzzInitResponse> {
+  // Trim to remove any accidental spaces/newlines from copy-paste in Admin → Integrations
+  const merchantKey = ebKey.trim();
+  const salt        = ebSalt.trim();
+
+  if (!merchantKey) throw new Error('Easebuzz Merchant Key is empty — check Admin → Integrations → Easebuzz');
+  if (!salt)        throw new Error('Easebuzz Salt is empty — check Admin → Integrations → Easebuzz');
+
   const baseUrl =
     env === 'production'
       ? 'https://pay.easebuzz.in'
       : 'https://testpay.easebuzz.in';
 
-  const hash = generateEasebuzzHash(options, ebKey, ebSalt);
+  const hash = generateEasebuzzHash(options, merchantKey, salt);
 
-  const params = new URLSearchParams({
-    key: ebKey,
+  console.log('[Easebuzz] initiating payment:', {
+    merchantKey: merchantKey.slice(0, 4) + '***',
     txnid: options.txnid,
     amount: options.amount,
     productinfo: options.productinfo,
-    firstname: options.firstname,
-    email: options.email,
-    phone: options.phone,
-    udf1: options.udf1 ?? '',
-    udf2: options.udf2 ?? '',
-    udf3: options.udf3 ?? '',
-    udf4: options.udf4 ?? '',
-    udf5: options.udf5 ?? '',
-    hash,
-    surl: options.surl,
-    furl: options.furl,
+    env,
   });
 
-  const res = await fetch(`${baseUrl}/payment/initiateLink`, {
+  const params = new URLSearchParams({
+    key:         merchantKey,
+    txnid:       options.txnid,
+    amount:      options.amount,
+    productinfo: options.productinfo,
+    firstname:   options.firstname,
+    email:       options.email,
+    phone:       options.phone,
+    udf1:        options.udf1 ?? '',
+    udf2:        options.udf2 ?? '',
+    udf3:        options.udf3 ?? '',
+    udf4:        options.udf4 ?? '',
+    udf5:        options.udf5 ?? '',
+    hash,
+    surl:        options.surl,
+    furl:        options.furl,
+  });
+
+  const res = await fetch(`${baseUrl}/payment/initiateLink/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: params.toString(),
   });
 
-  if (!res.ok) throw new Error('Easebuzz init failed');
-  const data = await res.json();
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    const txt = await res.text();
+    throw new Error(`Easebuzz error (HTTP ${res.status}): ${txt.slice(0, 300)}`);
+  }
 
-  if (!data.status || !data.data) {
-    throw new Error(`Easebuzz error: ${data.error_desc || 'Unknown error'}`);
+  const data = await res.json();
+  console.log('[Easebuzz initiateLink response]', JSON.stringify(data));
+
+  if (data.status !== 1 || !data.data) {
+    throw new Error(`Easebuzz error: ${data.error_desc || JSON.stringify(data)}`);
   }
 
   return {
-    access_key: data.data,
+    access_key:  data.data,
     payment_url: `${baseUrl}/pay/init`,
   };
 }
