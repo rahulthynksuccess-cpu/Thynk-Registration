@@ -23,7 +23,13 @@ export async function fireTriggers(
   // ── Load triggers ─────────────────────────────────────────────────────────
   const { data: triggers, error: triggerErr } = await supabase
     .from('notification_triggers')
-    .select('*, notification_templates(*)')
+    .select(`
+      *,
+      notification_templates (
+        id, name, channel, subject, body, is_active,
+        whatsapp_template_name, whatsapp_template_lang
+      )
+    `)
     .or(`school_id.eq.${schoolId},school_id.is.null`)
     .eq('event_type', event)
     .eq('is_active', true);
@@ -47,6 +53,14 @@ export async function fireTriggers(
   console.log(`${tag} Found ${triggers.length} trigger(s):`, triggers.map(t =>
     `${t.id} channel=${t.channel} recipient_type=${t.recipient_type ?? 'student'}`
   ));
+
+  // Diagnostic: log template details so we can verify whatsapp_template_name is populated
+  triggers.forEach(t => {
+    const tpl = t.notification_templates;
+    if (tpl && t.channel === 'whatsapp') {
+      console.log(`${tag} DIAG whatsapp template id=${tpl.id} name="${tpl.name}" whatsapp_template_name="${tpl.whatsapp_template_name ?? '(NOT SET)'}" lang="${tpl.whatsapp_template_lang ?? '(NOT SET)'}"`);
+    }
+  });
 
   // ── Build vars ────────────────────────────────────────────────────────────
   // For school events: only school vars needed.
@@ -389,37 +403,45 @@ async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string)
   const phone = rawPhone.replace(/\D/g, '');
   const to    = phone.startsWith('91') ? phone : `91${phone}`;
 
-  // Template fields (stored on notification_templates row)
-  const templateName: string | undefined = template.whatsapp_template_name;
-  const templateLang: string             = template.whatsapp_template_lang ?? 'en_US';
+  // ── Diagnostic: log every field we're working with ────────────────────────
+  const templateName: string | undefined = template.whatsapp_template_name || undefined;
+  // Normalise language code: Meta rejects bare "en" — must be "en_US" or "en_GB".
+  // DB currently stores "en" for all templates, so we fix it here at runtime.
+  const rawLang      = (template.whatsapp_template_lang ?? 'en_US').trim();
+  const templateLang = rawLang === 'en' ? 'en_US' : rawLang;
   const renderedBody: string             = renderTemplate(template.body, vars);
+
+  console.log(`[sendWhatsApp] DIAG template.id=${template.id} template.name="${template.name}" template.channel=${template.channel}`);
+  console.log(`[sendWhatsApp] DIAG whatsapp_template_name="${template.whatsapp_template_name}" (raw) → using: ${templateName ?? '(none — will send plain text)'}`);
+  console.log(`[sendWhatsApp] DIAG language_code="${templateLang}" to=${to}`);
 
   const { data: platformRow } = await supabase
     .from('integration_configs').select('config')
     .eq('provider', 'platform_settings').is('school_id', null).maybeSingle();
   const wa = platformRow?.config?.whatsapp_settings;
 
+  console.log(`[sendWhatsApp] DIAG wa.provider="${wa?.provider}" wa.enabled=${wa?.enabled} hasTcUrl=${!!wa?.tcUrl} hasTcApiKey=${!!wa?.tcApiKey}`);
+
   // ── ThynkComm ─────────────────────────────────────────────────────────────
   // ThynkComm /api/send-message accepts:
   //   Template:  { to, template_name, language_code }
   //   Plain text: { to, message }
-  // When whatsapp_template_name is set on the notification_template row,
-  // send as a Meta-approved template (works for first-contact outreach).
-  // Otherwise send plain text (only works within 24-hr conversation window).
   if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
     const payload: Record<string, any> = templateName
       ? { to, template_name: templateName, language_code: templateLang }
       : { to, message: renderedBody };
 
-    console.log(`[sendWhatsApp] thynkcomm ${templateName ? `template="${templateName}"` : 'plain-text'} to=${to}`);
+    console.log(`[sendWhatsApp] thynkcomm PAYLOAD=${JSON.stringify(payload)}`);
+
     const res = await fetch(wa.tcUrl.replace(/\/$/, '') + '/api/send-message', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': wa.tcApiKey, 'x-api-secret': wa.tcApiSecret ?? '' },
       body:    JSON.stringify(payload),
     });
+    const resBody = await res.json().catch(() => ({}));
+    console.log(`[sendWhatsApp] thynkcomm RESPONSE status=${res.status} body=${JSON.stringify(resBody)}`);
     if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      const errText = errBody.error ?? errBody.message ?? JSON.stringify(errBody);
+      const errText = resBody.error ?? resBody.message ?? JSON.stringify(resBody);
       throw new Error(`ThynkComm error ${res.status}: ${errText}`);
     }
     return 'thynkcomm';
