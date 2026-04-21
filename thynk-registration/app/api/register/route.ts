@@ -12,7 +12,7 @@ import { fireTriggers } from '@/lib/triggers/fire';
 import { createServiceClient } from '@/lib/supabase/server';
 import { createRazorpayOrder } from '@/lib/payment/razorpay';
 import { createCashfreeOrder } from '@/lib/payment/cashfree';
-import { initEasebuzzPayment } from '@/lib/payment/easebuzz';
+import { initEasebuzzPayment, generateEasebuzzTxnId, normalisePhone as normaliseEbPhone } from '@/lib/payment/easebuzz';
 import { generateTxnId } from '@/lib/utils';
 
 function isIndiaCurrency(currency: string): boolean {
@@ -491,29 +491,38 @@ export async function POST(req: NextRequest) {
     // ── Easebuzz ─────────────────────────────────────────────────────────────
     if (gateway === 'easebuzz') {
       // key_id = Merchant Key, key_secret = Salt, mode = test|production in Integrations UI
-      const ebKey    = gc.key_id     ?? process.env.EASEBUZZ_KEY!;
-      const ebSalt   = gc.key_secret ?? process.env.EASEBUZZ_SALT!;
-      const _ebRaw   = gc.mode       ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
-      const ebEnv    = _ebRaw === 'live' ? 'production' : _ebRaw === 'sandbox' ? 'test' : _ebRaw;
-      const txnId  = generateTxnId('EB');
+      const ebKey  = gc.key_id     ?? process.env.EASEBUZZ_KEY!;
+      const ebSalt = gc.key_secret ?? process.env.EASEBUZZ_SALT!;
+      const _ebRaw = gc.mode       ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
+      const ebEnv  = _ebRaw === 'live' ? 'production' : _ebRaw === 'sandbox' ? 'test' : _ebRaw as 'production' | 'test';
+
+      // txnid: alphanumeric only, max 25 chars — strip dashes from payment UUID
+      const txnId = generateEasebuzzTxnId(payment.id);
+
+      // firstname: alphanumeric + spaces only, max 50 chars
+      const firstname = studentName.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 50) || 'Student';
+
+      // phone: exactly 10 digits, no country code (Easebuzz rejects +91 prefix)
+      const phone = normaliseEbPhone(contactPhone);
 
       const ebResult = await initEasebuzzPayment(
         {
           txnid:       txnId,
           amount:      (finalAmount / 100).toFixed(2),
-          productinfo: pricing.program_name,
-          firstname:   studentName,
+          productinfo: pricing.program_name.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 100) || 'Registration',
+          firstname,
           email:       contactEmail,
-          phone:       contactPhone,
-          udf1:        parentName   || '',
-          udf2:        parentSchool || '',
-          udf3:        city         || '',
-          udf4:        classGrade   || '',
-          udf5:        gender       || '',
-          surl: `${appUrl}/api/payment/verify?paymentId=${payment.id}&gw=easebuzz&status=success`,
-          furl: `${appUrl}/api/payment/verify?paymentId=${payment.id}&gw=easebuzz&status=failed`,
+          phone,
+          // udf1-5 must be empty strings — they are included in hash computation.
+          // Passing actual values here causes Easebuzz hash mismatch on callback.
+          // Student data is already saved in the registrations table via payment.id.
+          udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+          // surl and furl both point to our dedicated POST handler.
+          // Easebuzz POSTs application/x-www-form-urlencoded to both URLs.
+          surl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
+          furl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
         },
-        ebKey, ebSalt, ebEnv as 'production' | 'test'
+        ebKey, ebSalt, ebEnv
       );
 
       await supabase.from('payments').update({ gateway_txn_id: txnId, status: 'initiated' }).eq('id', payment.id);
