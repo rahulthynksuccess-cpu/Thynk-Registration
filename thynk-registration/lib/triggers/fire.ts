@@ -184,7 +184,7 @@ async function buildSchoolVars(schoolId: string): Promise<TemplateVars | null> {
   const supabase = createServiceClient();
   const { data: school, error } = await supabase
     .from('schools')
-    .select('name, org_name, city, country, contact_persons, school_code')
+    .select('name, org_name, city, country, contact_persons, school_code, project_id, project_slug')
     .eq('id', schoolId)
     .single();
 
@@ -195,10 +195,22 @@ async function buildSchoolVars(schoolId: string): Promise<TemplateVars | null> {
   const primary = Array.isArray(school.contact_persons) ? school.contact_persons[0] : null;
   if (!primary) console.warn(`[buildSchoolVars] school ${schoolId} has no contact_persons`);
 
+  // Fetch program_name from the linked project so {{program_name}} resolves in templates
+  let programName = '';
+  if (school.project_id) {
+    const { data: project } = await supabase
+      .from('projects')
+      .select('name')
+      .eq('id', school.project_id)
+      .single();
+    programName = project?.name ?? '';
+  }
+
   return {
     school_name:         school.name     ?? '',
     org_name:            school.org_name ?? '',
     city:                school.city     ?? '',
+    program_name:        programName,
     contact_email:       primary?.email?.toLowerCase().trim() ?? '',
     contact_phone:       primary?.mobile ?? '',
     contact_person_name: primary?.name        ?? '',
@@ -267,6 +279,37 @@ async function buildTemplateVars(
 
 export function renderTemplate(body: string, vars: TemplateVars): string {
   return body.replace(/\{\{(\w+)\}\}/g, (_, key) => (vars as any)[key] ?? `{{${key}}}`);
+}
+
+/**
+ * Extracts {{variable}} placeholders from a template body in order and returns
+ * them as Meta WhatsApp API body component parameters.
+ *
+ * Meta template body params must be positional: {{1}}, {{2}}, … in the
+ * approved template. We map each {{variable_name}} in our body string to its
+ * resolved value, in the order they appear, so the parameter list lines up
+ * with the Meta template's numbered placeholders.
+ *
+ * Example:
+ *   body    = "Hi {{parent_name}}, {{student_name}} is registered for {{program_name}}."
+ *   vars    = { parent_name: 'Raj', student_name: 'Aryan', program_name: 'Olympiad' }
+ *   result  = [ {type:'text',text:'Raj'}, {type:'text',text:'Aryan'}, {type:'text',text:'Olympiad'} ]
+ */
+function buildMetaBodyParams(
+  templateBody: string,
+  vars: TemplateVars,
+): Array<{ type: 'text'; text: string }> {
+  const seen  = new Set<string>();
+  const order: string[] = [];
+  // Collect variable names in order of first appearance
+  templateBody.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    if (!seen.has(key)) { seen.add(key); order.push(key); }
+    return '';
+  });
+  return order.map(key => ({
+    type: 'text' as const,
+    text: String((vars as any)[key] ?? ''),
+  }));
 }
 
 // ── Email sender ──────────────────────────────────────────────────────────────
@@ -340,51 +383,112 @@ async function sendEmail(template: any, vars: TemplateVars, schoolId: string): P
 
 // ── WhatsApp sender ───────────────────────────────────────────────────────────
 async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string): Promise<string> {
-  const supabase  = createServiceClient();
-  const body      = renderTemplate(template.body, vars);
-  const rawPhone  = vars.contact_phone ?? '';
+  const supabase = createServiceClient();
+  const rawPhone = vars.contact_phone ?? '';
   if (!rawPhone) throw new Error('contact_phone is empty');
   const phone = rawPhone.replace(/\D/g, '');
+  const to    = phone.startsWith('91') ? phone : `91${phone}`;
+
+  // Template fields (stored on notification_templates row)
+  const templateName: string | undefined = template.whatsapp_template_name;
+  const templateLang: string             = template.whatsapp_template_lang ?? 'en';
+  const renderedBody: string             = renderTemplate(template.body, vars);
 
   const { data: platformRow } = await supabase
     .from('integration_configs').select('config')
     .eq('provider', 'platform_settings').is('school_id', null).maybeSingle();
   const wa = platformRow?.config?.whatsapp_settings;
 
+  // ── ThynkComm ─────────────────────────────────────────────────────────────
   if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
-    const to  = phone.startsWith('91') ? phone : `91${phone}`;
+    // If the template has a Meta-approved template name, send it as a template
+    // message (ThynkComm accepts the same shape as the Meta Cloud API).
+    // Otherwise fall back to a plain text session message.
+    const payload: Record<string, any> = templateName
+      ? {
+          to,
+          type: 'template',
+          template: {
+            name:       templateName,
+            language:   { code: templateLang },
+            components: [
+              {
+                type:       'body',
+                parameters: buildMetaBodyParams(template.body, vars),
+              },
+            ],
+          },
+        }
+      : { to, message: renderedBody };
+
+    console.log(`[sendWhatsApp] thynkcomm template="${templateName ?? '(plain)'}" to=${to}`);
     const res = await fetch(wa.tcUrl.replace(/\/$/, '') + '/api/send-message', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': wa.tcApiKey, 'x-api-secret': wa.tcApiSecret ?? '' },
-      body: JSON.stringify({ to, message: body }),
+      body:    JSON.stringify(payload),
     });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(`ThynkComm error: ${e.message ?? res.status}`); }
     return 'thynkcomm';
   }
 
+  // ── Meta Cloud API direct ─────────────────────────────────────────────────
   if (wa?.provider === 'meta' && wa?.metaPhoneId && wa?.metaToken) {
-    const to  = phone.startsWith('91') ? phone : `91${phone}`;
+    let messagePayload: Record<string, any>;
+
+    if (templateName) {
+      // Approved template message — works for all contacts including first-contact
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'template',
+        template: {
+          name:       templateName,
+          language:   { code: templateLang },
+          components: [
+            {
+              type:       'body',
+              parameters: buildMetaBodyParams(template.body, vars),
+            },
+          ],
+        },
+      };
+      console.log(`[sendWhatsApp] meta template="${templateName}" lang=${templateLang} to=${to}`);
+    } else {
+      // Plain text — only works within a 24-hr customer-service window
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: renderedBody },
+      };
+      console.warn(`[sendWhatsApp] meta plain text (no whatsapp_template_name set) — will fail outside 24-hr window`);
+    }
+
     const res = await fetch(`https://graph.facebook.com/v19.0/${wa.metaPhoneId}/messages`, {
-      method: 'POST',
+      method:  'POST',
       headers: { Authorization: `Bearer ${wa.metaToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
+      body:    JSON.stringify(messagePayload),
     });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(`Meta WhatsApp error: ${JSON.stringify(e)}`); }
     return 'meta_whatsapp';
   }
 
+  // ── Twilio (platform settings) ────────────────────────────────────────────
   if (wa?.provider === 'twilio' && wa?.accountSid && wa?.authToken && wa?.fromNumber) {
-    const to   = phone.startsWith('91') ? phone : `91${phone}`;
     const from = wa.fromNumber.startsWith('whatsapp:') ? wa.fromNumber : `whatsapp:${wa.fromNumber}`;
     const res  = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${wa.accountSid}/Messages.json`, {
-      method: 'POST',
-      headers: { Authorization: `Basic ${Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ From: from, To: `whatsapp:+${to}`, Body: body }).toString(),
+      method:  'POST',
+      headers: {
+        Authorization:  `Basic ${Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ From: from, To: `whatsapp:+${to}`, Body: renderedBody }).toString(),
     });
     if (!res.ok) throw new Error(`Twilio platform error: ${res.status}`);
     return 'twilio';
   }
 
+  // ── Legacy integration_configs table ─────────────────────────────────────
   const { data: configs } = await supabase
     .from('integration_configs').select('provider, config')
     .or(`school_id.eq.${schoolId},school_id.is.null`)
@@ -394,11 +498,11 @@ async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string)
     .order('priority', { ascending: true }).limit(1);
 
   const cfg = configs?.[0];
-  if (cfg?.provider === 'whatsapp_cloud') { await sendViaWhatsAppCloud(cfg.config, phone, body); return 'whatsapp_cloud'; }
-  if (cfg?.provider === 'twilio')         { await sendViaTwilio(cfg.config, phone, body);        return 'twilio'; }
+  if (cfg?.provider === 'whatsapp_cloud') { await sendViaWhatsAppCloud(cfg.config, phone, renderedBody); return 'whatsapp_cloud'; }
+  if (cfg?.provider === 'twilio')         { await sendViaTwilio(cfg.config, phone, renderedBody);        return 'twilio'; }
 
   if (process.env.WA_PHONE_NUMBER_ID && process.env.WA_TOKEN) {
-    await sendViaWhatsAppCloud({}, phone, body);
+    await sendViaWhatsAppCloud({}, phone, renderedBody);
     return 'whatsapp_cloud_env';
   }
 
