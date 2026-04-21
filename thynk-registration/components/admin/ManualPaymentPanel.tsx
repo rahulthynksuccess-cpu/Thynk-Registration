@@ -106,11 +106,11 @@ export function ManualPaymentPanel({
   BACKEND = '',
   onSuccess,
 }: {
-  student:      Row;
-  authHeaders:  () => HeadersInit;
+ student:      Row;
+  authHeaders?: () => HeadersInit;  // ← add ? to make optional
   BACKEND?:     string;
   onSuccess?:   (updated: Partial<Row>) => void;
-}) {
+})
   const [open,    setOpen]    = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
