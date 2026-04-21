@@ -91,7 +91,7 @@ export async function initEasebuzzPayment(
     furl:        options.furl,
   });
 
-  const res = await fetch(`${baseUrl}/payment/initiateLink/`, {
+  const res = await fetch(`${baseUrl}/payment/initiateLink`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: params.toString(),
