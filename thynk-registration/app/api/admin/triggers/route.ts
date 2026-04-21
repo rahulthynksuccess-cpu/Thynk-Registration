@@ -9,12 +9,18 @@ async function requireAdmin(req: NextRequest) {
   return data ? { user, role: data } : null;
 }
 
-// Only these columns exist on the notification_triggers table.
-// Anything else (e.g. notification_templates from a JOIN) must be stripped
-// before insert/update or Supabase throws a schema-cache error.
+// Only columns that exist on notification_triggers.
+// recipient_type added in migration 006.
 function sanitizeTrigger(raw: Record<string, any>) {
-  const { event_type, channel, template_id, school_id, is_active } = raw;
-  return { event_type, channel, template_id, school_id: school_id ?? null, is_active: is_active ?? true };
+  const { event_type, channel, template_id, school_id, is_active, recipient_type } = raw;
+  return {
+    event_type,
+    channel,
+    template_id,
+    school_id:      school_id ?? null,
+    is_active:      is_active ?? true,
+    recipient_type: recipient_type ?? 'student',
+  };
 }
 
 export async function GET(req: NextRequest) {
