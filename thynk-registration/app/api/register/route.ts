@@ -13,7 +13,6 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { createRazorpayOrder } from '@/lib/payment/razorpay';
 import { createCashfreeOrder } from '@/lib/payment/cashfree';
 import { initEasebuzzPayment, generateEasebuzzTxnId, normalisePhone as normaliseEbPhone } from '@/lib/payment/easebuzz';
-import { getEasebuzzCredentials } from '@/lib/payment/router';
 import { generateTxnId } from '@/lib/utils';
 
 function isIndiaCurrency(currency: string): boolean {
@@ -491,45 +490,68 @@ export async function POST(req: NextRequest) {
 
     // ── Easebuzz ─────────────────────────────────────────────────────────────
     if (gateway === 'easebuzz') {
-      // getEasebuzzCredentials reads: config.key_id ?? config.eb_key (saved by admin page)
-      const { key: ebKey, salt: ebSalt, env: ebEnv } = getEasebuzzCredentials(gc);
+      // Admin → Payment & Setting page saves keys as eb_key, eb_salt, eb_env
+      const merchantKey = (gc.eb_key  ?? process.env.EASEBUZZ_KEY  ?? '').trim();
+      const salt        = (gc.eb_salt ?? process.env.EASEBUZZ_SALT ?? '').trim();
+      const ebMode      = (gc.eb_env  ?? process.env.EASEBUZZ_ENV  ?? 'production').trim();
 
+      if (!merchantKey) throw new Error('Easebuzz Merchant Key not configured — go to Admin → Payment & Setting');
+      if (!salt)        throw new Error('Easebuzz Salt not configured — go to Admin → Payment & Setting');
 
-      // txnid: alphanumeric only, max 25 chars — strip dashes from payment UUID
-      const txnId = generateEasebuzzTxnId(payment.id);
+      // txnid: alphanumeric only, max 25 chars (same as schooling)
+      const txnid = payment.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 25);
 
-      // firstname: alphanumeric + spaces only, max 50 chars
-      const firstname = studentName.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 50) || 'Student';
+      const amountMajor = (finalAmount / 100).toFixed(2);
+      const productinfo = (pricing.program_name || 'Registration').replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 100);
+      const firstname   = (studentName || 'Student').replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 50) || 'Student';
+      const email       = contactEmail;
+      const rawPhone    = (contactPhone || '').replace(/\D/g, '').replace(/^91/, '').slice(-10);
+      const phone       = rawPhone.length === 10 ? rawPhone : '9999999999';
 
-      // phone: exactly 10 digits, no country code (Easebuzz rejects +91 prefix)
-      const phone = normaliseEbPhone(contactPhone);
+      // EXACT schooling hash — 16 pipes, udf1-10 all empty
+      const hashStr = `${merchantKey}|${txnid}|${amountMajor}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
+      const hash    = require('crypto').createHash('sha512').update(hashStr).digest('hex');
 
-      const ebResult = await initEasebuzzPayment(
-        {
-          txnid:       txnId,
-          amount:      (finalAmount / 100).toFixed(2),
-          productinfo: pricing.program_name.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 100) || 'Registration',
-          firstname,
-          email:       contactEmail,
-          phone,
-          // surl and furl both point to our dedicated POST handler.
-          // Easebuzz POSTs application/x-www-form-urlencoded to both URLs.
-          surl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
-          furl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
-        },
-        ebKey, ebSalt, ebEnv
-      );
+      const baseUrl = ebMode === 'test'
+        ? 'https://testpay.easebuzz.in'
+        : 'https://pay.easebuzz.in';
 
-      await supabase.from('payments').update({ gateway_txn_id: txnId, status: 'initiated' }).eq('id', payment.id);
+      console.log('[Easebuzz] initiating:', { merchantKey: merchantKey.slice(0,4)+'***', txnid, amountMajor, ebMode, baseUrl });
+
+      const formData = new URLSearchParams({
+        key: merchantKey, txnid, amount: amountMajor, productinfo, firstname, email, phone,
+        udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+        surl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
+        furl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
+        hash,
+      });
+
+      const ebRes = await fetch(`${baseUrl}/payment/initiateLink/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString(),
+      });
+
+      const ct = ebRes.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const txt = await ebRes.text();
+        throw new Error(`Easebuzz error (HTTP ${ebRes.status}): ${txt.slice(0, 300)}`);
+      }
+      const ebData = await ebRes.json();
+      console.log('[Easebuzz initiateLink response]', JSON.stringify(ebData));
+      if (ebData.status !== 1) throw new Error(`Easebuzz: ${ebData.error_desc || JSON.stringify(ebData)}`);
+
+      const accessKey = ebData.data;
+
+      await supabase.from('payments').update({ gateway_txn_id: txnid, status: 'initiated' }).eq('id', payment.id);
       await supabase.from('registrations').update({ status: 'initiated' }).eq('id', registration.id);
 
       return NextResponse.json({
         gateway:         'easebuzz',
         payment_id:      payment.id,
         registration_id: registration.id,
-        access_key:      ebResult.access_key,
-        payment_url:     ebResult.payment_url,
-        env:             ebEnv,
+        access_key:      accessKey,
+        env:             ebMode,
       });
     }
 
