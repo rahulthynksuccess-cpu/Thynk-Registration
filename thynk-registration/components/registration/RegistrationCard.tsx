@@ -246,7 +246,7 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
     const s = document.createElement('script');
     s.src = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js';
     s.onload = () => {
-      const eb = new (window as any).EasebuzzCheckout(data.access_key, data.env === 'live' ? 'prod' : 'test');
+      const eb = new (window as any).EasebuzzCheckout(data.access_key, (data.env === 'live' || data.env === 'production') ? 'prod' : 'test');
       eb.initiatePayment({
         access_key: data.access_key,
         onResponse: async (r: any) => {

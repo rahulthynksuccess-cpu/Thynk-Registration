@@ -34,6 +34,48 @@ async function getEasebuzzSalt(supabase: any, schoolId: string): Promise<string>
   return (globalCfg?.config?.key_secret ?? process.env.EASEBUZZ_SALT ?? '').trim();
 }
 
+/**
+ * GET handler — Easebuzz JS SDK sometimes redirects the browser to surl as a GET
+ * (in addition to the server-to-server POST). We look up the payment status in DB
+ * (the POST should have already updated it) and redirect accordingly.
+ * If the POST hasn't arrived yet we redirect to SUCCESS_URL and let the frontend poll.
+ */
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const paymentId = searchParams.get('paymentId');
+
+  if (!paymentId) {
+    console.error('[easebuzz-callback GET] Missing paymentId');
+    return NextResponse.redirect(`${FALLBACK_URL}?payment=error`, 303);
+  }
+
+  const supabase = createServiceClient();
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('id, status, registration_id, school_id')
+    .eq('id', paymentId)
+    .single();
+
+  if (!payment) {
+    console.error('[easebuzz-callback GET] Payment not found:', paymentId);
+    return NextResponse.redirect(`${FALLBACK_URL}?payment=error`, 303);
+  }
+
+  console.log('[easebuzz-callback GET] paymentId=%s status=%s', paymentId, payment.status);
+
+  if (payment.status === 'paid') {
+    return NextResponse.redirect(SUCCESS_URL, 303);
+  }
+
+  if (payment.status === 'failed') {
+    return NextResponse.redirect(`${FALLBACK_URL}?payment=failed`, 303);
+  }
+
+  // Status still pending/initiated — POST may not have arrived yet.
+  // Redirect to success page; it will show a confirmation once the POST updates the DB.
+  return NextResponse.redirect(SUCCESS_URL, 303);
+}
+
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const paymentId = searchParams.get('paymentId');
