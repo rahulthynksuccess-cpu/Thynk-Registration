@@ -11,7 +11,14 @@ export async function fireTriggers(
   schoolId: string
 ): Promise<void> {
   const supabase = createServiceClient();
-  const tag = `[fireTriggers:${event}]`;
+
+  // Treat payment.cancelled exactly like payment.failed —
+  // admins only set up one "payment failed" trigger, not separate ones per failure type.
+  // Any non-success payment event fires the payment.failed trigger rules.
+  const resolvedEvent: TriggerEvent =
+    event === 'payment.cancelled' ? 'payment.failed' : event;
+
+  const tag = `[fireTriggers:${event}${resolvedEvent !== event ? `→${resolvedEvent}` : ''}]`;
 
   console.log(`${tag} START — schoolId=${schoolId} registrationId=${registrationId}`);
 
@@ -31,7 +38,7 @@ export async function fireTriggers(
       )
     `)
     .or(`school_id.eq.${schoolId},school_id.is.null`)
-    .eq('event_type', event)
+    .eq('event_type', resolvedEvent)
     .eq('is_active', true);
 
   if (triggerErr) {
@@ -76,7 +83,7 @@ export async function fireTriggers(
       return;
     }
   } else {
-    studentVars = await buildTemplateVars(registrationId, schoolId, event);
+    studentVars = await buildTemplateVars(registrationId, schoolId, resolvedEvent);
     if (!studentVars) {
       console.error(`${tag} Could not build student vars — regId=${registrationId}`);
       return;
@@ -280,19 +287,27 @@ async function buildTemplateVars(
     school_name:   school?.name      ?? '',
     org_name:      school?.org_name  ?? '',
     program_name:  pricing?.program_name ?? '',
+    // amount and final_amount both resolve — templates may use either
     amount:        payment?.final_amount
-      ? `₹${(payment.final_amount / 100).toLocaleString('en-IN')}` : undefined,
-    txn_id:        payment?.gateway_txn_id ?? undefined,
-    gateway:       payment?.gateway        ?? undefined,
+      ? `₹${(payment.final_amount / 100).toLocaleString('en-IN')}` : '',
+    final_amount:  payment?.final_amount
+      ? `₹${(payment.final_amount / 100).toLocaleString('en-IN')}` : '',
+    txn_id:        payment?.gateway_txn_id ?? '',
+    gateway:       payment?.gateway        ?? '',
     paid_at:       payment?.paid_at
-      ? new Date(payment.paid_at).toLocaleDateString('en-IN') : undefined,
+      ? new Date(payment.paid_at).toLocaleDateString('en-IN') : '',
     payment_link:  paymentLink || undefined,
     retry_link:    paymentLink || undefined,
   } as TemplateVars;
 }
 
 export function renderTemplate(body: string, vars: TemplateVars): string {
-  return body.replace(/\{\{(\w+)\}\}/g, (_, key) => (vars as any)[key] ?? `{{${key}}}`);
+  return body.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const val = (vars as any)[key];
+    // Return empty string for undefined/null so {{key}} never appears in sent messages
+    if (val === undefined || val === null) return '';
+    return String(val);
+  });
 }
 
 /**
