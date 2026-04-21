@@ -120,7 +120,11 @@ export async function POST(req: NextRequest) {
   let newStatus: 'paid' | 'failed' = 'failed';
   const txnId   = gatewayTxnId ?? payment.gateway_txn_id;
 
-  if (gateway === 'razorpay' && razorpayOrderId && razorpaySignature && gatewayTxnId) {
+  // Razorpay ondismiss sends { gateway:'razorpay', status:'cancelled' } with no signature.
+  // Treat cancelled exactly as failed — both fire payment.failed trigger.
+  const isCancelled = (body.status === 'cancelled');
+
+  if (!isCancelled && gateway === 'razorpay' && razorpayOrderId && razorpaySignature && gatewayTxnId) {
     const rzpConfig = await getGatewayConfig(supabase, payment.school_id, 'razorpay');
     const secret    = rzpConfig?.config?.key_secret ?? process.env.RAZORPAY_KEY_SECRET!;
     verified        = verifyRazorpaySignature(razorpayOrderId, gatewayTxnId, razorpaySignature, secret);
