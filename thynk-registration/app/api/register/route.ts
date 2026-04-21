@@ -409,8 +409,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create payment record' }, { status: 500 });
   }
 
-  // Fire registration.created trigger immediately (payment may still be pending)
-  await fireTriggers('registration.created', registration.id, schoolId);
+  // NOTE: registration.created trigger is fired only after payment succeeds,
+  // not here — to avoid sending "registration confirmed" messages on failed payments.
+  // For Razorpay: fired in POST /api/payment/verify after signature check
+  // For Cashfree: fired in GET /api/payment/verify after gateway verification
+  // For Easebuzz: fired in POST /api/payment/verify after hash verification
+  // For PayPal:   fired immediately below since payment is synchronous
 
   const appUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://thynk-registration.vercel.app';
 
