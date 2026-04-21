@@ -1,3 +1,23 @@
+/**
+ * lib/payment/easebuzz.ts
+ *
+ * Easebuzz payment initiation + hash verification.
+ * Ported from the WORKING Thynk Schooling implementation.
+ *
+ * OFFICIAL HASH FORMULAS (from https://github.com/easebuzz/paywitheasebuzz-php-lib):
+ *
+ *   FORWARD (initiateLink):
+ *     sha512( key | txnid | amount | productinfo | firstname | email |
+ *             udf1 | udf2 | udf3 | udf4 | udf5 | udf6 | udf7 | udf8 | udf9 | udf10 | salt )
+ *     = 16 pipes, 17 segments
+ *
+ *   REVERSE (callback verification):
+ *     sha512( salt | status | udf10 | udf9 | udf8 | udf7 | udf6 |
+ *             udf5 | udf4 | udf3 | udf2 | udf1 | email | firstname |
+ *             productinfo | amount | txnid | key )
+ *     = 17 pipes, 18 segments
+ */
+
 import crypto from 'crypto';
 
 export interface EasebuzzInitOptions {
@@ -7,12 +27,7 @@ export interface EasebuzzInitOptions {
   firstname:   string;
   email:       string;
   phone:       string;   // exactly 10 digits, no country code
-  udf1?:       string;
-  udf2?:       string;
-  udf3?:       string;
-  udf4?:       string;
-  udf5?:       string;
-  surl:        string;   // Easebuzz POSTs form data here on success/failure
+  surl:        string;   // Easebuzz POSTs form data here on success
   furl:        string;   // Easebuzz POSTs form data here on failure
 }
 
@@ -23,7 +38,6 @@ export interface EasebuzzInitResponse {
 
 export function generateEasebuzzTxnId(paymentId: string): string {
   // Strip ALL non-alphanumeric chars (dashes from UUID), max 25 chars
-  // This matches the working Thynk Schooling pattern exactly
   return paymentId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 25);
 }
 
@@ -49,11 +63,11 @@ export async function initEasebuzzPayment(
     ? 'https://pay.easebuzz.in'
     : 'https://testpay.easebuzz.in';
 
-  // Hash formula (official Easebuzz docs):
-  // sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt)
-  // = 6 named fields + udf1-5 + 5 empty trailing fields + salt = 16 pipes total
-  // CRITICAL: udf1-5 must be empty strings — passing actual values causes hash mismatch
-  // on Easebuzz's side if their stored values differ. Use empty strings for safety.
+  // OFFICIAL FORWARD HASH (PHP lib reference):
+  // sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5|udf6|udf7|udf8|udf9|udf10|salt)
+  // All udf1-10 are empty strings — must match the form POST values exactly.
+  // CRITICAL: Always use empty strings for all udf fields. Passing actual values
+  // causes hash mismatch on Easebuzz's callback verification.
   const hashStr = [
     merchantKey,
     options.txnid,
@@ -61,18 +75,19 @@ export async function initEasebuzzPayment(
     options.productinfo,
     options.firstname,
     options.email,
-    '',  // udf1 — always empty for hash stability
-    '',  // udf2
-    '',  // udf3
-    '',  // udf4
-    '',  // udf5
-    '',  // trailing empty
-    '',
-    '',
-    '',
-    '',
+    '', // udf1
+    '', // udf2
+    '', // udf3
+    '', // udf4
+    '', // udf5
+    '', // udf6
+    '', // udf7
+    '', // udf8
+    '', // udf9
+    '', // udf10
     salt,
   ].join('|');
+  // = 17 items joined = 16 pipes — matches official formula exactly
 
   const hash = crypto.createHash('sha512').update(hashStr).digest('hex');
 
@@ -84,25 +99,26 @@ export async function initEasebuzzPayment(
     env,
   });
 
-  const params = new URLSearchParams({
-    key:         merchantKey,
-    txnid:       options.txnid,
-    amount:      options.amount,
-    productinfo: options.productinfo,
-    firstname:   options.firstname,
-    email:       options.email,
-    phone:       options.phone,
-    // udf1-5 sent as empty strings — must match hash computation above
-    udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
-    hash,
-    surl: options.surl,
-    furl: options.furl,
-  });
-
-  const res = await fetch(`${baseUrl}/payment/initiateLink`, {
+  // NOTE: Trailing slash on /payment/initiateLink/ is REQUIRED.
+  // Removing it causes WC0E03 on the payment page.
+  // The working Thynk Schooling code uses the trailing slash.
+  const res = await fetch(`${baseUrl}/payment/initiateLink/`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:    params.toString(),
+    body:    new URLSearchParams({
+      key:         merchantKey,
+      txnid:       options.txnid,
+      amount:      options.amount,
+      productinfo: options.productinfo,
+      firstname:   options.firstname,
+      email:       options.email,
+      phone:       options.phone,
+      // udf1-5 sent as empty strings in form — must match hash above
+      udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+      hash,
+      surl: options.surl,
+      furl: options.furl,
+    }).toString(),
   });
 
   const ct = res.headers.get('content-type') || '';
@@ -128,16 +144,23 @@ export function verifyEasebuzzWebhookHash(
   payload: Record<string, string>,
   salt:    string
 ): boolean {
-  // Easebuzz REVERSE hash for response verification (official docs):
-  // sha512(salt|status|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+  // OFFICIAL REVERSE HASH (PHP lib reference):
+  // sha512(salt|status|udf10|udf9|udf8|udf7|udf6|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+  // udf6-10 may not be present in the POST body — default to empty string.
+  // This matches what we sent in the forward hash (all udfs empty).
   const hashStr = [
     salt,
     payload.status      ?? '',
-    '',                         // udf5 — always empty (matches what we sent)
-    '',                         // udf4
-    '',                         // udf3
-    '',                         // udf2
-    '',                         // udf1
+    payload.udf10       ?? '', // udf10 (empty — we never send it)
+    payload.udf9        ?? '', // udf9
+    payload.udf8        ?? '', // udf8
+    payload.udf7        ?? '', // udf7
+    payload.udf6        ?? '', // udf6
+    payload.udf5        ?? '', // udf5 (empty — we send it empty)
+    payload.udf4        ?? '', // udf4
+    payload.udf3        ?? '', // udf3
+    payload.udf2        ?? '', // udf2
+    payload.udf1        ?? '', // udf1
     payload.email       ?? '',
     payload.firstname   ?? '',
     payload.productinfo ?? '',
@@ -145,12 +168,16 @@ export function verifyEasebuzzWebhookHash(
     payload.txnid       ?? '',
     payload.key         ?? '',
   ].join('|');
+  // = 18 items joined = 17 pipes — matches official reverse hash formula exactly
 
   const expected = crypto.createHash('sha512').update(hashStr).digest('hex');
   const match    = expected === payload.hash;
 
   if (!match) {
-    console.error('[Easebuzz] Hash mismatch — expected:', expected.slice(0, 20) + '...', 'got:', (payload.hash || '').slice(0, 20) + '...');
+    console.error(
+      '[Easebuzz] Hash mismatch — expected:', expected.slice(0, 20) + '...',
+      'got:', (payload.hash || '').slice(0, 20) + '...'
+    );
   }
   return match;
 }
