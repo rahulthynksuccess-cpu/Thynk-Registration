@@ -186,36 +186,73 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
   function launchEasebuzz(data: any) {
     // Use EasebuzzCheckout SDK (embedded overlay) — same as working Thynk Schooling.
     // Raw form POST to /pay/init triggers WC0E03 on EaseCheckout-enabled accounts.
+    //
+    // SDK mode: 'prod' for production/live, 'test' for test/sandbox.
+    // Register route returns env as 'production' or 'test'.
+    const ebMode = (data.env === 'test') ? 'test' : 'prod';
+
     const script = document.createElement('script');
     script.src = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js';
     script.onload = () => {
-      const eb = new (window as any).EasebuzzCheckout(data.access_key, data.env === 'test' ? 'test' : 'prod');
+      const eb = new (window as any).EasebuzzCheckout(data.access_key, ebMode);
       eb.initiatePayment({
         access_key: data.access_key,
         onResponse: async (response: any) => {
+          // If user cancelled before payment page even loaded, skip server call
+          if (!response || !response.status) {
+            showToast('Payment cancelled.', 'err');
+            return;
+          }
+
           showLoader('Confirming payment…');
-          // POST the result to our easebuzz-callback just like surl/furl would
-          await fetch(`${BACKEND}/api/payment/easebuzz-callback?paymentId=${data.payment_id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              status:     response.status   ?? '',
-              txnid:      response.txnid    ?? '',
-              mihpayid:   response.mihpayid ?? '',
-              amount:     response.amount   ?? '',
-              email:      response.email    ?? '',
-              firstname:  response.firstname ?? '',
-              productinfo: response.productinfo ?? '',
-              key:        response.key      ?? '',
-              hash:       response.hash     ?? '',
-              udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
-            }).toString(),
-          }).catch(() => {});
-          hideLoader();
-          if (response.status === 'success') {
-            onSuccess();
-          } else {
-            showToast('Payment failed or cancelled. Please try again.', 'err');
+
+          try {
+            // POST the SDK response to our server callback for hash verification + DB update.
+            // We pass ALL fields the SDK returns so the server can verify the hash properly.
+            // udf1-5 are always empty (we never populate them) — must be sent explicitly.
+            const cbRes = await fetch(
+              `${BACKEND}/api/payment/easebuzz-callback?paymentId=${data.payment_id}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                  status:      response.status      ?? '',
+                  txnid:       response.txnid       ?? '',
+                  mihpayid:    response.mihpayid    ?? '',
+                  amount:      response.amount      ?? '',
+                  email:       response.email       ?? '',
+                  firstname:   response.firstname   ?? '',
+                  productinfo: response.productinfo ?? '',
+                  key:         response.key         ?? '',
+                  hash:        response.hash        ?? '',
+                  // udf1-5 always empty — must match forward hash exactly
+                  udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+                  // udf6-10 always empty
+                  udf6: '', udf7: '', udf8: '', udf9: '', udf10: '',
+                }).toString(),
+              }
+            );
+
+            hideLoader();
+
+            // Server redirects on success (303 → SUCCESS_URL) or failure.
+            // A non-2xx / non-redirect from fetch means a network/server error.
+            if (response.status === 'success') {
+              // Server confirmed success — navigate to success page
+              onSuccess();
+            } else {
+              showToast('Payment failed or cancelled. Please try again.', 'err');
+            }
+          } catch (err) {
+            hideLoader();
+            console.error('[Easebuzz] callback fetch error:', err);
+            // Network error posting to our server — the SDK says success but we
+            // couldn't confirm server-side. Show a clear message.
+            if (response.status === 'success') {
+              showToast('Payment received but confirmation failed. Please contact support with your transaction ID: ' + (response.txnid ?? ''), 'err');
+            } else {
+              showToast('Payment failed or cancelled. Please try again.', 'err');
+            }
           }
         },
       });
