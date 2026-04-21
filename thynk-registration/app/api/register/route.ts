@@ -490,10 +490,10 @@ export async function POST(req: NextRequest) {
 
     // ── Easebuzz ─────────────────────────────────────────────────────────────
     if (gateway === 'easebuzz') {
-      // Admin → Payment & Setting page saves keys as eb_key, eb_salt, eb_env
-      const merchantKey = (gc.eb_key  ?? process.env.EASEBUZZ_KEY  ?? '').trim();
-      const salt        = (gc.eb_salt ?? process.env.EASEBUZZ_SALT ?? '').trim();
-      const ebMode      = (gc.eb_env  ?? process.env.EASEBUZZ_ENV  ?? 'production').trim();
+      // DB stores keys as key_id and key_secret (confirmed from integration_configs)
+      const merchantKey = (gc.key_id     ?? gc.eb_key  ?? process.env.EASEBUZZ_KEY  ?? '').trim();
+      const salt        = (gc.key_secret ?? gc.eb_salt ?? process.env.EASEBUZZ_SALT ?? '').trim();
+      const ebMode      = (gc.mode       ?? gc.eb_env  ?? process.env.EASEBUZZ_ENV  ?? 'production').trim();
 
       if (!merchantKey) throw new Error('Easebuzz Merchant Key not configured — go to Admin → Payment & Setting');
       if (!salt)        throw new Error('Easebuzz Salt not configured — go to Admin → Payment & Setting');
