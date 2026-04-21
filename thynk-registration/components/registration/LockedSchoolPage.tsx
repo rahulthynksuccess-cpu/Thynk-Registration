@@ -368,15 +368,14 @@ function StepBar({ step }: { step: number }) {
 
 function LockedSuccessScreen({ redirectURL }: { redirectURL?: string }) {
   useEffect(() => {
-    const url = redirectURL && !redirectURL.includes('undefined')
-      ? redirectURL
-      : 'https://www.thynksuccess.com';
+    // Always redirect to homepage — branding.redirectURL points to Next.js routes
+    // that don't exist on WordPress (where this form is embedded).
+    const url = 'https://www.thynksuccess.com';
     const t = setTimeout(() => {
-      // Use window.top so redirect breaks out of any iframe embed (e.g. WordPress)
       try { (window.top as Window).location.href = url; } catch { window.location.href = url; }
     }, 5000);
     return () => clearTimeout(t);
-  }, [redirectURL]);
+  }, []);
 
   return (
     <div className="atg-card" id="atgCard">
