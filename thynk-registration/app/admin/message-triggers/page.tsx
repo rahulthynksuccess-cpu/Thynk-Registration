@@ -14,10 +14,10 @@ interface Template { id:string; name:string; channel:Channel; subject?:string; b
 interface Trigger  {
   id:string; event_type:string; channel:Channel; school_id:string|null;
   template_id:string|null; is_active:boolean; created_at:string;
+  recipient_type: 'student' | 'school';
   notification_templates?: {id:string; name:string; channel:string};
 }
 
-// ── FIX: Added school.registered + school.approved; removed never-fired events ──
 const EVENT_TYPES = [
   {key:'registration.created', label:'Registration Created',  desc:'Fires when a student submits the registration form'},
   {key:'payment.paid',         label:'Payment Successful',   desc:'Fires when payment is confirmed'},
@@ -26,14 +26,15 @@ const EVENT_TYPES = [
   {key:'school.approved',      label:'School Approved',      desc:'Fires when admin approves a school'},
 ];
 
+// Events where recipient_type makes no sense (always goes to school contact)
+const SCHOOL_ONLY_EVENTS = new Set(['school.registered', 'school.approved']);
+
 const TEMPLATE_VARS = [
-  // Student / registration
   '{{student_name}}','{{class_grade}}','{{gender}}','{{parent_name}}',
   '{{contact_phone}}','{{contact_email}}','{{school_name}}','{{program_name}}',
   '{{base_amount}}','{{discount_amount}}','{{final_amount}}',
   '{{discount_code}}','{{gateway}}','{{txn_id}}','{{registration_id}}',
   '{{payment_link}}',
-  // School contact person (school.registered / school.approved events)
   '{{contact_person_name}}','{{contact_designation}}','{{org_name}}','{{city}}',
 ];
 
@@ -104,7 +105,6 @@ function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>v
             </div>
           )}
 
-          {/* Variable chips */}
           <div>
             <label style={lbl}>Insert Variable (click to add)</label>
             <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
@@ -144,7 +144,6 @@ function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>v
                 style={{...inp,resize:'vertical',lineHeight:1.65}}/>
             )}
 
-            {/* WhatsApp preview bubble */}
             {f.channel==='whatsapp' && f.body && (
               <div style={{marginTop:10,padding:14,background:'#0B1418',borderRadius:10,borderLeft:'3px solid #25D366'}}>
                 <div style={{fontSize:10,fontWeight:700,color:'#25D366',marginBottom:6,fontFamily:'DM Sans,sans-serif',letterSpacing:'0.1em',textTransform:'uppercase'}}>Preview</div>
@@ -180,15 +179,31 @@ function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>v
   );
 }
 
-// ── Trigger Form Modal ───────────────────────────────────────────────────────
+// ── Trigger Form Modal ────────────────────────────────────────────────────────
 function TriggerModal({initial,templates,schools,onClose,onSave}:{
   initial?:Trigger; templates:Template[]; schools:Row[];
   onClose:()=>void; onSave:(d:Partial<Trigger>)=>void;
 }) {
-  const [f,setF] = useState<Partial<Trigger>>(initial??{event_type:'school.registered',channel:'email',is_active:true,school_id:null});
+  const [f,setF] = useState<Partial<Trigger>>(initial??{
+    event_type:'registration.created',
+    channel:'email',
+    is_active:true,
+    school_id:null,
+    recipient_type:'student',
+  });
   const set = (k:keyof Trigger,v:any)=>setF(p=>({...p,[k]:v}));
 
   const channelTemplates = templates.filter(t=>t.channel===f.channel&&t.is_active);
+  const isSchoolOnlyEvent = SCHOOL_ONLY_EVENTS.has(f.event_type ?? '');
+
+  // When event changes to school-only, force recipient_type to 'school'
+  function handleEventChange(newEvent: string) {
+    setF(p => ({
+      ...p,
+      event_type: newEvent,
+      recipient_type: SCHOOL_ONLY_EVENTS.has(newEvent) ? 'school' : (p.recipient_type ?? 'student'),
+    }));
+  }
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
@@ -198,9 +213,11 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
           <button onClick={onClose} style={{border:'none',background:'none',cursor:'pointer',color:'var(--m)',fontSize:20}}>✕</button>
         </div>
         <div style={{padding:24,display:'flex',flexDirection:'column',gap:16}}>
+
+          {/* Event */}
           <div>
             <label style={lbl}>Event *</label>
-            <select value={f.event_type??'school.registered'} onChange={e=>set('event_type',e.target.value)}
+            <select value={f.event_type??'registration.created'} onChange={e=>handleEventChange(e.target.value)}
               style={{...inp,cursor:'pointer'}}>
               {EVENT_TYPES.map(et=>(
                 <option key={et.key} value={et.key}>{et.label}</option>
@@ -211,6 +228,7 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
             </p>
           </div>
 
+          {/* Channel */}
           <div>
             <label style={lbl}>Channel *</label>
             <div style={{display:'flex',gap:8}}>
@@ -223,6 +241,46 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
             </div>
           </div>
 
+          {/* Recipient Type — only shown for registration/payment events */}
+          {!isSchoolOnlyEvent && (
+            <div>
+              <label style={lbl}>Send To *</label>
+              <div style={{display:'flex',gap:8}}>
+                <button
+                  onClick={()=>set('recipient_type','student')}
+                  style={{
+                    flex:1,padding:'10px 12px',borderRadius:8,textAlign:'left',
+                    border:`1.5px solid ${f.recipient_type==='student'?'var(--acc)':'var(--bd)'}`,
+                    background:f.recipient_type==='student'?'var(--acc3)':'var(--card)',
+                    cursor:'pointer',
+                  }}>
+                  <div style={{fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,color:f.recipient_type==='student'?'var(--acc)':'var(--text)'}}>
+                    🎓 Student
+                  </div>
+                  <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginTop:2}}>
+                    Student's email / phone from registration
+                  </div>
+                </button>
+                <button
+                  onClick={()=>set('recipient_type','school')}
+                  style={{
+                    flex:1,padding:'10px 12px',borderRadius:8,textAlign:'left',
+                    border:`1.5px solid ${f.recipient_type==='school'?'var(--acc)':'var(--bd)'}`,
+                    background:f.recipient_type==='school'?'var(--acc3)':'var(--card)',
+                    cursor:'pointer',
+                  }}>
+                  <div style={{fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,color:f.recipient_type==='school'?'var(--acc)':'var(--text)'}}>
+                    🏫 School Coordinator
+                  </div>
+                  <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginTop:2}}>
+                    School contact person email / phone
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Template */}
           <div>
             <label style={lbl}>Template *</label>
             <select value={f.template_id??''} onChange={e=>set('template_id',e.target.value||null)}
@@ -239,6 +297,7 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
             )}
           </div>
 
+          {/* Active toggle */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
             <div style={{fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,color:'var(--text)'}}>Active</div>
             <div onClick={()=>set('is_active',!f.is_active)}
@@ -259,7 +318,7 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
   );
 }
 
-// ── Main Page ────────────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function MessageTriggersPage() {
   const {toast,show:showToast} = useToast();
   const [tab, setTab] = useState<'templates'|'triggers'>('templates');
@@ -377,7 +436,7 @@ export default function MessageTriggersPage() {
               <div style={{textAlign:'center',padding:64,background:'var(--card)',borderRadius:16,border:'1.5px dashed var(--bd)'}}>
                 <div style={{fontSize:40,marginBottom:12}}>✉️</div>
                 <div style={{fontFamily:'DM Sans,sans-serif',fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:6}}>No templates yet</div>
-                <div style={{fontFamily:'DM Sans,sans-serif',fontSize:12,color:'var(--m)',marginBottom:22}}>Create email or WhatsApp templates here. Use {'{{student_name}}'} etc. as placeholders.</div>
+                <div style={{fontFamily:'DM Sans,sans-serif',fontSize:12,color:'var(--m)',marginBottom:22}}>Create email or WhatsApp templates. Use {'{{student_name}}'} etc. as placeholders.</div>
                 <button onClick={()=>setTemplateModal(true)}
                   style={{display:'inline-flex',alignItems:'center',gap:7,padding:'10px 22px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif'}}>
                   + Create First Template
@@ -416,13 +475,11 @@ export default function MessageTriggersPage() {
         {/* ── TRIGGERS TAB ── */}
         {tab==='triggers' && (
           <div>
-            {/* Controls */}
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}}>
               <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                 <div style={{fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:700,color:'var(--text)'}}>
                   📧 {emailOn} email · 💬 {waOn} WhatsApp active
                 </div>
-                {/* Channel filter */}
                 {(['all','email','whatsapp'] as const).map(ch=>(
                   <button key={ch} onClick={()=>setChannelFilter(ch)}
                     style={{padding:'5px 12px',borderRadius:20,border:`1.5px solid ${channelFilter===ch?(ch==='all'?'var(--acc)':CHANNEL_COLOR[ch as Channel]):'var(--bd)'}`,background:channelFilter===ch?'rgba(79,70,229,.08)':'transparent',color:channelFilter===ch?'var(--acc)':'var(--m)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>
@@ -436,7 +493,6 @@ export default function MessageTriggersPage() {
               </button>
             </div>
 
-            {/* Two-panel layout */}
             <div style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:16,alignItems:'start'}}>
 
               {/* Trigger list */}
@@ -466,7 +522,10 @@ export default function MessageTriggersPage() {
                           {eventDef?.label??t.event_type}
                         </div>
                         <div style={{fontSize:10,color:'var(--m)',fontFamily:'DM Sans,sans-serif',marginTop:1}}>
-                          {t.notification_templates?.name??'No template'} · {t.school_id?'School specific':'All schools'}
+                          {t.notification_templates?.name??'No template'} · {
+                            SCHOOL_ONLY_EVENTS.has(t.event_type) ? '🏫 School' :
+                            t.recipient_type === 'school' ? '🏫 School Coordinator' : '🎓 Student'
+                          }
                         </div>
                       </div>
                       <div style={{width:7,height:7,borderRadius:'50%',flexShrink:0,background:t.is_active?'#10b981':'var(--bd)'}}/>
@@ -490,6 +549,13 @@ export default function MessageTriggersPage() {
                         <span style={{padding:'2px 8px',borderRadius:100,background:activeTrigger.is_active?'rgba(16,185,129,.1)':'var(--bd)',color:activeTrigger.is_active?'#15803d':'var(--m)',fontSize:11,fontWeight:700}}>
                           {activeTrigger.is_active?'Active':'Inactive'}
                         </span>
+                        <span style={{padding:'2px 8px',borderRadius:100,background:'rgba(99,102,241,.08)',color:'var(--acc)',fontSize:11,fontWeight:700}}>
+                          {SCHOOL_ONLY_EVENTS.has(activeTrigger.event_type)
+                            ? '🏫 School Coordinator'
+                            : activeTrigger.recipient_type === 'school'
+                              ? '🏫 School Coordinator'
+                              : '🎓 Student'}
+                        </span>
                         <span style={{padding:'2px 8px',borderRadius:100,background:'var(--bg)',color:'var(--m)',fontSize:11}}>
                           {activeTrigger.school_id ? schools.find(s=>s.id===activeTrigger.school_id)?.name??'Specific school' : 'All schools'}
                         </span>
@@ -501,7 +567,6 @@ export default function MessageTriggersPage() {
                     </div>
                   </div>
 
-                  {/* Template preview */}
                   {activeTrigger.notification_templates ? (() => {
                     const tmpl = templates.find(t=>t.id===activeTrigger.template_id);
                     return tmpl ? (
@@ -542,7 +607,6 @@ export default function MessageTriggersPage() {
         </div>
       </div>
 
-      {/* Modals */}
       {templateModal && (
         <TemplateModal
           initial={templateModal===true?undefined:templateModal}
