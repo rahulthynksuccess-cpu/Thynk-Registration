@@ -1,74 +1,85 @@
 import crypto from 'crypto';
 
-// Server-side only
-
 export interface EasebuzzInitOptions {
-  txnid: string;
-  amount: string;         // e.g. "1200.00"
+  txnid:       string;
+  amount:      string;   // major units e.g. "1200.00"
   productinfo: string;
-  firstname: string;
-  email: string;
-  phone: string;
-  udf1?: string;          // parentName
-  udf2?: string;          // schoolName
-  udf3?: string;          // city
-  udf4?: string;          // classGrade
-  udf5?: string;          // gender
-  surl: string;           // success return URL
-  furl: string;           // failure return URL
+  firstname:   string;
+  email:       string;
+  phone:       string;   // exactly 10 digits, no country code
+  udf1?:       string;
+  udf2?:       string;
+  udf3?:       string;
+  udf4?:       string;
+  udf5?:       string;
+  surl:        string;   // Easebuzz POSTs form data here on success/failure
+  furl:        string;   // Easebuzz POSTs form data here on failure
 }
 
 export interface EasebuzzInitResponse {
-  access_key: string;
+  access_key:  string;
   payment_url: string;
 }
 
-function generateEasebuzzHash(options: EasebuzzInitOptions, key: string, salt: string): string {
-  // Easebuzz hash formula (same as PayU):
-  // sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt)
-  const hashStr = [
-    key,
-    options.txnid,
-    options.amount,
-    options.productinfo,
-    options.firstname,
-    options.email,
-    options.udf1 ?? '',
-    options.udf2 ?? '',
-    options.udf3 ?? '',
-    options.udf4 ?? '',
-    options.udf5 ?? '',
-    '', '', '', '', '',
-    salt,
-  ].join('|');
+export function generateEasebuzzTxnId(paymentId: string): string {
+  // Strip ALL non-alphanumeric chars (dashes from UUID), max 25 chars
+  // This matches the working Thynk Schooling pattern exactly
+  return paymentId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 25);
+}
 
-  return crypto.createHash('sha512').update(hashStr).digest('hex');
+export function normalisePhone(raw: string): string {
+  // Easebuzz requires exactly 10 digits, no country code
+  const digits = raw.replace(/\D/g, '').replace(/^91/, '').slice(-10);
+  return digits.length === 10 ? digits : '9999999999';
 }
 
 export async function initEasebuzzPayment(
   options: EasebuzzInitOptions,
-  ebKey: string,
+  ebKey:  string,
   ebSalt: string,
-  env: 'production' | 'test' = 'production'
+  env:    'production' | 'test' = 'production'
 ): Promise<EasebuzzInitResponse> {
-  // Trim to remove any accidental spaces/newlines from copy-paste in Admin → Integrations
   const merchantKey = ebKey.trim();
   const salt        = ebSalt.trim();
 
   if (!merchantKey) throw new Error('Easebuzz Merchant Key is empty — check Admin → Integrations → Easebuzz');
   if (!salt)        throw new Error('Easebuzz Salt is empty — check Admin → Integrations → Easebuzz');
 
-  const baseUrl =
-    env === 'production'
-      ? 'https://pay.easebuzz.in'
-      : 'https://testpay.easebuzz.in';
+  const baseUrl = env === 'production'
+    ? 'https://pay.easebuzz.in'
+    : 'https://testpay.easebuzz.in';
 
-  const hash = generateEasebuzzHash(options, merchantKey, salt);
+  // Hash formula (official Easebuzz docs):
+  // sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt)
+  // = 6 named fields + udf1-5 + 5 empty trailing fields + salt = 16 pipes total
+  // CRITICAL: udf1-5 must be empty strings — passing actual values causes hash mismatch
+  // on Easebuzz's side if their stored values differ. Use empty strings for safety.
+  const hashStr = [
+    merchantKey,
+    options.txnid,
+    options.amount,
+    options.productinfo,
+    options.firstname,
+    options.email,
+    '',  // udf1 — always empty for hash stability
+    '',  // udf2
+    '',  // udf3
+    '',  // udf4
+    '',  // udf5
+    '',  // trailing empty
+    '',
+    '',
+    '',
+    '',
+    salt,
+  ].join('|');
+
+  const hash = crypto.createHash('sha512').update(hashStr).digest('hex');
 
   console.log('[Easebuzz] initiating payment:', {
     merchantKey: merchantKey.slice(0, 4) + '***',
-    txnid: options.txnid,
-    amount: options.amount,
+    txnid:       options.txnid,
+    amount:      options.amount,
     productinfo: options.productinfo,
     env,
   });
@@ -81,20 +92,17 @@ export async function initEasebuzzPayment(
     firstname:   options.firstname,
     email:       options.email,
     phone:       options.phone,
-    udf1:        options.udf1 ?? '',
-    udf2:        options.udf2 ?? '',
-    udf3:        options.udf3 ?? '',
-    udf4:        options.udf4 ?? '',
-    udf5:        options.udf5 ?? '',
+    // udf1-5 sent as empty strings — must match hash computation above
+    udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
     hash,
-    surl:        options.surl,
-    furl:        options.furl,
+    surl: options.surl,
+    furl: options.furl,
   });
 
   const res = await fetch(`${baseUrl}/payment/initiateLink`, {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
+    body:    params.toString(),
   });
 
   const ct = res.headers.get('content-type') || '';
@@ -118,26 +126,31 @@ export async function initEasebuzzPayment(
 
 export function verifyEasebuzzWebhookHash(
   payload: Record<string, string>,
-  salt: string
+  salt:    string
 ): boolean {
-  // Easebuzz response hash: sha512(salt|status||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+  // Easebuzz REVERSE hash for response verification (official docs):
+  // sha512(salt|status|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
   const hashStr = [
     salt,
-    payload.status ?? '',
-    '',
-    payload.udf5 ?? '',
-    payload.udf4 ?? '',
-    payload.udf3 ?? '',
-    payload.udf2 ?? '',
-    payload.udf1 ?? '',
-    payload.email ?? '',
-    payload.firstname ?? '',
+    payload.status      ?? '',
+    '',                         // udf5 — always empty (matches what we sent)
+    '',                         // udf4
+    '',                         // udf3
+    '',                         // udf2
+    '',                         // udf1
+    payload.email       ?? '',
+    payload.firstname   ?? '',
     payload.productinfo ?? '',
-    payload.amount ?? '',
-    payload.txnid ?? '',
-    payload.key ?? '',
+    payload.amount      ?? '',
+    payload.txnid       ?? '',
+    payload.key         ?? '',
   ].join('|');
 
   const expected = crypto.createHash('sha512').update(hashStr).digest('hex');
-  return expected === payload.hash;
+  const match    = expected === payload.hash;
+
+  if (!match) {
+    console.error('[Easebuzz] Hash mismatch — expected:', expected.slice(0, 20) + '...', 'got:', (payload.hash || '').slice(0, 20) + '...');
+  }
+  return match;
 }
