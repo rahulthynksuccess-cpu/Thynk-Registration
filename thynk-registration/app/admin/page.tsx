@@ -6,6 +6,9 @@ import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithAppro
 import { ManageSchool } from '@/components/admin/ManageSchool';
 import { SchoolLogPanel } from '@/components/admin/SchoolLogPanel';
 import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
+import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
+import { StudentLogPanel }      from '@/components/admin/StudentLogPanel';
+import { ManualPaymentPanel }   from '@/components/admin/ManualPaymentPanel';
 import { ReportingPage } from '@/components/admin/ReportingPage';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
