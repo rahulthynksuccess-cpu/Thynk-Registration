@@ -21,24 +21,7 @@ async function requireSuperAdmin(req: NextRequest) {
 function currencyForCountry(country: string): string {
   return (country || '').toLowerCase() === 'india' ? 'INR' : 'USD';
 }
-async function getGatewaySequence(service: any, currency: string): Promise<string[]> {
-  const isINR = (currency || 'INR').toUpperCase() === 'INR';
-  if (!isINR) return ['paypal', 'razorpay'];
-  try {
-    const { data: rows } = await service
-      .from('integration_configs')
-      .select('provider, is_active, config')
-      .is('school_id', null)
-      .in('provider', ['cashfree', 'razorpay', 'easebuzz']);
-    if (!rows || rows.length === 0) return ['cashfree', 'razorpay', 'easebuzz'];
-    return rows
-      .filter((r: any) => r.is_active && r.config?.key_id)
-      .sort((a: any, b: any) => (a.config?.priority ?? 99) - (b.config?.priority ?? 99))
-      .map((r: any) => r.provider);
-  } catch {
-    return ['cashfree', 'razorpay', 'easebuzz'];
-  }
-}
+
 export async function GET(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -142,7 +125,9 @@ export async function POST(req: NextRequest) {
     program_name:     program.name,
     base_amount:      Math.round(Number(school_price)),
     currency:         resolvedCurrency,
-    gateway_sequence: await getGatewaySequence(service, resolvedCurrency),
+    gateway_sequence: resolvedCurrency === 'INR'
+      ? ['cashfree', 'razorpay', 'easebuzz']
+      : ['paypal', 'razorpay'],
     is_active: true,
   });
 

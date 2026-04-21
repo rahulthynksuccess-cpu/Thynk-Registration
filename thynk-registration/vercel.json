@@ -9,6 +9,12 @@
     "NEXT_PUBLIC_FRONTEND_URL": "https://www.thynksuccess.com",
     "NEXT_PUBLIC_APP_URL": "https://thynk-registration.vercel.app"
   },
+  "crons": [
+    {
+      "path": "/api/payment/cleanup",
+      "schedule": "*/30 * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
