@@ -159,7 +159,7 @@ export function ManualPaymentPanel({
     try {
       const res = await fetch(`${BACKEND}/api/admin/payment/manual`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: { 'Content-Type': 'application/json' }, },
         body: JSON.stringify({
           registration_id: student.id,
           gateway,
