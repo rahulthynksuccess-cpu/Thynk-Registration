@@ -10,7 +10,7 @@ type Row = Record<string, any>;
 type Channel  = 'email' | 'whatsapp';
 const CHANNEL_COLOR: Record<Channel, string> = { email:'#60A5FA', whatsapp:'#25D366' };
 
-interface Template { id:string; name:string; channel:Channel; subject?:string; body:string; is_active:boolean; }
+interface Template { id:string; name:string; channel:Channel; subject?:string; body:string; is_active:boolean; whatsapp_template_name?:string; whatsapp_template_lang?:string; }
 interface Trigger  {
   id:string; event_type:string; channel:Channel; school_id:string|null;
   template_id:string|null; is_active:boolean; created_at:string;
@@ -63,7 +63,7 @@ function useToast() {
 
 // ── Template Form Modal ──────────────────────────────────────────────────────
 function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>void;onSave:(d:Partial<Template>)=>void}) {
-  const [f,setF] = useState<Partial<Template>>(initial??{channel:'email',is_active:true,name:'',subject:'',body:''});
+  const [f,setF] = useState<Partial<Template>>(initial??{channel:'email',is_active:true,name:'',subject:'',body:'',whatsapp_template_name:'',whatsapp_template_lang:'en'});
   const set = (k:keyof Template,v:any)=>setF(p=>({...p,[k]:v}));
   const [preview,setPreview] = useState(false);
 
@@ -155,6 +155,44 @@ function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>v
               </div>
             )}
           </div>
+
+          {/* WhatsApp approved-template fields */}
+          {f.channel === 'whatsapp' && (
+            <div style={{padding:'16px',borderRadius:12,background:'rgba(37,211,102,0.06)',border:'1.5px solid rgba(37,211,102,0.25)'}}>
+              <div style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:'#25D366',marginBottom:4,display:'flex',alignItems:'center',gap:6}}>
+                💬 Meta Approved Template <span style={{fontWeight:400,color:'var(--m)',fontSize:11}}>(required for first-contact messages)</span>
+              </div>
+              <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginBottom:12,lineHeight:1.5}}>
+                Enter the <strong>exact template name</strong> from your Meta Business Manager (e.g. <code>payment_confirmation</code>). Variables in the Body above map positionally to {`{{1}}`}, {`{{2}}`}, … in your approved template. Leave blank to send a plain-text session message (only works within 24 hrs of user reply).
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12}}>
+                <div>
+                  <label style={lbl}>Template Name (Meta approved)</label>
+                  <input
+                    value={f.whatsapp_template_name??''}
+                    onChange={e=>set('whatsapp_template_name',e.target.value)}
+                    placeholder="e.g. payment_confirmation"
+                    style={{...inp,fontFamily:'monospace',fontSize:12}}
+                  />
+                  <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>
+                    Meta Business Manager → WhatsApp → Message Templates
+                  </p>
+                </div>
+                <div>
+                  <label style={lbl}>Language Code</label>
+                  <input
+                    value={f.whatsapp_template_lang??'en'}
+                    onChange={e=>set('whatsapp_template_lang',e.target.value)}
+                    placeholder="en"
+                    style={{...inp,fontFamily:'monospace',fontSize:12}}
+                  />
+                  <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>
+                    BCP-47 code e.g. en, en_US, hi, mr
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
             <div>
