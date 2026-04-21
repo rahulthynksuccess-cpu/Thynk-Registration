@@ -113,8 +113,9 @@ export async function initEasebuzzPayment(
       firstname:   options.firstname,
       email:       options.email,
       phone:       options.phone,
-      // udf1-5 sent as empty strings in form — must match hash above
+      // udf1-10 sent as empty strings — must match forward hash exactly
       udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+      udf6: '', udf7: '', udf8: '', udf9: '', udf10: '',
       hash,
       surl: options.surl,
       furl: options.furl,
