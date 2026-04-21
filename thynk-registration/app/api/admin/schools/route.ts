@@ -277,7 +277,9 @@ export async function PATCH(req: NextRequest) {
     if (program) {
       updatePayload.project_id   = project_id;
       updatePayload.project_slug = program.slug;
-      branding.redirectURL = `https://thynksuccess.com/registration/${program.slug}/?school=${existing?.school_code}`;
+      branding.redirectURL = existing?.school_code
+        ? `https://thynksuccess.com/registration/${program.slug}/?school=${existing.school_code}`
+        : `https://thynksuccess.com/registration/${program.slug}`;
       updatePayload.branding = branding;
     }
   }

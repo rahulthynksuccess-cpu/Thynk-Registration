@@ -201,7 +201,9 @@ export async function PATCH(req: NextRequest) {
       updatePayload.project_id   = project_id;
       updatePayload.project_slug = program.slug;
       const baseOrigin = program.base_url || 'https://www.thynksuccess.com';
-      branding.redirectURL = `${baseOrigin}/registration/${program.slug}/${existing?.school_code}`;
+      branding.redirectURL = existing?.school_code
+        ? `${baseOrigin}/registration/${program.slug}/${existing.school_code}`
+        : `${baseOrigin}/registration/${program.slug}`;
       updatePayload.branding = branding;
     }
   }
