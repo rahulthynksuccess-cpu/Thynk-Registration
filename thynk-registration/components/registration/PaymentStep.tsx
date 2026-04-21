@@ -184,13 +184,44 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
   }
 
   function launchEasebuzz(data: any) {
-    const form = document.createElement('form');
-    form.method = 'POST'; form.action = data.payment_url; form.target = '_self';
-    const inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'access_key'; inp.value = data.access_key;
-    form.appendChild(inp);
-    document.body.appendChild(form);
-    form.submit();
+    // Use EasebuzzCheckout SDK (embedded overlay) — same as working Thynk Schooling.
+    // Raw form POST to /pay/init triggers WC0E03 on EaseCheckout-enabled accounts.
+    const script = document.createElement('script');
+    script.src = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js';
+    script.onload = () => {
+      const eb = new (window as any).EasebuzzCheckout(data.access_key, data.env === 'test' ? 'test' : 'prod');
+      eb.initiatePayment({
+        access_key: data.access_key,
+        onResponse: async (response: any) => {
+          showLoader('Confirming payment…');
+          // POST the result to our easebuzz-callback just like surl/furl would
+          await fetch(`${BACKEND}/api/payment/easebuzz-callback?paymentId=${data.payment_id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              status:     response.status   ?? '',
+              txnid:      response.txnid    ?? '',
+              mihpayid:   response.mihpayid ?? '',
+              amount:     response.amount   ?? '',
+              email:      response.email    ?? '',
+              firstname:  response.firstname ?? '',
+              productinfo: response.productinfo ?? '',
+              key:        response.key      ?? '',
+              hash:       response.hash     ?? '',
+              udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+            }).toString(),
+          }).catch(() => {});
+          hideLoader();
+          if (response.status === 'success') {
+            onSuccess();
+          } else {
+            showToast('Payment failed or cancelled. Please try again.', 'err');
+          }
+        },
+      });
+    };
+    script.onerror = () => showToast('Failed to load payment SDK. Check your connection.', 'err');
+    document.head.appendChild(script);
   }
 
   async function renderPayPal() {
