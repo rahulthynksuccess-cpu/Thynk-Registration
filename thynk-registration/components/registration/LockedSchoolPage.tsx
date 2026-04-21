@@ -232,19 +232,7 @@ export default function LockedSchoolPage({
   // ── Success ───────────────────────────────────────────────────
   if (pageStep === 'success') {
     return (
-      <div className="atg-card" id="atgCard">
-        <div className="card-header"><h1>Registration Confirmed!</h1></div>
-        <div className="card-body" style={{ textAlign: 'center', padding: '40px 24px' }}>
-          <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
-          <h2 style={{ fontFamily: 'Sora, sans-serif', fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
-            You&apos;re Registered!
-          </h2>
-          <p style={{ color: 'var(--m)', fontSize: 13, lineHeight: 1.6 }}>
-            A confirmation email will be sent shortly.<br />
-            Redirecting to thynksuccess.com in 5 seconds…
-          </p>
-        </div>
-      </div>
+      <LockedSuccessScreen redirectURL={school?.branding?.redirectURL} />
     );
   }
 
@@ -374,6 +362,35 @@ function StepBar({ step }: { step: number }) {
           {i < 2 && <div className={`step-line${step > n ? ' done' : ''}`} />}
         </div>
       ))}
+    </div>
+  );
+}
+
+function LockedSuccessScreen({ redirectURL }: { redirectURL?: string }) {
+  useEffect(() => {
+    const url = redirectURL && !redirectURL.includes('undefined')
+      ? redirectURL
+      : 'https://www.thynksuccess.com';
+    const t = setTimeout(() => {
+      // Use window.top so redirect breaks out of any iframe embed (e.g. WordPress)
+      try { (window.top as Window).location.href = url; } catch { window.location.href = url; }
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [redirectURL]);
+
+  return (
+    <div className="atg-card" id="atgCard">
+      <div className="card-header"><h1>Registration Confirmed!</h1></div>
+      <div className="card-body" style={{ textAlign: 'center', padding: '40px 24px' }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
+        <h2 style={{ fontFamily: 'Sora, sans-serif', fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
+          You&apos;re Registered!
+        </h2>
+        <p style={{ color: 'var(--m)', fontSize: 13, lineHeight: 1.6 }}>
+          A confirmation email will be sent shortly.<br />
+          Redirecting to thynksuccess.com in 5 seconds…
+        </p>
+      </div>
     </div>
   );
 }

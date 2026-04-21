@@ -361,7 +361,9 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
       count--;
       if (count <= 0) {
         clearInterval(t);
-        window.location.href = school.branding?.redirectURL ?? 'https://www.thynksuccess.com';
+        const url = school.branding?.redirectURL ?? 'https://www.thynksuccess.com';
+        // Use window.top so the redirect breaks out of any iframe embed (e.g. WordPress)
+        try { (window.top as Window).location.href = url; } catch { window.location.href = url; }
       }
     }, 1000);
   }

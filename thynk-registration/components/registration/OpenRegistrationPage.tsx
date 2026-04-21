@@ -568,7 +568,9 @@ function StepBar({ step }: { step: number }) {
 function SuccessScreen() {
   useEffect(() => {
     const t = setTimeout(() => {
-      window.location.href = 'https://www.thynksuccess.com';
+      const url = 'https://www.thynksuccess.com';
+      // Use window.top so the redirect breaks out of any iframe embed (e.g. WordPress)
+      try { (window.top as Window).location.href = url; } catch { window.location.href = url; }
     }, 5000);
     return () => clearTimeout(t);
   }, []);
