@@ -40,6 +40,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { authFetch } from '@/lib/supabase/client';
 
 type Row = Record<string, any>;
 
@@ -157,9 +158,9 @@ export function ManualPaymentPanel({
 
     setSaving(true);
     try {
-      const res = await fetch(`${BACKEND}/api/admin/payment/manual`, {
+      const res = await authFetch(`${BACKEND}/api/admin/payment/manual`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' }, },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           registration_id: student.id,
           gateway,
