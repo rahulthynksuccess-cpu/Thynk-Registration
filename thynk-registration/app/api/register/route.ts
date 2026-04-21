@@ -513,10 +513,6 @@ export async function POST(req: NextRequest) {
           firstname,
           email:       contactEmail,
           phone,
-          // udf1-5 must be empty strings — they are included in hash computation.
-          // Passing actual values here causes Easebuzz hash mismatch on callback.
-          // Student data is already saved in the registrations table via payment.id.
-          udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
           // surl and furl both point to our dedicated POST handler.
           // Easebuzz POSTs application/x-www-form-urlencoded to both URLs.
           surl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
