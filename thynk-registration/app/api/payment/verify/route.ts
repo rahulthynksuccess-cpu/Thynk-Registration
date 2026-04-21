@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (!paymentId) return NextResponse.redirect(`${FALLBACK_URL}?error=missing_payment`);
 
     const { data: payment } = await supabase
-      .from('payments').select('id, status, registration_id, school_id')
+      .from('payments').select('id, status, registration_id, school_id, gateway_txn_id')
       .eq('id', paymentId).single();
 
     if (!payment) return NextResponse.redirect(`${FALLBACK_URL}?error=not_found`);
