@@ -416,7 +416,10 @@ export async function POST(req: NextRequest) {
   // For Easebuzz: fired in POST /api/payment/verify after hash verification
   // For PayPal:   fired immediately below since payment is synchronous
 
-  const appUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://thynk-registration.vercel.app';
+  // VERCEL_URL is always set by Vercel automatically (e.g. thynk-registration.vercel.app)
+  // NEXT_PUBLIC_BACKEND_URL should be set in Vercel env vars to your canonical domain
+  const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
+  const appUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? vercelUrl ?? 'https://thynk-registration.vercel.app';
 
   try {
     // ── Razorpay ─────────────────────────────────────────────────────────────
@@ -490,11 +493,34 @@ export async function POST(req: NextRequest) {
 
     // ── Easebuzz ─────────────────────────────────────────────────────────────
     if (gateway === 'easebuzz') {
-      // key_id = Merchant Key, key_secret = Salt, mode = test|production in Integrations UI
-      const ebKey  = gc.key_id     ?? process.env.EASEBUZZ_KEY!;
-      const ebSalt = gc.key_secret ?? process.env.EASEBUZZ_SALT!;
-      const _ebRaw = gc.mode       ?? (process.env.EASEBUZZ_ENV as 'production' | 'test') ?? 'production';
-      const ebEnv  = _ebRaw === 'live' ? 'production' : _ebRaw === 'sandbox' ? 'test' : _ebRaw as 'production' | 'test';
+      // key_id = Merchant Key, key_secret = Salt, mode = live|test in Integrations UI
+      const ebKey  = gc.key_id     ?? process.env.EASEBUZZ_KEY ?? '';
+      const ebSalt = gc.key_secret ?? process.env.EASEBUZZ_SALT ?? '';
+      const _ebRaw = gc.mode       ?? process.env.EASEBUZZ_ENV ?? 'live';
+      // Normalise: DB saves 'live'|'test', map to what initEasebuzzPayment expects
+      const ebEnv: 'production' | 'test' = (_ebRaw === 'test') ? 'test' : 'production';
+
+      // ── DIAGNOSTIC LOG — always visible in Vercel → Logs after a payment attempt ──
+      console.log('[Easebuzz] DIAGNOSTIC', {
+        gwConfigFound:  !!gwConfig,
+        gwIsActive:     gwConfig?.is_active,
+        hasKey:         !!String(ebKey).trim(),
+        hasSalt:        !!String(ebSalt).trim(),
+        keyPreview:     String(ebKey).trim().slice(0, 4) + '***',
+        saltPreview:    String(ebSalt).trim().slice(0, 4) + '***',
+        modeRaw:        _ebRaw,
+        ebEnv,
+        appUrl,
+      });
+
+      if (!String(ebKey).trim()) {
+        console.error('[Easebuzz] Merchant Key missing — go to Admin → Integrations → Easebuzz and save keys');
+        return NextResponse.json({ error: 'Easebuzz Merchant Key not configured' }, { status: 500 });
+      }
+      if (!String(ebSalt).trim()) {
+        console.error('[Easebuzz] Salt missing — go to Admin → Integrations → Easebuzz and save keys');
+        return NextResponse.json({ error: 'Easebuzz Salt not configured' }, { status: 500 });
+      }
 
       // txnid: alphanumeric only, max 25 chars — strip dashes from payment UUID
       const txnId = generateEasebuzzTxnId(payment.id);
@@ -513,12 +539,10 @@ export async function POST(req: NextRequest) {
           firstname,
           email:       contactEmail,
           phone,
-          // surl and furl both point to our dedicated POST handler.
-          // Easebuzz POSTs application/x-www-form-urlencoded to both URLs.
           surl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
           furl: `${appUrl}/api/payment/easebuzz-callback?paymentId=${payment.id}`,
         },
-        ebKey, ebSalt, ebEnv
+        String(ebKey).trim(), String(ebSalt).trim(), ebEnv
       );
 
       await supabase.from('payments').update({ gateway_txn_id: txnId, status: 'initiated' }).eq('id', payment.id);
