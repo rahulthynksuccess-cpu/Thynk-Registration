@@ -167,7 +167,8 @@ export interface TemplateVars {
   // contact_email and contact_phone already cover school contact too
 
   // Payment
-  amount?: string;          // formatted e.g. "₹5,000"
+  amount?: string;          // formatted e.g. "₹5,000" — alias for final_amount
+  final_amount?: string;    // formatted e.g. "₹5,000" — used in payment templates
   txn_id?: string;
   gateway?: string;
   paid_at?: string;
