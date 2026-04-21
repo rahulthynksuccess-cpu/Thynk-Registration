@@ -391,7 +391,7 @@ async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string)
 
   // Template fields (stored on notification_templates row)
   const templateName: string | undefined = template.whatsapp_template_name;
-  const templateLang: string             = template.whatsapp_template_lang ?? 'en';
+  const templateLang: string             = template.whatsapp_template_lang ?? 'en_US';
   const renderedBody: string             = renderTemplate(template.body, vars);
 
   const { data: platformRow } = await supabase
@@ -400,15 +400,22 @@ async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string)
   const wa = platformRow?.config?.whatsapp_settings;
 
   // ── ThynkComm ─────────────────────────────────────────────────────────────
-  // ThynkComm's /api/send-message ONLY accepts { to, message } — plain text.
-  // It does NOT support a template-format payload. ThynkComm handles its own
-  // Meta API connection internally. Always send the rendered body as message.
+  // ThynkComm /api/send-message accepts:
+  //   Template:  { to, template_name, language_code }
+  //   Plain text: { to, message }
+  // When whatsapp_template_name is set on the notification_template row,
+  // send as a Meta-approved template (works for first-contact outreach).
+  // Otherwise send plain text (only works within 24-hr conversation window).
   if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
-    console.log(`[sendWhatsApp] thynkcomm to=${to}`);
+    const payload: Record<string, any> = templateName
+      ? { to, template_name: templateName, language_code: templateLang }
+      : { to, message: renderedBody };
+
+    console.log(`[sendWhatsApp] thynkcomm ${templateName ? `template="${templateName}"` : 'plain-text'} to=${to}`);
     const res = await fetch(wa.tcUrl.replace(/\/$/, '') + '/api/send-message', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': wa.tcApiKey, 'x-api-secret': wa.tcApiSecret ?? '' },
-      body:    JSON.stringify({ to, message: renderedBody }),
+      body:    JSON.stringify(payload),
     });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
