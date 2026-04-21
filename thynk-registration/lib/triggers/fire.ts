@@ -2,7 +2,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import type { TriggerEvent, TemplateVars } from '@/lib/types';
 
 /**
- * IMPORTANT: Always AWAIT this function. Do NOT use `void fireTriggers(...)`.
+ * IMPORTANT: Always AWAIT this function. Do NOT use `void fireTriggers(...)`.\
  * On Vercel serverless, unawaited promises are killed when the response is sent.
  */
 export async function fireTriggers(
@@ -13,6 +13,15 @@ export async function fireTriggers(
   const supabase = createServiceClient();
   const tag = `[fireTriggers:${event}]`;
 
+  console.log(`${tag} START — schoolId=${schoolId} registrationId=${registrationId}`);
+
+  // ── 1. Verify service client is working ──────────────────────────────────────
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error(`${tag} FATAL: SUPABASE_SERVICE_ROLE_KEY env var is not set!`);
+    return;
+  }
+
+  // ── 2. Load triggers ─────────────────────────────────────────────────────────
   const { data: triggers, error: triggerErr } = await supabase
     .from('notification_triggers')
     .select('*, notification_templates(*)')
@@ -21,17 +30,26 @@ export async function fireTriggers(
     .eq('is_active', true);
 
   if (triggerErr) {
-    console.error(`${tag} DB error loading triggers:`, triggerErr.message);
+    console.error(`${tag} DB error loading triggers:`, triggerErr.message, triggerErr.code);
     return;
   }
 
   if (!triggers?.length) {
-    console.log(`${tag} No active triggers found for school=${schoolId}`);
+    // Diagnose WHY no triggers found
+    const { data: allTriggers } = await supabase
+      .from('notification_triggers')
+      .select('id, event_type, school_id, is_active');
+
+    console.error(
+      `${tag} No triggers found for event=${event} school=${schoolId}.\n` +
+      `  All triggers in DB: ${JSON.stringify(allTriggers?.map(t => ({ event_type: t.event_type, school_id: t.school_id, is_active: t.is_active })))}`
+    );
     return;
   }
 
-  console.log(`${tag} Found ${triggers.length} trigger(s)`);
+  console.log(`${tag} Found ${triggers.length} trigger(s):`, triggers.map(t => `${t.id} channel=${t.channel} school_id=${t.school_id}`));
 
+  // ── 3. Build template vars ───────────────────────────────────────────────────
   let vars: TemplateVars | null;
   if (event === 'school.approved' || event === 'school.registered') {
     vars = await buildSchoolVars(schoolId);
@@ -44,15 +62,18 @@ export async function fireTriggers(
     return;
   }
 
+  console.log(`${tag} Vars built — contact_email="${vars.contact_email}" contact_phone="${vars.contact_phone}"`);
+
+  // ── 4. Fire each trigger ─────────────────────────────────────────────────────
   for (const trigger of triggers) {
     const template = trigger.notification_templates;
 
     if (!template) {
-      console.warn(`${tag} trigger ${trigger.id} has no linked template — skipping`);
+      console.error(`${tag} trigger ${trigger.id} has template_id but template not found (deleted?) — skipping`);
       continue;
     }
     if (!template.is_active) {
-      console.warn(`${tag} template "${template.name}" is inactive — skipping`);
+      console.warn(`${tag} template "${template.name}" is_active=false — skipping`);
       continue;
     }
 
@@ -61,9 +82,11 @@ export async function fireTriggers(
       : (vars.contact_phone ?? '');
 
     if (!recipient) {
-      console.error(`${tag} recipient is empty for channel=${trigger.channel} — skipping`);
+      console.error(`${tag} recipient is EMPTY for channel=${trigger.channel}. vars.contact_email="${vars.contact_email}" vars.contact_phone="${vars.contact_phone}" — skipping`);
       continue;
     }
+
+    console.log(`${tag} Sending ${trigger.channel} to ${recipient} via trigger ${trigger.id}`);
 
     const logEntry: {
       registration_id: string | null;
@@ -89,18 +112,18 @@ export async function fireTriggers(
         const provider = await sendEmail(template, vars, schoolId);
         logEntry.provider = provider;
         logEntry.status = 'sent';
-        console.log(`${tag} email sent via ${provider} to ${recipient}`);
+        console.log(`${tag} ✅ email sent via ${provider} to ${recipient}`);
       } else if (trigger.channel === 'whatsapp') {
         const provider = await sendWhatsApp(template, vars, schoolId);
         logEntry.provider = provider;
         logEntry.status = 'sent';
-        console.log(`${tag} whatsapp sent via ${provider} to ${recipient}`);
+        console.log(`${tag} ✅ whatsapp sent via ${provider} to ${recipient}`);
       }
     } catch (err: any) {
       lastError = err?.message ?? 'unknown error';
       logEntry.status = 'failed';
       logEntry.provider = logEntry.provider || 'unknown';
-      console.error(`${tag} FAILED ${trigger.channel} to ${recipient}:`, lastError);
+      console.error(`${tag} ❌ FAILED ${trigger.channel} to ${recipient}: ${lastError}`);
     }
 
     const { error: logErr } = await supabase.from('notification_logs').insert({
@@ -108,8 +131,10 @@ export async function fireTriggers(
       sent_at: logEntry.status === 'sent' ? new Date().toISOString() : null,
       provider_response: logEntry.status === 'failed' ? { error: lastError } : null,
     });
-    if (logErr) console.error(`${tag} Failed to write log:`, logErr.message);
+    if (logErr) console.error(`${tag} Failed to write notification_log: ${logErr.message} (code=${logErr.code})`);
   }
+
+  console.log(`${tag} DONE`);
 }
 
 async function buildSchoolVars(schoolId: string): Promise<TemplateVars | null> {
@@ -125,6 +150,7 @@ async function buildSchoolVars(schoolId: string): Promise<TemplateVars | null> {
     return null;
   }
   const primary = Array.isArray(school.contact_persons) ? school.contact_persons[0] : null;
+  if (!primary) console.warn(`[buildSchoolVars] school ${schoolId} has no contact_persons`);
   return {
     school_name:          school.name     ?? '',
     org_name:             school.org_name ?? '',
@@ -159,9 +185,7 @@ async function buildTemplateVars(
   const payment = payments[0];
   const school  = reg.schools as any;
   const pricing = reg.pricing as any;
-  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 
-  // Build payment link using ?school= format — works for ALL schools on thynksuccess.com
   let paymentLink = '';
   if (event !== 'payment.paid') {
     const { data: schoolData } = await supabase
@@ -192,7 +216,7 @@ async function buildTemplateVars(
     paid_at:       payment?.paid_at
       ? new Date(payment.paid_at).toLocaleDateString('en-IN') : undefined,
     payment_link:  paymentLink || undefined,
-    retry_link:    paymentLink || undefined,  // backward compat alias
+    retry_link:    paymentLink || undefined,
   } as TemplateVars;
 }
 
@@ -207,16 +231,15 @@ async function sendEmail(template: any, vars: TemplateVars, schoolId: string): P
   const to       = vars.contact_email ?? '';
   if (!to) throw new Error('contact_email is empty');
 
-  // ── Multi-SMTP routing by program ─────────────────────────────────────────
-  // Load platform settings which holds email_smtp_configs array
   const { data: platformRow } = await supabase
     .from('integration_configs').select('config')
     .eq('provider', 'platform_settings').is('school_id', null).maybeSingle();
 
   const smtpConfigs: any[] = platformRow?.config?.email_smtp_configs ?? [];
 
+  console.log(`[sendEmail] smtp_configs count=${smtpConfigs.length} to=${to}`);
+
   if (smtpConfigs.length > 0) {
-    // Find the program_id for this school
     let programId: string | null = null;
     if (schoolId) {
       const { data: school } = await supabase
@@ -224,35 +247,30 @@ async function sendEmail(template: any, vars: TemplateVars, schoolId: string): P
       programId = school?.project_id ?? null;
     }
 
-    // Priority 1: find an enabled SMTP assigned to this exact program
     let smtpCfg = programId
       ? smtpConfigs.find(c => c.enabled && c.program_id === programId)
       : null;
 
-    // Priority 2: fallback to Default (program_id === '' or null)
-    if (!smtpCfg) {
-      smtpCfg = smtpConfigs.find(c => c.enabled && (!c.program_id || c.program_id === ''));
-    }
+    if (!smtpCfg) smtpCfg = smtpConfigs.find(c => c.enabled && (!c.program_id || c.program_id === ''));
+    if (!smtpCfg) smtpCfg = smtpConfigs.find(c => c.enabled);
 
-    // Priority 3: any enabled SMTP
-    if (!smtpCfg) {
-      smtpCfg = smtpConfigs.find(c => c.enabled);
-    }
+    console.log(`[sendEmail] selected smtp=${smtpCfg?.smtpHost ?? 'none'} user=${smtpCfg?.smtpUser ?? 'none'} enabled=${smtpCfg?.enabled}`);
 
     if (smtpCfg?.smtpHost && smtpCfg?.smtpUser) {
       await sendViaSMTP(smtpCfg, { to, subject, body });
       return `smtp:${smtpCfg.name || smtpCfg.smtpUser}`;
     }
+
+    console.warn(`[sendEmail] smtp_configs exist but none are valid (missing host/user/enabled)`);
   }
 
-  // ── Legacy single email_settings fallback ─────────────────────────────────
   const emailCfg = platformRow?.config?.email_settings;
   if (emailCfg?.smtpHost && emailCfg?.smtpUser) {
+    console.log(`[sendEmail] using legacy email_settings smtp=${emailCfg.smtpHost}`);
     await sendViaSMTP(emailCfg, { to, subject, body });
     return 'smtp';
   }
 
-  // ── integration_configs table fallback ────────────────────────────────────
   const { data: configs } = await supabase
     .from('integration_configs').select('provider, config')
     .or(`school_id.eq.${schoolId},school_id.is.null`)
@@ -271,7 +289,12 @@ async function sendEmail(template: any, vars: TemplateVars, schoolId: string): P
     return 'smtp_env';
   }
 
-  throw new Error('No email provider configured. Add SMTP in Admin → Integrations → Email / SMTP.');
+  throw new Error(
+    `No email provider configured. ` +
+    `smtp_configs=${smtpConfigs.length} ` +
+    `legacy_smtp=${!!(platformRow?.config?.email_settings?.smtpHost)} ` +
+    `env_smtp=${!!process.env.SMTP_HOST}`
+  );
 }
 
 async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string): Promise<string> {
@@ -347,6 +370,7 @@ async function sendViaSMTP(config: any, { to, subject, body }: { to: string; sub
   const pass = config.smtpPass ?? config.password ?? process.env.SMTP_PASSWORD;
   const port = Number(config.smtpPort ?? config.port ?? process.env.SMTP_PORT ?? 587);
   if (!host || !user) throw new Error(`SMTP not configured (host=${host}, user=${user})`);
+  console.log(`[sendViaSMTP] host=${host} port=${port} user=${user} to=${to}`);
   const t = nodemailer.default.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
   await t.sendMail({
     from: `${config.fromName ?? config.from_name ?? 'Thynk Success'} <${config.fromEmail ?? config.from_email ?? process.env.SMTP_FROM ?? user}>`,
