@@ -7,6 +7,10 @@ export const dynamic = 'force-dynamic';
  * after payment success OR failure.
  *
  * Both surl and furl point here — status is determined from the posted `status` field.
+ *
+ * IMPORTANT: payment.failed trigger is NOT fired on hash mismatch or
+ * technical errors — only on genuine payment failures from Easebuzz.
+ * This prevents spurious email/WhatsApp on WC0E03 and retries.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -72,25 +76,35 @@ export async function POST(req: NextRequest) {
   const { txnid, status, hash } = params;
   console.log('[easebuzz-callback] paymentId=%s txnid=%s status=%s', paymentId, txnid, status);
 
-  // Verify hash
+  // ── Hash verification ─────────────────────────────────────────────────────
+  // IMPORTANT: On hash mismatch we do NOT fire payment.failed trigger.
+  // Hash mismatch = tampered/invalid request, not a genuine payment failure.
+  // Firing payment.failed on hash mismatch was causing emails/WhatsApp to
+  // send even for WC0E03 errors and retried payments.
   const salt = await getEasebuzzSalt(supabase, payment.school_id);
   if (salt && hash) {
     const valid = verifyEasebuzzWebhookHash(params, salt);
     if (!valid) {
-      console.error('[easebuzz-callback] Hash mismatch — rejecting paymentId:', paymentId);
-      // Mark as failed and fire failed trigger
-      await supabase.from('payments').update({ status: 'failed', gateway_response: params }).eq('id', paymentId);
+      console.error('[easebuzz-callback] Hash mismatch — rejecting paymentId:', paymentId, 'txnid:', txnid);
+      // Mark as failed in DB (for audit) but do NOT fire any notification triggers.
+      // The student will see the generic error page and can retry.
+      await supabase.from('payments').update({
+        status: 'failed',
+        gateway_response: { ...params, _reject_reason: 'hash_mismatch' },
+      }).eq('id', paymentId);
       await supabase.from('registrations').update({ status: 'failed' }).eq('id', payment.registration_id);
-      await fireTriggers('payment.failed', payment.registration_id, payment.school_id);
       return NextResponse.redirect(`${FALLBACK_URL}?payment=failed`, 303);
     }
   } else if (!salt) {
-    console.warn('[easebuzz-callback] No Easebuzz salt configured — skipping hash verification');
+    console.warn('[easebuzz-callback] No Easebuzz salt configured — skipping hash verification for paymentId:', paymentId);
   }
 
-  const newStatus: 'paid' | 'failed' = status === 'success' ? 'paid' : 'failed';
+  // ── Determine outcome ─────────────────────────────────────────────────────
+  // Easebuzz sends status='success' for paid, 'failure' or 'userCancelled' for anything else.
+  const easebuzzStatus = (status ?? '').toLowerCase();
+  const newStatus: 'paid' | 'failed' = easebuzzStatus === 'success' ? 'paid' : 'failed';
 
-  // Update payment
+  // ── Update payment ────────────────────────────────────────────────────────
   await supabase.from('payments').update({
     status:           newStatus,
     gateway_txn_id:   params.mihpayid || txnid || payment.gateway_txn_id || null,
@@ -98,20 +112,28 @@ export async function POST(req: NextRequest) {
     paid_at:          newStatus === 'paid' ? new Date().toISOString() : null,
   }).eq('id', paymentId);
 
-  // Update registration
+  // ── Update registration ───────────────────────────────────────────────────
   await supabase.from('registrations').update({ status: newStatus })
     .eq('id', payment.registration_id);
 
   if (newStatus === 'paid') {
+    // Decrement discount usage if applicable
     try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
+
     // Fire both triggers: registration confirmation + payment confirmation
     await fireTriggers('registration.created', payment.registration_id, payment.school_id);
     await fireTriggers('payment.paid',         payment.registration_id, payment.school_id);
+
     console.log('[easebuzz-callback] ✅ Payment confirmed:', paymentId, 'txnid:', txnid);
     return NextResponse.redirect(SUCCESS_URL, 303);
+
   } else {
+    // Only fire payment.failed for genuine Easebuzz failures (status != success),
+    // NOT for hash mismatches (handled above) or other technical errors.
+    // This prevents duplicate/spurious email+WhatsApp notifications.
     await fireTriggers('payment.failed', payment.registration_id, payment.school_id);
-    console.log('[easebuzz-callback] ❌ Payment failed:', paymentId, 'status:', status);
+
+    console.log('[easebuzz-callback] ❌ Payment failed:', paymentId, 'easebuzz status:', easebuzzStatus);
     return NextResponse.redirect(`${FALLBACK_URL}?payment=failed`, 303);
   }
 }
