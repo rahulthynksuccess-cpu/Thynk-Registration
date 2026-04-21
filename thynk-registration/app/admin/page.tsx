@@ -252,11 +252,10 @@ function StudentDetailModal({
             </div>
           ))}
         </div>
- <ManualPaymentPanel
-          student={student}
-          authHeaders={() => ({})}
-          BACKEND={BACKEND}
-          onSuccess={() => showToast('✅ Payment recorded!', '✅')}
+<ManualPaymentPanel
+  student={student}
+  BACKEND={BACKEND}
+  onSuccess={() => showToast('✅ Payment recorded!', '✅')}
         />
 
         {sendChannel && (
