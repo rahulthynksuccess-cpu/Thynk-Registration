@@ -400,34 +400,21 @@ async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string)
   const wa = platformRow?.config?.whatsapp_settings;
 
   // ── ThynkComm ─────────────────────────────────────────────────────────────
+  // ThynkComm's /api/send-message ONLY accepts { to, message } — plain text.
+  // It does NOT support a template-format payload. ThynkComm handles its own
+  // Meta API connection internally. Always send the rendered body as message.
   if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
-    // If the template has a Meta-approved template name, send it as a template
-    // message (ThynkComm accepts the same shape as the Meta Cloud API).
-    // Otherwise fall back to a plain text session message.
-    const payload: Record<string, any> = templateName
-      ? {
-          to,
-          type: 'template',
-          template: {
-            name:       templateName,
-            language:   { code: templateLang },
-            components: [
-              {
-                type:       'body',
-                parameters: buildMetaBodyParams(template.body, vars),
-              },
-            ],
-          },
-        }
-      : { to, message: renderedBody };
-
-    console.log(`[sendWhatsApp] thynkcomm template="${templateName ?? '(plain)'}" to=${to}`);
+    console.log(`[sendWhatsApp] thynkcomm to=${to}`);
     const res = await fetch(wa.tcUrl.replace(/\/$/, '') + '/api/send-message', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': wa.tcApiKey, 'x-api-secret': wa.tcApiSecret ?? '' },
-      body:    JSON.stringify(payload),
+      body:    JSON.stringify({ to, message: renderedBody }),
     });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(`ThynkComm error: ${e.message ?? res.status}`); }
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      const errText = errBody.error ?? errBody.message ?? JSON.stringify(errBody);
+      throw new Error(`ThynkComm error ${res.status}: ${errText}`);
+    }
     return 'thynkcomm';
   }
 
