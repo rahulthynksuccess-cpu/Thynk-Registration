@@ -424,11 +424,22 @@ async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string)
 
   // ── ThynkComm ─────────────────────────────────────────────────────────────
   // ThynkComm /api/send-message accepts:
-  //   Template:  { to, template_name, language_code }
+  //   Template:  { to, template_name, language_code, template_params: string[] }
   //   Plain text: { to, message }
+  // template_params maps to {{1}},{{2}},{{3}}… in the Meta approved template,
+  // in the same order that {{variable_name}} placeholders appear in the body.
   if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
+    // Extract variable values in order of appearance from the template body
+    const params = buildMetaBodyParams(template.body, vars).map(p => p.text);
+
     const payload: Record<string, any> = templateName
-      ? { to, template_name: templateName, language_code: templateLang }
+      ? {
+          to,
+          template_name:   templateName,
+          language_code:   templateLang,
+          // Only send template_params if the template actually has variables
+          ...(params.length > 0 ? { template_params: params } : {}),
+        }
       : { to, message: renderedBody };
 
     console.log(`[sendWhatsApp] thynkcomm PAYLOAD=${JSON.stringify(payload)}`);
