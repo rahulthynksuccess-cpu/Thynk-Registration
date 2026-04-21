@@ -1,7 +1,13 @@
 export const dynamic = 'force-dynamic';
 /**
- * GET /api/admin/whatsapp-test?phone=919876543210
- * Temporary debug endpoint - NO AUTH - DELETE AFTER TESTING
+ * WhatsApp send test — calls ThynkComm directly from the server.
+ *
+ * Plain text:  GET /api/admin/whatsapp-test?phone=918800903318
+ * Template:    GET /api/admin/whatsapp-test?phone=918800903318&template=thynk_reg_school_registration
+ * Custom lang: GET /api/admin/whatsapp-test?phone=918800903318&template=thynk_reg_school_registration&lang=en_US
+ *
+ * Response includes payload_sent so you can see exactly what was sent.
+ * DELETE THIS FILE after testing — no auth check.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -9,13 +15,20 @@ import { createServiceClient } from '@/lib/supabase/server';
 export async function GET(req: NextRequest) {
   const supabase = createServiceClient();
   const { searchParams } = new URL(req.url);
-  const phone = (searchParams.get('phone') ?? '').replace(/\D/g, '');
 
-  if (!phone) return NextResponse.json({ error: 'Pass ?phone=919876543210' }, { status: 400 });
+  const rawPhone     = (searchParams.get('phone')    ?? '').replace(/\D/g, '');
+  const templateName = (searchParams.get('template') ?? '').trim();
+  const langCode     = (searchParams.get('lang')     ?? 'en_US').trim();
 
-  const to = phone.startsWith('91') ? phone : `91${phone}`;
+  if (!rawPhone) {
+    return NextResponse.json({
+      error: 'Pass ?phone=918800903318',
+      tip:   'Add &template=thynk_reg_school_registration to test an approved Meta template',
+    }, { status: 400 });
+  }
 
-  // Load platform_settings
+  const to = rawPhone.startsWith('91') ? rawPhone : `91${rawPhone}`;
+
   const { data: platformRow, error: cfgErr } = await supabase
     .from('integration_configs')
     .select('config')
@@ -23,69 +36,40 @@ export async function GET(req: NextRequest) {
     .is('school_id', null)
     .maybeSingle();
 
-  if (cfgErr) return NextResponse.json({ step: 'load_config', error: cfgErr.message });
+  if (cfgErr) return NextResponse.json({ error: 'DB error: ' + cfgErr.message }, { status: 500 });
 
   const wa = platformRow?.config?.whatsapp_settings;
+  if (!wa)         return NextResponse.json({ error: 'No whatsapp_settings in DB' }, { status: 400 });
+  if (!wa.tcUrl)   return NextResponse.json({ error: 'ThynkComm URL missing'     }, { status: 400 });
+  if (!wa.tcApiKey)return NextResponse.json({ error: 'ThynkComm API key missing' }, { status: 400 });
 
-  if (!wa) return NextResponse.json({
-    step: 'load_config',
-    error: 'No whatsapp_settings found. Go to Admin → Settings → WhatsApp and save.',
-    raw_config_keys: Object.keys(platformRow?.config ?? {}),
-  });
+  const payload = templateName
+    ? { to, template_name: templateName, language_code: langCode }
+    : { to, message: `Thynk test ${new Date().toISOString()}` };
 
-  const testMsg = `Thynk WhatsApp server test ${new Date().toISOString()}`;
-  const result: any = { provider: wa.provider, enabled: wa.enabled, to };
+  let httpStatus = 0;
+  let responseBody: any = {};
 
   try {
-    if (wa.provider === 'thynkcomm') {
-      result.config = { tcUrl: wa.tcUrl, hasApiKey: !!wa.tcApiKey, hasSecret: !!wa.tcApiSecret };
-      if (!wa.tcUrl || !wa.tcApiKey) throw new Error(`Missing tcUrl or tcApiKey`);
-      const url = wa.tcUrl.replace(/\/$/, '') + '/api/send-message';
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': wa.tcApiKey, 'x-api-secret': wa.tcApiSecret ?? '' },
-        body: JSON.stringify({ to, message: testMsg }),
-      });
-      const body = await res.json().catch(() => res.text());
-      result.http_status = res.status;
-      result.response = body;
-      result.success = res.ok;
-
-    } else if (wa.provider === 'meta') {
-      result.config = { metaPhoneId: wa.metaPhoneId, hasToken: !!wa.metaToken };
-      if (!wa.metaPhoneId || !wa.metaToken) throw new Error(`Missing metaPhoneId or metaToken`);
-      const res = await fetch(`https://graph.facebook.com/v19.0/${wa.metaPhoneId}/messages`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${wa.metaToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: testMsg } }),
-      });
-      const body = await res.json().catch(() => res.text());
-      result.http_status = res.status;
-      result.response = body;
-      result.success = res.ok;
-
-    } else if (wa.provider === 'twilio') {
-      result.config = { hasAccountSid: !!wa.accountSid, hasAuthToken: !!wa.authToken, fromNumber: wa.fromNumber };
-      if (!wa.accountSid || !wa.authToken || !wa.fromNumber) throw new Error(`Missing Twilio config`);
-      const from = wa.fromNumber.startsWith('whatsapp:') ? wa.fromNumber : `whatsapp:${wa.fromNumber}`;
-      const creds = Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64');
-      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${wa.accountSid}/Messages.json`, {
-        method: 'POST',
-        headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ From: from, To: `whatsapp:+${to}`, Body: testMsg }).toString(),
-      });
-      const body = await res.json().catch(() => res.text());
-      result.http_status = res.status;
-      result.response = body;
-      result.success = res.ok;
-
-    } else {
-      throw new Error(`Unknown provider: "${wa.provider}"`);
-    }
+    const res = await fetch(wa.tcUrl.replace(/\/$/, '') + '/api/send-message', {
+      method:  'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key':    wa.tcApiKey,
+        'x-api-secret': wa.tcApiSecret ?? '',
+      },
+      body: JSON.stringify(payload),
+    });
+    httpStatus   = res.status;
+    responseBody = await res.json().catch(() => ({}));
   } catch (err: any) {
-    result.success = false;
-    result.error = err.message;
+    return NextResponse.json({ success: false, error: err.message, payload_sent: payload }, { status: 502 });
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    success:      httpStatus === 200 && responseBody.success === true,
+    http_status:  httpStatus,
+    payload_sent: payload,
+    response:     responseBody,
+  });
 }
