@@ -252,6 +252,12 @@ function StudentDetailModal({
             </div>
           ))}
         </div>
+ <ManualPaymentPanel
+          student={student}
+          authHeaders={() => ({})}
+          BACKEND={BACKEND}
+          onSuccess={() => showToast('✅ Payment recorded!', '✅')}
+        />
 
         {sendChannel && (
           <div style={{ margin: '16px 24px', padding: 16, background: 'var(--bg)', borderRadius: 12, border: '1.5px solid var(--bd)', display: 'flex', flexDirection: 'column', gap: 12 }}>
