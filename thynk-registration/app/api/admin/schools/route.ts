@@ -151,9 +151,7 @@ export async function POST(req: NextRequest) {
     program_name:     program.name,
     base_amount:      Math.round(Number(school_price)),
     currency:         resolvedCurrency,
-    gateway_sequence: resolvedCurrency === 'INR'
-      ? ['cashfree', 'razorpay', 'easebuzz']
-      : ['paypal', 'razorpay'],
+   gateway_sequence: await getGatewaySequence(service, resolvedCurrency),
     is_active: true,
   });
 
