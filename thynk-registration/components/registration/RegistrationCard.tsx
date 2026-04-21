@@ -243,15 +243,35 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
 
   // ── Easebuzz ───────────────────────────────────────────────────
   function launchEasebuzz(data: any) {
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = data.payment_url;
-    form.target = '_self';
-    const inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'access_key'; inp.value = data.access_key;
-    form.appendChild(inp);
-    document.body.appendChild(form);
-    form.submit();
+    const s = document.createElement('script');
+    s.src = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js';
+    s.onload = () => {
+      const eb = new (window as any).EasebuzzCheckout(data.access_key, data.env === 'live' ? 'prod' : 'test');
+      eb.initiatePayment({
+        access_key: data.access_key,
+        onResponse: async (r: any) => {
+          if (r.status === 'success') {
+            showLoader('Confirming payment…');
+            await fetch('/api/payment/easebuzz-callback?paymentId=' + data.payment_id, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                status: r.status ?? '', txnid: r.txnid ?? '', mihpayid: r.mihpayid ?? '',
+                amount: r.amount ?? '', email: r.email ?? '', firstname: r.firstname ?? '',
+                productinfo: r.productinfo ?? '', key: r.key ?? '', hash: r.hash ?? '',
+                udf1: '', udf2: '', udf3: '', udf4: '', udf5: '',
+              }).toString(),
+            }).catch(() => {});
+            hideLoader();
+            showSuccess();
+          } else {
+            showToast('Payment failed or cancelled. Please try again.', 'err');
+          }
+        },
+      });
+    };
+    s.onerror = () => showToast('Failed to load payment SDK. Check your connection.', 'err');
+    document.head.appendChild(s);
   }
 
   // ── PayPal (international only) ────────────────────────────────
