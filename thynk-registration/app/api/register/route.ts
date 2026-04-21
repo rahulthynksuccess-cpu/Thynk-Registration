@@ -530,6 +530,7 @@ export async function POST(req: NextRequest) {
         registration_id: registration.id,
         access_key:      ebResult.access_key,
         payment_url:     ebResult.payment_url,
+        env:             ebEnv,
       });
     }
 
