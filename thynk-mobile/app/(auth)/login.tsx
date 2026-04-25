@@ -7,44 +7,51 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 
-const DEFAULT_BACKEND = 'https://thynk-registration.vercel.app';
-const DEFAULT_EMAIL   = 'success@thynksuccess.com';
+const DEFAULT_BACKEND  = 'https://thynk-registration.vercel.app';
+const DEFAULT_EMAIL    = 'success@thynksuccess.in';
+
+// Your Supabase project URL and anon key
+// These are safe to include in the app (they are public keys)
+const SUPABASE_URL      = 'https://ljagfjictbktvnzauynr.supabase.co';   // ← replace this
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqYWdmamljdGJrdHZuemF1eW5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MjkxNzgsImV4cCI6MjA5MTUwNTE3OH0.MkBV9sZaOn4FzWNAFCnBrC_O7CE25_2ZmNFgXz2BRIs';                       // ← replace this
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND);
-  const [email, setEmail]           = useState(DEFAULT_EMAIL);
-  const [password, setPassword]     = useState('');
-  const [loading, setLoading]       = useState(false);
+  const [backendUrl, setBackendUrl]     = useState(DEFAULT_BACKEND);
+  const [email, setEmail]               = useState(DEFAULT_EMAIL);
+  const [password, setPassword]         = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading]           = useState(false);
 
   async function handleLogin() {
     if (!password) {
-      Alert.alert('Missing password', 'Please enter your admin password.');
+      Alert.alert('Missing password', 'Please enter your password.');
       return;
     }
     setLoading(true);
     try {
-      const baseUrl = backendUrl.replace(/\/$/, '');
-
-      const res = await fetch(`${baseUrl}/api/admin/schools`, {
-        headers: { 'x-admin-password': password },
+      // Sign in via Supabase to get access token
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (res.ok || res.status === 200) {
-        await SecureStore.setItemAsync('thynk_backend_url', baseUrl);
-        await SecureStore.setItemAsync('thynk_admin_token', password);
-        router.replace('/(tabs)');
+      const data = await res.json();
+
+      if (!res.ok || !data.access_token) {
+        Alert.alert('Login failed', data.error_description ?? data.message ?? 'Incorrect email or password.');
+        setLoading(false);
         return;
       }
 
-      if (res.status === 401 || res.status === 403) {
-        Alert.alert('Wrong password', 'Please check your admin password.');
-        return;
-      }
+      // Save backend URL and Supabase access token
+      await SecureStore.setItemAsync('thynk_backend_url', backendUrl.replace(/\/$/, ''));
+      await SecureStore.setItemAsync('thynk_admin_token', data.access_token);
 
-      // Proceed anyway if server responds
-      await SecureStore.setItemAsync('thynk_backend_url', baseUrl);
-      await SecureStore.setItemAsync('thynk_admin_token', password);
       router.replace('/(tabs)');
 
     } catch (e: any) {
@@ -94,16 +101,24 @@ export default function LoginScreen() {
           />
 
           <Text style={[styles.fieldLabel, { marginTop: Spacing.lg }]}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your admin password"
-            placeholderTextColor={Colors.textDim}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="Enter your password"
+              placeholderTextColor={Colors.textDim}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(v => !v)}
+            >
+              <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
             {loading
@@ -124,9 +139,9 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  root:  { flex: 1, backgroundColor: Colors.bg },
-  scroll:{ flexGrow: 1, justifyContent: 'center', padding: Spacing.xl },
-  brand: { alignItems: 'center', marginBottom: Spacing.xxxl },
+  root:   { flex: 1, backgroundColor: Colors.bg },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: Spacing.xl },
+  brand:  { alignItems: 'center', marginBottom: Spacing.xxxl },
   logoBox: {
     width: 72, height: 72, borderRadius: 20,
     backgroundColor: Colors.primary,
@@ -158,6 +173,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
   },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  eyeBtn: {
+    padding: 10,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.cardBorder,
+  },
+  eyeIcon: { fontSize: 18 },
   btn: {
     marginTop: Spacing.xl,
     backgroundColor: Colors.primary,
