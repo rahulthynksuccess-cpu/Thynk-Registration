@@ -4,57 +4,51 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { setBackendUrl, setToken } from '@/lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { Colors, Spacing, Radius } from '@/constants/theme';
+
+const DEFAULT_BACKEND = 'https://thynk-registration.vercel.app';
+const DEFAULT_EMAIL   = 'success@thynksuccess.com';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [backendUrl, setBackendUrlState] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND);
+  const [email, setEmail]           = useState(DEFAULT_EMAIL);
+  const [password, setPassword]     = useState('');
+  const [loading, setLoading]       = useState(false);
 
   async function handleLogin() {
-    if (!backendUrl || !email || !password) {
-      Alert.alert('Missing fields', 'Please fill in all fields.');
+    if (!password) {
+      Alert.alert('Missing password', 'Please enter your admin password.');
       return;
     }
     setLoading(true);
     try {
       const baseUrl = backendUrl.replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/api/admin/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+
+      const res = await fetch(`${baseUrl}/api/admin/schools`, {
+        headers: { 'x-admin-password': password },
       });
-      if (res.ok) {
-        const data = await res.json();
-        await setBackendUrl(baseUrl);
-        await setToken(data.token ?? data.access_token ?? `${email}:${password}`);
+
+      if (res.ok || res.status === 200) {
+        await SecureStore.setItemAsync('thynk_backend_url', baseUrl);
+        await SecureStore.setItemAsync('thynk_admin_token', password);
         router.replace('/(tabs)');
         return;
       }
-      // Try Supabase-style auth via the backend's own session
-      // The web app uses Supabase client-side auth. For mobile we store credentials
-      // and pass them as Basic auth or rely on the same token pattern.
-      // Fallback: store credentials directly (the web app admin APIs use
-      // admin_password from supabase settings table).
-      const res2 = await fetch(`${baseUrl}/api/admin/settings`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-password': password,
-        },
-      });
-      if (res2.ok || res2.status === 403) {
-        // Server is reachable; store creds
-        await setBackendUrl(baseUrl);
-        await setToken(btoa(`${email}:${password}`));
-        router.replace('/(tabs)');
+
+      if (res.status === 401 || res.status === 403) {
+        Alert.alert('Wrong password', 'Please check your admin password.');
         return;
       }
-      Alert.alert('Login failed', 'Invalid credentials or server unreachable.');
+
+      // Proceed anyway if server responds
+      await SecureStore.setItemAsync('thynk_backend_url', baseUrl);
+      await SecureStore.setItemAsync('thynk_admin_token', password);
+      router.replace('/(tabs)');
+
     } catch (e: any) {
-      Alert.alert('Connection error', e.message);
+      Alert.alert('Connection error', 'Could not reach the server.\n\n' + e.message);
     } finally {
       setLoading(false);
     }
@@ -66,7 +60,8 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {/* Logo / Brand */}
+
+        {/* Logo */}
         <View style={styles.brand}>
           <View style={styles.logoBox}>
             <Text style={styles.logoText}>T</Text>
@@ -77,58 +72,60 @@ export default function LoginScreen() {
 
         {/* Form */}
         <View style={styles.card}>
+
           <Text style={styles.fieldLabel}>Backend URL</Text>
           <TextInput
             style={styles.input}
-            placeholder="https://your-app.vercel.app"
-            placeholderTextColor={Colors.textDim}
             value={backendUrl}
-            onChangeText={setBackendUrlState}
+            onChangeText={setBackendUrl}
             autoCapitalize="none"
+            autoCorrect={false}
             keyboardType="url"
           />
 
           <Text style={[styles.fieldLabel, { marginTop: Spacing.lg }]}>Email</Text>
           <TextInput
             style={styles.input}
-            placeholder="admin@example.com"
-            placeholderTextColor={Colors.textDim}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
+            autoCorrect={false}
             keyboardType="email-address"
           />
 
           <Text style={[styles.fieldLabel, { marginTop: Spacing.lg }]}>Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="••••••••"
+            placeholder="Enter your admin password"
             placeholderTextColor={Colors.textDim}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
           />
 
           <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>Sign In</Text>
-            )}
+            {loading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.btnText}>Sign In</Text>
+            }
           </TouchableOpacity>
+
         </View>
 
         <Text style={styles.hint}>
-          Enter your Thynk deployment URL and admin credentials.
+          Backend URL and email are pre-filled. Just enter your password.
         </Text>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: Spacing.xl },
+  root:  { flex: 1, backgroundColor: Colors.bg },
+  scroll:{ flexGrow: 1, justifyContent: 'center', padding: Spacing.xl },
   brand: { alignItems: 'center', marginBottom: Spacing.xxxl },
   logoBox: {
     width: 72, height: 72, borderRadius: 20,
@@ -137,9 +134,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     shadowColor: Colors.primary, shadowOpacity: 0.5, shadowRadius: 20, elevation: 8,
   },
-  logoText: { fontSize: 36, fontWeight: '800', color: '#fff' },
+  logoText:  { fontSize: 36, fontWeight: '800', color: '#fff' },
   brandName: { fontSize: 26, fontWeight: '800', color: Colors.text, letterSpacing: -0.5 },
-  brandSub: { fontSize: 13, color: Colors.textMuted, marginTop: 4 },
+  brandSub:  { fontSize: 13, color: Colors.textMuted, marginTop: 4 },
   card: {
     backgroundColor: Colors.card,
     borderRadius: Radius.xl,
@@ -147,7 +144,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardBorder,
   },
-  fieldLabel: { fontSize: 12, fontWeight: '700', color: Colors.textMuted, marginBottom: Spacing.xs, textTransform: 'uppercase', letterSpacing: 0.6 },
+  fieldLabel: {
+    fontSize: 12, fontWeight: '700', color: Colors.textMuted,
+    marginBottom: Spacing.xs, textTransform: 'uppercase', letterSpacing: 0.6,
+  },
   input: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
