@@ -6,10 +6,10 @@ import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithAppro
 import { ManageSchool } from '@/components/admin/ManageSchool';
 import { SchoolLogPanel } from '@/components/admin/SchoolLogPanel';
 import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
-import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
-import { StudentLogPanel }      from '@/components/admin/StudentLogPanel';
 import { ManualPaymentPanel }   from '@/components/admin/ManualPaymentPanel';
 import { ReportingPage } from '@/components/admin/ReportingPage';
+import { DocumentUploadPanel } from '@/components/admin/DocumentUploadPanel';
+import { NotificationControlPanel, NotificationBell, NotificationDropdown } from '@/components/admin/NotificationControlPanel';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -92,6 +92,9 @@ const NAV = [
   { id:'manage_school', icon:'⚙️', label:'Manage Schools' },
   { id:'discounts',     icon:'🏷️', label:'Discount Codes' },
   { id:'users',         icon:'👥', label:'Admin Users'    },
+  { section:'Client Portal' },
+  { id:'documents',     icon:'📁', label:'Document Upload' },
+  { id:'notifications', icon:'🔔', label:'Notifications',  badge:true },
   { section:'Integrations' },
   { id:'_integrations', icon:'⚙️',  label:'Payment & Email', href:'/admin/integrations' },
   { id:'_triggers',     icon:'🔔', label:'Message Triggers', href:'/admin/message-triggers' },
@@ -336,6 +339,7 @@ export default function AdminDashboard() {
   const [toast, setToast]             = useState({ text:'', type:'' });
   const [modal, setModal]             = useState<Row|null>(null);
   const [drillData, setDrillData]     = useState<{title:string;rows:Row[]}|null>(null);
+  const [notifOpen, setNotifOpen]     = useState(false);
   const [trendDays, setTrendDays]     = useState(7);
   const accessTokenRef                = useRef<string>('');
 
@@ -677,6 +681,15 @@ export default function AdminDashboard() {
                   {programs.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                 </select>
                 <div className="badge-live"><div className="dot"/>Live Data</div>
+                <div style={{ position:'relative' }}>
+                  <NotificationBell onClick={() => setNotifOpen(v => !v)} />
+                  {notifOpen && (
+                    <NotificationDropdown
+                      onClose={() => setNotifOpen(false)}
+                      onViewAll={() => { setNotifOpen(false); setActivePage('notifications'); }}
+                    />
+                  )}
+                </div>
                 <button className="btn btn-outline" onClick={loadRegistrations}>🔄 Refresh</button>
                 <button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button>
               </div>
@@ -1302,6 +1315,19 @@ export default function AdminDashboard() {
           {/* ── LOCATION MASTER ──────────────────────────────────────── */}
           <div className={`page${activePage==='locations'?' active':''}`}>
             <LocationMasterPage rows={locations} BACKEND={BACKEND} onReload={loadLocations} showToast={showToast} />
+          </div>
+
+          {/* ── DOCUMENT UPLOAD ──────────────────────────────────────── */}
+          <div className={`page${activePage==='documents'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>Document <span>Upload</span></h1><p>Upload and manage client documents</p></div>
+            </div>
+            {activePage==='documents' && <DocumentUploadPanel showToast={(m,i)=>showToast(m,i??'')} />}
+          </div>
+
+          {/* ── NOTIFICATION CONTROL PANEL ───────────────────────────── */}
+          <div className={`page${activePage==='notifications'?' active':''}`}>
+            {activePage==='notifications' && <NotificationControlPanel showToast={(m,i)=>showToast(m,i??'')} />}
           </div>
 
         </main>
