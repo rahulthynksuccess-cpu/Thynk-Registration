@@ -107,10 +107,10 @@ export function ManualPaymentPanel({
   onSuccess,
 }: {
  student:      Row;
-  authHeaders?: () => HeadersInit;  // ← add ? to make optional
+  authHeaders?: () => HeadersInit;
   BACKEND?:     string;
   onSuccess?:   (updated: Partial<Row>) => void;
-})
+}) {
   const [open,    setOpen]    = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
@@ -203,45 +203,44 @@ export function ManualPaymentPanel({
   const isPaid = student.payment_status === 'paid';
 
   // ── Read-only payment details (shown when already paid) ──────────────────
-  if (isPaid && !open) {
-    return (
-      <div style={{
-        margin: '0 24px 16px',
-        padding: '12px 14px',
-        background: 'rgba(34,197,94,0.06)',
-        border: '1.5px solid rgba(34,197,94,0.2)',
-        borderRadius: 12,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-      }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            ✅ Payment Recorded
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--m)', marginTop: 3 }}>
-            {student.gateway ?? '—'} · {student.gateway_txn_id ?? 'no txn ID'} · {
-              student.paid_at
-                ? new Date(student.paid_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true })
-                : '—'
-            }
-          </div>
-        </div>
-        <button
-          onClick={() => setOpen(true)}
-          style={{
-            border: '1.5px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.08)',
-            color: '#16a34a', borderRadius: 8, padding: '5px 12px',
-            fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
-            fontFamily: 'DM Sans,sans-serif',
-          }}
-        >
-          ✏️ Edit
-        </button>
-      </div>
-    );
-  }
 
   return (
     <>
+      {/* Already paid — show read-only summary */}
+      {isPaid && !open && (
+        <div style={{
+          margin: '0 24px 16px',
+          padding: '12px 14px',
+          background: 'rgba(34,197,94,0.06)',
+          border: '1.5px solid rgba(34,197,94,0.2)',
+          borderRadius: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              ✅ Payment Recorded
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--m)', marginTop: 3 }}>
+              {student.gateway ?? '—'} · {student.gateway_txn_id ?? 'no txn ID'} · {
+                student.paid_at
+                  ? new Date(student.paid_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true })
+                  : '—'
+              }
+            </div>
+          </div>
+          <button
+            onClick={() => setOpen(true)}
+            style={{
+              border: '1.5px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.08)',
+              color: '#16a34a', borderRadius: 8, padding: '5px 12px',
+              fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+              fontFamily: 'DM Sans,sans-serif',
+            }}
+          >
+            ✏️ Edit
+          </button>
+        </div>
+      )}
       {/* Trigger button — only shown when not already open */}
       {!open && (
         <div style={{ padding: '0 24px 4px' }}>
