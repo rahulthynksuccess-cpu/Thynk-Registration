@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         .eq('id', payment.registration_id);
 
       if (newStatus === 'paid') {
-        await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }).catch(() => {});
+        try { await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }); } catch (_) {}
         await fireTriggers('registration.created', payment.registration_id, payment.school_id ?? '');
         await fireTriggers('payment.paid',         payment.registration_id, payment.school_id ?? '');
       } else {
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
       .eq('id', payment.registration_id);
 
     if (newStatus === 'paid') {
-      await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }).catch(() => {});
+      try { await supabase.rpc('decrement_discount_usage', { p_payment_id: payment.id }); } catch (_) {}
       await fireTriggers('registration.created', payment.registration_id, payment.school_id ?? '');
       await fireTriggers('payment.paid',         payment.registration_id, payment.school_id ?? '');
     } else {
