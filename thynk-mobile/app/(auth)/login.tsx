@@ -8,12 +8,12 @@ import * as SecureStore from 'expo-secure-store';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 
 const DEFAULT_BACKEND  = 'https://thynk-registration.vercel.app';
-const DEFAULT_EMAIL    = 'success@thynksuccess.in';
+const DEFAULT_EMAIL    = 'success@thynksuccess.com';
 
-// Your Supabase project URL and anon key
-// These are safe to include in the app (they are public keys)
-const SUPABASE_URL      = 'https://ljagfjictbktvnzauynr.supabase.co';   // ← replace this
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqYWdmamljdGJrdHZuemF1eW5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MjkxNzgsImV4cCI6MjA5MTUwNTE3OH0.MkBV9sZaOn4FzWNAFCnBrC_O7CE25_2ZmNFgXz2BRIs';                       // ← replace this
+// Get these from Supabase dashboard → Project Settings → API
+// These are PUBLIC keys — safe to include in the app
+const SUPABASE_URL      = 'https://YOUR_PROJECT.supabase.co';   // ← replace
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';                       // ← replace
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -24,34 +24,36 @@ export default function LoginScreen() {
   const [loading, setLoading]           = useState(false);
 
   async function handleLogin() {
-    if (!password) {
+    if (!password.trim()) {
       Alert.alert('Missing password', 'Please enter your password.');
       return;
     }
     setLoading(true);
     try {
-      // Sign in via Supabase to get access token
+      // Sign in via Supabase to get Bearer token
       const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.access_token) {
-        Alert.alert('Login failed', data.error_description ?? data.message ?? 'Incorrect email or password.');
+        const msg = data.error_description ?? data.message ?? 'Incorrect email or password.';
+        Alert.alert('Login failed', msg);
         setLoading(false);
         return;
       }
 
-      // Save backend URL and Supabase access token
+      // Save credentials — this triggers the auth guard to navigate to tabs
       await SecureStore.setItemAsync('thynk_backend_url', backendUrl.replace(/\/$/, ''));
       await SecureStore.setItemAsync('thynk_admin_token', data.access_token);
 
+      // Navigate directly — don't wait for the auth guard
       router.replace('/(tabs)');
 
     } catch (e: any) {
@@ -115,12 +117,18 @@ export default function LoginScreen() {
             <TouchableOpacity
               style={styles.eyeBtn}
               onPress={() => setShowPassword(v => !v)}
+              activeOpacity={0.7}
             >
               <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
+          <TouchableOpacity
+            style={[styles.btn, loading && { opacity: 0.7 }]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
             {loading
               ? <ActivityIndicator color="#fff" />
               : <Text style={styles.btnText}>Sign In</Text>
@@ -179,11 +187,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   eyeBtn: {
-    padding: 10,
+    padding: 12,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1.5,
     borderColor: Colors.cardBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   eyeIcon: { fontSize: 18 },
   btn: {
