@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient, authFetch } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { ClientDocumentsTab } from '@/components/school/ClientDocumentsTab';
+import { SchoolNotificationBell, SchoolNotificationsPanel } from '@/components/school/SchoolNotificationsPanel';
 
 type Row = Record<string, any>;
 const fmt  = (n: any) => { const v = parseFloat(String(n ?? 0).replace(/[^0-9.]/g, '')); return isNaN(v) ? '0' : v.toLocaleString('en-IN'); };
@@ -611,8 +613,10 @@ export default function SchoolDashboard() {
   const { stats, school, byClass, byGender, crossTab, daily } = data;
   const convPct = stats?.total ? Math.round((stats.paid / stats.total) * 100) : 0;
   const TABS = [
-    { id: 'overview', icon: '◉', label: 'Overview' },
-    { id: 'students', icon: '◎', label: 'Students' },
+    { id: 'overview',      icon: '◉', label: 'Overview'      },
+    { id: 'students',      icon: '◎', label: 'Students'      },
+    { id: 'documents',     icon: '📁', label: 'Documents'     },
+    { id: 'notifications', icon: '🔔', label: 'Notifications' },
   ] as const;
 
   return (
@@ -647,6 +651,7 @@ export default function SchoolDashboard() {
             </div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <SchoolNotificationBell onOpenNotifications={() => setTab('notifications' as any)} />
             <button onClick={load}
               style={{ background:'#f1f5f9', color:'#475569', border:'none', borderRadius:10, padding:'7px 15px', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}
               onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; }}
@@ -829,6 +834,20 @@ export default function SchoolDashboard() {
                     </table>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* ── DOCUMENTS TAB ── */}
+            {tab === ('documents' as any) && (
+              <div style={{ animation:'floatUp .3s ease both' }}>
+                <ClientDocumentsTab />
+              </div>
+            )}
+
+            {/* ── NOTIFICATIONS TAB ── */}
+            {tab === ('notifications' as any) && (
+              <div style={{ animation:'floatUp .3s ease both' }}>
+                <SchoolNotificationsPanel />
               </div>
             )}
           </main>
