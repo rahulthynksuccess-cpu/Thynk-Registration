@@ -1,3 +1,4 @@
+// updated
 'use client';
 import Script from 'next/script';
 import { authFetch } from '@/lib/supabase/client';
