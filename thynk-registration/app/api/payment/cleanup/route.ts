@@ -38,7 +38,7 @@ async function fireSuccess(supabase: any, payment: any, paymentId: string) {
   }).eq('id', paymentId);
   await supabase.from('registrations').update({ status: 'paid' })
     .eq('id', payment.registration_id);
-  await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }).catch(() => {});
+  try { await supabase.rpc('decrement_discount_usage', { p_payment_id: paymentId }); } catch (_) {}
   await fireTriggers('registration.created', payment.registration_id, payment.school_id);
   await fireTriggers('payment.paid',         payment.registration_id, payment.school_id);
 }
