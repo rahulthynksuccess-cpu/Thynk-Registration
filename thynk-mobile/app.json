@@ -22,13 +22,7 @@
         "backgroundColor": "#4f46e5"
       },
       "package": "com.thynk.registration",
-      "permissions": [
-        "INTERNET",
-        "ACCESS_NETWORK_STATE"
-      ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"]
     },
     "plugins": [
       "expo-router",
