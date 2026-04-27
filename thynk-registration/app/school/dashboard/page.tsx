@@ -4,6 +4,7 @@ import { createClient, authFetch } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { ClientDocumentsTab } from '@/components/school/ClientDocumentsTab';
 import { SchoolNotificationBell, SchoolNotificationsPanel } from '@/components/school/SchoolNotificationsPanel';
+import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
 
 type Row = Record<string, any>;
 const fmt  = (n: any) => { const v = parseFloat(String(n ?? 0).replace(/[^0-9.]/g, '')); return isNaN(v) ? '0' : v.toLocaleString('en-IN'); };
@@ -393,6 +394,7 @@ export default function SchoolDashboard() {
   const [search,      setSearch]      = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [toast,       setToast]       = useState('');
+  const [yearFilter,  setYearFilter]  = useState<number>(new Date().getFullYear());
   const chartsRef = useRef<Record<string, any>>({});
   const toastRef  = useRef<any>();
 
@@ -409,6 +411,7 @@ export default function SchoolDashboard() {
   }, []);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') loadSavedTheme();
     // In preview mode (admin link), skip auth check entirely
     const isPreview = typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).has('preview_token');
@@ -578,9 +581,15 @@ export default function SchoolDashboard() {
   }, [tab, data], chartJsReady);
 
   const allRows           = data?.rows ?? [] as Row[];
-  const paidRows          = allRows.filter((r: Row) => r.payment_status === 'paid');
-  const pendingRows       = allRows.filter((r: Row) => r.payment_status !== 'paid');
-  const classes           = [...new Set(allRows.map((r: Row) => r.class_grade).filter(Boolean))].sort() as string[];
+  // Filter by selected year
+  const yearFilteredRows  = allRows.filter((r: Row) => {
+    if (!yearFilter) return true;
+    return new Date(r.created_at).getFullYear() === yearFilter;
+  });
+  const availableYears    = [...new Set(allRows.map((r: Row) => new Date(r.created_at).getFullYear()))].sort((a,b) => b-a) as number[];
+  const paidRows          = yearFilteredRows.filter((r: Row) => r.payment_status === 'paid');
+  const pendingRows       = yearFilteredRows.filter((r: Row) => r.payment_status !== 'paid');
+  const classes           = [...new Set(yearFilteredRows.map((r: Row) => r.class_grade).filter(Boolean))].sort() as string[];
   const activeStudentRows = studentTab === 'paid' ? paidRows : pendingRows;
   const filteredRows      = activeStudentRows.filter((r: Row) => {
     const s = search.toLowerCase();
@@ -610,8 +619,47 @@ export default function SchoolDashboard() {
     </div>
   );
 
-  const { stats, school, byClass, byGender, crossTab, daily } = data;
-  const convPct = stats?.total ? Math.round((stats.paid / stats.total) * 100) : 0;
+  const { stats: rawStats, school, byClass: rawByClass, byGender: rawByGender, crossTab: rawCrossTab, daily: rawDaily } = data;
+
+  // Recompute stats from year-filtered rows
+  const filteredPaid    = yearFilteredRows.filter((r: Row) => r.payment_status === 'paid');
+  const filteredPending = yearFilteredRows.filter((r: Row) => ['pending','initiated'].includes(r.payment_status));
+  const filteredFailed  = yearFilteredRows.filter((r: Row) => ['failed','cancelled'].includes(r.payment_status));
+  const filteredRev     = filteredPaid.reduce((s: number, r: Row) => s + (r.final_amount ?? 0), 0);
+
+  const stats = {
+    total:    yearFilteredRows.length,
+    paid:     filteredPaid.length,
+    unpaid:   filteredPending.length,
+    failed:   filteredFailed.length,
+    totalRev: filteredRev,
+    pending:  filteredPending.length,
+  };
+
+  // Recompute breakdowns from year-filtered rows
+  const byClass: Record<string,number> = {};
+  filteredPaid.forEach((r: Row) => { const k = r.class_grade ?? 'Unknown'; byClass[k] = (byClass[k] ?? 0) + 1; });
+
+  const byGender: Record<string,number> = {};
+  filteredPaid.forEach((r: Row) => { const k = r.gender ?? 'Unknown'; byGender[k] = (byGender[k] ?? 0) + 1; });
+
+  const crossTab: Record<string,Record<string,number>> = {};
+  filteredPaid.forEach((r: Row) => {
+    const cls = r.class_grade ?? 'Unknown'; const gen = r.gender ?? 'Unknown';
+    if (!crossTab[cls]) crossTab[cls] = {};
+    crossTab[cls][gen] = (crossTab[cls][gen] ?? 0) + 1;
+  });
+
+  // Daily from yearFilteredRows
+  const daily: Record<string,{total:number;paid:number;revenue:number}> = {};
+  yearFilteredRows.forEach((r: Row) => {
+    const d = r.created_at?.slice(0,10); if (!d) return;
+    if (!daily[d]) daily[d] = {total:0,paid:0,revenue:0};
+    daily[d].total++;
+    if (r.payment_status === 'paid') { daily[d].paid++; daily[d].revenue += r.final_amount ?? 0; }
+  });
+
+  const convPct = stats.total ? Math.round((stats.paid / stats.total) * 100) : 0;
   const TABS = [
     { id: 'overview',      icon: '◉', label: 'Overview'      },
     { id: 'students',      icon: '◎', label: 'Students'      },
@@ -651,6 +699,18 @@ export default function SchoolDashboard() {
             </div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            {/* Year filter */}
+            <select
+              value={yearFilter}
+              onChange={e => setYearFilter(Number(e.target.value))}
+              style={{ background:'#f1f5f9', color:'#475569', border:'1px solid #e2e8f0', borderRadius:10, padding:'7px 12px', fontSize:12, fontWeight:700, cursor:'pointer', outline:'none' }}
+            >
+              {availableYears.length === 0
+                ? <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+                : availableYears.map(y => <option key={y} value={y}>{y}</option>)
+              }
+            </select>
+            <ThemeSwitcher />
             <SchoolNotificationBell onOpenNotifications={() => setTab('notifications' as any)} />
             <button onClick={load}
               style={{ background:'#f1f5f9', color:'#475569', border:'none', borderRadius:10, padding:'7px 15px', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}
