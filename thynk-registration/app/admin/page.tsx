@@ -1,4 +1,3 @@
-// updated
 'use client';
 import Script from 'next/script';
 import { authFetch } from '@/lib/supabase/client';
@@ -11,6 +10,7 @@ import { ManualPaymentPanel }   from '@/components/admin/ManualPaymentPanel';
 import { ReportingPage } from '@/components/admin/ReportingPage';
 import { DocumentUploadPanel } from '@/components/admin/DocumentUploadPanel';
 import { NotificationControlPanel, NotificationBell, NotificationDropdown } from '@/components/admin/NotificationControlPanel';
+import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -341,7 +341,12 @@ export default function AdminDashboard() {
   const [modal, setModal]             = useState<Row|null>(null);
   const [drillData, setDrillData]     = useState<{title:string;rows:Row[]}|null>(null);
   const [notifOpen, setNotifOpen]     = useState(false);
-  const [trendDays, setTrendDays]     = useState(7);
+  const [trendDays, setTrendDays]     = useState(() => {
+    // Default to current year — days elapsed since Jan 1
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    return Math.max(Math.ceil((now.getTime() - startOfYear.getTime()) / 86400000), 1);
+  });
   const accessTokenRef                = useRef<string>('');
 
   const [programs,     setPrograms]     = useState<Row[]>([]);
@@ -381,6 +386,8 @@ export default function AdminDashboard() {
     const supabase = createClient();
     supabase.auth.getSession().then(async ({ data: sessionData }) => {
       if (!sessionData.session) { router.push('/admin/login'); return; }
+      // Load saved colour theme
+      if (typeof window !== 'undefined') loadSavedTheme();
       // Guard: if we already have a user loaded, don't re-run init (prevents flicker on token refresh)
       // This check is intentionally after the null guard above.
       accessTokenRef.current = sessionData.session.access_token;
@@ -691,6 +698,7 @@ export default function AdminDashboard() {
                     />
                   )}
                 </div>
+                <ThemeSwitcher />
                 <button className="btn btn-outline" onClick={loadRegistrations}>🔄 Refresh</button>
                 <button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button>
               </div>
@@ -789,6 +797,10 @@ export default function AdminDashboard() {
                 {[7,14,30].map(d => (
                   <button key={d} className={`period-tab${trendDays===d?' active':''}`} onClick={() => setTrendDays(d)}>{d}d</button>
                 ))}
+                {(() => {
+                  const ytd = Math.max(Math.ceil((Date.now() - new Date(new Date().getFullYear(),0,1).getTime()) / 86400000), 1);
+                  return <button className={`period-tab${trendDays===ytd?' active':''}`} onClick={() => setTrendDays(ytd)}>YTD</button>;
+                })()}
               </div>
               <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
                 {/* Payment method breakdown pills */}
