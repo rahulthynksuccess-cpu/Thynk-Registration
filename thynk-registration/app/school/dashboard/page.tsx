@@ -586,7 +586,7 @@ export default function SchoolDashboard() {
     if (!yearFilter) return true;
     return new Date(r.created_at).getFullYear() === yearFilter;
   });
-  const availableYears    = [...new Set(allRows.map((r: Row) => new Date(r.created_at).getFullYear()))].sort((a,b) => b-a) as number[];
+  const availableYears    = [...new Set(allRows.map((r: Row) => new Date(r.created_at).getFullYear() as number))].sort((a: number, b: number) => b - a);
   const paidRows          = yearFilteredRows.filter((r: Row) => r.payment_status === 'paid');
   const pendingRows       = yearFilteredRows.filter((r: Row) => r.payment_status !== 'paid');
   const classes           = [...new Set(yearFilteredRows.map((r: Row) => r.class_grade).filter(Boolean))].sort() as string[];
