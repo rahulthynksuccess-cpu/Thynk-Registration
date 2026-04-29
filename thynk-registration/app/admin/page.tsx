@@ -1548,9 +1548,36 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
   const addContact = () => { if (contacts.length < 4) setContacts(p=>[...p,{...EMPTY_CONTACT}]); };
   const removeContact = (idx:number) => { if (contacts.length > 1) setContacts(p=>p.filter((_,i)=>i!==idx)); };
   const selProgram = programs.find(p=>p.id===f.project_id);
-  const countryData = LOCATION_DATA[f.country] ?? LOCATION_DATA['Other'];
-  const stateList = Object.keys(countryData.states);
-  const cityList = f.state ? (countryData.states[f.state] ?? []) : [];
+
+  // ── Dynamic location data from DB ────────────────────────────────
+  const [locCountries, setLocCountries] = useState<string[]>([]);
+  const [locStates,    setLocStates]    = useState<string[]>([]);
+  const [locCities,    setLocCities]    = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch(`${BACKEND}/api/admin/location?type=countries`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.countries?.length) setLocCountries(d.countries); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!f.country) { setLocStates([]); setLocCities([]); return; }
+    fetch(`${BACKEND}/api/admin/location?type=states&country=${encodeURIComponent(f.country)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setLocStates(d?.states ?? []); })
+      .catch(() => setLocStates([]));
+  }, [f.country]);
+
+  useEffect(() => {
+    if (!f.country || !f.state) { setLocCities([]); return; }
+    fetch(`${BACKEND}/api/admin/location?type=cities&country=${encodeURIComponent(f.country)}&state=${encodeURIComponent(f.state)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setLocCities(d?.cities ?? []); })
+      .catch(() => setLocCities([]));
+  }, [f.country, f.state]);
+  // ─────────────────────────────────────────────────────────────────
+
   const regUrl = selProgram ? `${selProgram.base_url || 'https://www.thynksuccess.com'}/registration/${selProgram.slug}/?school=${f.school_code||'[schoolcode]'}` : '';
   const basePriceDisplay = (() => { if (!selProgram) return null; if (isIndianCountry(f.country)) { const inr = selProgram.base_amount_inr ?? (selProgram.currency==='INR' ? selProgram.base_amount : null); return inr ? { label:`₹${fmtR(inr)}`, raw: String(inr/100) } : null; } else { const usd = selProgram.base_amount_usd ?? (selProgram.currency==='USD' ? selProgram.base_amount : null); return usd ? { label:`$${fmtR(usd)}`, raw: String(usd/100) } : null; } })();
   useEffect(() => { if (basePriceDisplay?.raw && !f.id) { setF(p => ({...p, school_price: basePriceDisplay.raw})); } }, [f.project_id, f.country]);
@@ -1566,9 +1593,9 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         <Field label="Complete Address *"><textarea style={{...IS,height:64,resize:'vertical'}} value={f.address} onChange={set('address')} placeholder="Enter full street address…"/></Field>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'0 12px'}}>
           <Field label="Pin Code *"><input style={IS} value={f.pin_code} onChange={set('pin_code')} placeholder="110001"/></Field>
-          <Field label="Country *"><select style={SS} value={f.country} onChange={set('country')}>{Object.keys(LOCATION_DATA).map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
-          <Field label="State *"><select style={SS} value={f.state} onChange={set('state')} disabled={stateList.length===0}><option value="">Select State</option>{stateList.map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
-          <Field label="City *">{cityList.length > 0 ? <select style={SS} value={f.city} onChange={set('city')}><option value="">Select City</option>{cityList.map(c=><option key={c} value={c}>{c}</option>)}</select> : <input style={IS} value={f.city} onChange={set('city')} placeholder="Enter city"/>}</Field>
+          <Field label="Country *"><select style={SS} value={f.country} onChange={set('country')}>{locCountries.length>0?locCountries.map(c=><option key={c} value={c}>{c}</option>):<option value={f.country}>{f.country}</option>}</select></Field>
+          <Field label="State *"><select style={SS} value={f.state} onChange={set('state')} disabled={locStates.length===0}><option value="">Select State</option>{locStates.map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
+          <Field label="City *">{locCities.length > 0 ? <select style={SS} value={f.city} onChange={set('city')}><option value="">Select City</option>{locCities.map(c=><option key={c} value={c}>{c}</option>)}</select> : <input style={IS} value={f.city} onChange={set('city')} placeholder={f.state ? 'Enter city' : 'Select state first'} disabled={!f.state}/>}</Field>
         </div>
       </div>
       <div style={{background:'var(--bg2,rgba(255,255,255,0.03))',border:'1px solid var(--bd)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
