@@ -3,50 +3,9 @@
 // Self-registration form for school officials
 // Used by OpenRegistrationPage when mode = 'school'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://thynk-registration.vercel.app';
-
-const LOCATION_DATA: Record<string, Record<string, string[]>> = {
-  India: {
-    'Andhra Pradesh':  ['Visakhapatnam','Vijayawada','Guntur','Tirupati','Nellore'],
-    'Assam':           ['Guwahati','Silchar'],
-    'Bihar':           ['Patna','Gaya','Muzaffarpur'],
-    'Chandigarh':      ['Chandigarh'],
-    'Chhattisgarh':    ['Raipur','Bhilai','Bilaspur'],
-    'Delhi':           ['New Delhi','Delhi'],
-    'Goa':             ['Panaji','Margao'],
-    'Gujarat':         ['Ahmedabad','Surat','Vadodara','Rajkot','Gandhinagar'],
-    'Haryana':         ['Gurugram','Faridabad','Ambala','Hisar','Karnal'],
-    'Himachal Pradesh':['Shimla','Dharamshala','Manali'],
-    'Jammu & Kashmir': ['Srinagar','Jammu'],
-    'Jharkhand':       ['Ranchi','Jamshedpur','Dhanbad'],
-    'Karnataka':       ['Bengaluru','Mysuru','Hubli','Mangaluru','Belagavi'],
-    'Kerala':          ['Kochi','Thiruvananthapuram','Kozhikode','Thrissur'],
-    'Madhya Pradesh':  ['Bhopal','Indore','Gwalior','Jabalpur'],
-    'Maharashtra':     ['Mumbai','Pune','Nagpur','Nashik','Thane','Aurangabad'],
-    'Odisha':          ['Bhubaneswar','Cuttack','Rourkela'],
-    'Punjab':          ['Ludhiana','Amritsar','Jalandhar','Chandigarh','Mohali'],
-    'Rajasthan':       ['Jaipur','Jodhpur','Udaipur','Kota','Ajmer'],
-    'Tamil Nadu':      ['Chennai','Coimbatore','Madurai','Salem','Tiruchirappalli'],
-    'Telangana':       ['Hyderabad','Warangal','Karimnagar'],
-    'Uttar Pradesh':   ['Lucknow','Kanpur','Agra','Varanasi','Noida','Ghaziabad','Meerut','Prayagraj'],
-    'Uttarakhand':     ['Dehradun','Haridwar','Roorkee'],
-    'West Bengal':     ['Kolkata','Howrah','Durgapur','Siliguri'],
-    'Other':           [],
-  },
-  'United Arab Emirates': { 'Dubai': ['Dubai'], 'Abu Dhabi': ['Abu Dhabi','Al Ain'], 'Sharjah': ['Sharjah'], 'Other': [] },
-  'Saudi Arabia':         { 'Riyadh': ['Riyadh'], 'Makkah': ['Jeddah','Mecca'], 'Eastern Province': ['Dammam','Khobar'], 'Other': [] },
-  'Kuwait':    { 'Kuwait City': ['Kuwait City'], 'Other': [] },
-  'Qatar':     { 'Doha':        ['Doha'],         'Other': [] },
-  'Bahrain':   { 'Capital':     ['Manama'],        'Other': [] },
-  'Oman':      { 'Muscat':      ['Muscat'],        'Other': [] },
-  'Singapore': { 'Singapore':   ['Singapore'],     'Other': [] },
-  'Malaysia':  { 'Kuala Lumpur':['Kuala Lumpur'],  'Other': [] },
-  'Nepal':     { 'Bagmati':     ['Kathmandu'],     'Other': [] },
-  'Bangladesh':{ 'Dhaka':       ['Dhaka'],         'Other': [] },
-  'Other':     { 'Other':       [] },
-};
 
 const IS: React.CSSProperties = {
   width: '100%', border: '1.5px solid var(--bd)', borderRadius: 10,
@@ -74,6 +33,41 @@ export default function SchoolRegistrationForm({ projectSlug, projectId, onBack,
     pin_code: '', designation: '', contactName: '', contactEmail: '', contactMobile: '',
   });
 
+  // ── Dynamic location data fetched from the DB ──────────────────
+  const [countries,     setCountries]     = useState<string[]>([]);
+  const [states,        setStates]        = useState<string[]>([]);
+  const [cities,        setCities]        = useState<string[]>([]);
+  const [locLoading,    setLocLoading]    = useState(true);
+
+  // Fetch countries once on mount
+  useEffect(() => {
+    fetch(`${BACKEND}/api/admin/location?type=countries`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.countries?.length) setCountries(d.countries);
+      })
+      .catch(() => {})
+      .finally(() => setLocLoading(false));
+  }, []);
+
+  // Fetch states when country changes
+  useEffect(() => {
+    if (!f.country) { setStates([]); setCities([]); return; }
+    fetch(`${BACKEND}/api/admin/location?type=states&country=${encodeURIComponent(f.country)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.states) setStates(d.states); else setStates([]); })
+      .catch(() => setStates([]));
+  }, [f.country]);
+
+  // Fetch cities when state changes
+  useEffect(() => {
+    if (!f.country || !f.state) { setCities([]); return; }
+    fetch(`${BACKEND}/api/admin/location?type=cities&country=${encodeURIComponent(f.country)}&state=${encodeURIComponent(f.state)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.cities) setCities(d.cities); else setCities([]); })
+      .catch(() => setCities([]));
+  }, [f.country, f.state]);
+
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setF(p => {
       const val = e.target.value;
@@ -83,10 +77,7 @@ export default function SchoolRegistrationForm({ projectSlug, projectId, onBack,
       return next;
     });
 
-  const countryData = LOCATION_DATA[f.country] ?? LOCATION_DATA['Other'];
-  const stateList   = Object.keys(countryData);
-  const cityList    = f.state ? (countryData[f.state] ?? []) : [];
-  const finalCity   = f.city === '__custom' ? f.customCity : f.city;
+  const finalCity = f.city === '__custom' ? f.customCity : f.city;
 
   const primary = branding?.primaryColor ?? '#4f46e5';
   const accent  = branding?.accentColor  ?? '#8b5cf6';
@@ -200,7 +191,10 @@ export default function SchoolRegistrationForm({ projectSlug, projectId, onBack,
             <label className="field-label">Country *</label>
             <div className="select-wrap">
               <select style={SS} value={f.country} onChange={set('country')} className={formErrors.country ? 'err' : ''}>
-                {Object.keys(LOCATION_DATA).map(c => <option key={c} value={c}>{c}</option>)}
+                {locLoading
+                  ? <option value="India">India</option>
+                  : countries.map(c => <option key={c} value={c}>{c}</option>)
+                }
               </select>
             </div>
             {formErrors.country && <div className="err-msg show">{formErrors.country}</div>}
@@ -208,9 +202,9 @@ export default function SchoolRegistrationForm({ projectSlug, projectId, onBack,
           <div className="field">
             <label className="field-label">State / Region *</label>
             <div className="select-wrap">
-              <select style={SS} value={f.state} onChange={set('state')} disabled={stateList.length === 0} className={formErrors.state ? 'err' : ''}>
+              <select style={SS} value={f.state} onChange={set('state')} disabled={states.length === 0} className={formErrors.state ? 'err' : ''}>
                 <option value="">Select state</option>
-                {stateList.map(s => <option key={s} value={s}>{s}</option>)}
+                {states.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             {formErrors.state && <div className="err-msg show">{formErrors.state}</div>}
@@ -220,12 +214,12 @@ export default function SchoolRegistrationForm({ projectSlug, projectId, onBack,
         <div className="field-row">
           <div className="field">
             <label className="field-label">City *</label>
-            {cityList.length > 0 ? (
+            {cities.length > 0 ? (
               <>
                 <div className="select-wrap">
                   <select style={SS} value={f.city} onChange={set('city')} className={formErrors.city ? 'err' : ''}>
                     <option value="">Select city</option>
-                    {cityList.map(c => <option key={c} value={c}>{c}</option>)}
+                    {cities.map(c => <option key={c} value={c}>{c}</option>)}
                     <option value="__custom">+ Add New City</option>
                   </select>
                 </div>
