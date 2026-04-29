@@ -368,6 +368,7 @@ export default function AdminDashboard() {
   const [logEmailLoading,    setLogEmailLoading]     = useState(false);
   const [logWaLoading,       setLogWaLoading]        = useState(false);
 
+  const [resetPasswordUser, setResetPasswordUser] = useState<Row|null>(null);
   const [programForm,     setProgramForm]     = useState<Row|null>(null);
   const [schoolForm,      setSchoolForm]      = useState<Row|null>(null);
   const [discountForm,    setDiscountForm]     = useState<Row|null>(null);
@@ -1136,6 +1137,10 @@ export default function AdminDashboard() {
                             ✏️ Edit
                           </button>
                         )}
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'rgba(245,158,11,0.1)',color:'#d97706',border:'1.5px solid rgba(245,158,11,0.3)'}}
+                          onClick={()=>setResetPasswordUser(u)}>
+                          🔑 Reset Password
+                        </button>
                         <button className="btn" style={{fontSize:11,padding:'4px 10px',background:'var(--red2)',color:'var(--red)',border:'none'}}
                           onClick={async()=>{
                             if(!confirm(`Remove ${u.email}?`))return;
@@ -1374,6 +1379,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {resetPasswordUser!==null&&<ResetPasswordModal user={resetPasswordUser} BACKEND={BACKEND} authHeaders={authHeaders} onClose={()=>setResetPasswordUser(null)} showToast={showToast} />}
       {programForm!==null&&<ProgramFormModal initial={programForm} onClose={()=>setProgramForm(null)} onSave={async(data)=>{await saveForm('/api/admin/projects',data,()=>{setProgramForm(null);loadPrograms();},data.id?'Program updated!':'Program created!');}} />}
       {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);setSchools([]);loadSchools();},data.id?'School updated!':'School created!');}} />}
       {discountForm!==null&&<DiscountFormModal initial={discountForm} schools={schools} onClose={()=>setDiscountForm(null)} onSave={async(data)=>{await saveForm('/api/admin/discounts',data,()=>{setDiscountForm(null);loadDiscounts();},data.id?'Code updated!':'Code created!');}} />}
@@ -1632,6 +1638,114 @@ function DiscountFormModal({ initial, schools, onClose, onSave }:{ initial:Row; 
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={()=>onSave({...f,discount_amount:Math.round(Number(f.discount_amount)*100)})}>{f.id?'Save Changes':'Create Code'}</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+// ── Reset Password Modal ────────────────────────────────────────────
+function ResetPasswordModal({ user, BACKEND, authHeaders, onClose, showToast }: {
+  user: Row;
+  BACKEND: string;
+  authHeaders: () => HeadersInit;
+  onClose: () => void;
+  showToast: (msg: string, icon?: string) => void;
+}) {
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirm,     setConfirm]     = React.useState('');
+  const [showPwd,     setShowPwd]     = React.useState(false);
+  const [saving,      setSaving]      = React.useState(false);
+
+  async function handleReset() {
+    if (newPassword.length < 8) { showToast('Password must be at least 8 characters', '❌'); return; }
+    if (newPassword !== confirm) { showToast('Passwords do not match', '❌'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`${BACKEND}/api/admin/users/reset-password`, {
+        method: 'POST',
+        headers: authHeaders() as HeadersInit,
+        body: JSON.stringify({ user_id: user.user_id ?? user.id, new_password: newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`✅ Password reset for ${user.email}`, '✅');
+        onClose();
+      } else {
+        showToast(data.error ?? 'Failed to reset password', '❌');
+      }
+    } catch (e: any) {
+      showToast('Network error: ' + e.message, '❌');
+    }
+    setSaving(false);
+  }
+
+  const wrapStyle: React.CSSProperties = { position: 'relative' };
+  const eyeBtn: React.CSSProperties = {
+    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16,
+    color: 'var(--m)', padding: 0, lineHeight: 1,
+  };
+
+  return (
+    <ModalShell title={`🔑 Reset Password`} onClose={onClose}>
+      <div style={{ marginBottom: 18, padding: '12px 14px', background: 'rgba(245,158,11,0.08)', border: '1.5px solid rgba(245,158,11,0.25)', borderRadius: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#d97706', marginBottom: 3 }}>Resetting password for:</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{user.email}</div>
+        {user.display_name && <div style={{ fontSize: 12, color: 'var(--m)', marginTop: 2 }}>{user.display_name}</div>}
+        <div style={{ marginTop: 4 }}>
+          <span className={`badge ${user.role === 'super_admin' ? 'badge-paid' : user.role === 'sub_admin' ? 'badge-pending' : 'badge-initiated'}`} style={{ fontSize: 10 }}>
+            {user.role === 'super_admin' ? 'Super Admin' : user.role === 'sub_admin' ? 'Sub Admin' : 'School Admin'}
+          </span>
+        </div>
+      </div>
+
+      <Field label="New Password *">
+        <div style={wrapStyle}>
+          <input
+            style={{ ...IS, paddingRight: 38 }}
+            type={showPwd ? 'text' : 'password'}
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            placeholder="Minimum 8 characters"
+            autoFocus
+          />
+          <button style={eyeBtn} onClick={() => setShowPwd(v => !v)} tabIndex={-1}>
+            {showPwd ? '🙈' : '👁️'}
+          </button>
+        </div>
+      </Field>
+
+      <Field label="Confirm Password *">
+        <div style={wrapStyle}>
+          <input
+            style={{ ...IS, paddingRight: 38, borderColor: confirm && confirm !== newPassword ? '#ef4444' : undefined }}
+            type={showPwd ? 'text' : 'password'}
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            placeholder="Re-enter new password"
+          />
+          {confirm && confirm !== newPassword && (
+            <span style={{ position: 'absolute', right: 38, top: '50%', transform: 'translateY(-50%)', fontSize: 14 }}>❌</span>
+          )}
+          {confirm && confirm === newPassword && (
+            <span style={{ position: 'absolute', right: 38, top: '50%', transform: 'translateY(-50%)', fontSize: 14 }}>✅</span>
+          )}
+          <button style={eyeBtn} onClick={() => setShowPwd(v => !v)} tabIndex={-1}>
+            {showPwd ? '🙈' : '👁️'}
+          </button>
+        </div>
+      </Field>
+
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        <button
+          className="btn btn-primary"
+          disabled={saving || !newPassword || !confirm || newPassword !== confirm}
+          onClick={handleReset}
+          style={{ background: '#f59e0b', opacity: (saving || !newPassword || !confirm || newPassword !== confirm) ? 0.6 : 1 }}
+        >
+          {saving ? '⏳ Resetting…' : '🔑 Reset Password'}
+        </button>
       </div>
     </ModalShell>
   );
