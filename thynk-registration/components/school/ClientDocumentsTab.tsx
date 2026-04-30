@@ -55,7 +55,18 @@ export function ClientDocumentsTab() {
     setLoading(true);
     const params = new URLSearchParams();
     if (filterCat !== 'all') params.set('category', filterCat);
-    authFetch(`${BACKEND}/api/school/documents?${params}`)
+
+    // Forward preview token so admin preview mode can load documents without a session
+    const previewToken = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('preview_token')
+      : null;
+    if (previewToken) params.set('preview_token', previewToken);
+
+    const fetchFn = previewToken
+      ? (url: string) => fetch(url)   // no auth header needed in preview mode
+      : (url: string) => authFetch(url);
+
+    fetchFn(`${BACKEND}/api/school/documents?${params}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setDocs(d?.documents ?? []))
       .catch(() => {})
