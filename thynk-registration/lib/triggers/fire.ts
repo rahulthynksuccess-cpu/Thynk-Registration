@@ -169,32 +169,57 @@ export async function fireTriggers(
       status: 'pending',
     };
 
+    // ── Write a 'pending' log row FIRST so the attempt is always recorded,
+    //    even if Vercel kills the function after send but before the log insert.
+    const { data: logRow, error: logInsertErr } = await supabase.from('notification_logs').insert({
+      ...logEntry,
+      sent_at: null,
+      provider_response: null,
+    }).select('id').single();
+
+    if (logInsertErr) {
+      console.error(`${tag} Failed to pre-insert notification_log: ${logInsertErr.message}`);
+    }
+
     let lastError: string | null = null;
+    let finalProvider = '';
     try {
       if (trigger.channel === 'email') {
         const provider = await sendEmail(template, vars, schoolId);
-        logEntry.provider = provider;
+        finalProvider = provider;
         logEntry.status = 'sent';
         console.log(`${tag} ✅ email sent via ${provider} to ${recipient}`);
       } else if (trigger.channel === 'whatsapp') {
         const provider = await sendWhatsApp(template, vars, schoolId);
-        logEntry.provider = provider;
+        finalProvider = provider;
         logEntry.status = 'sent';
         console.log(`${tag} ✅ whatsapp sent via ${provider} to ${recipient}`);
       }
     } catch (err: any) {
       lastError = err?.message ?? 'unknown error';
       logEntry.status = 'failed';
-      logEntry.provider = logEntry.provider || 'unknown';
       console.error(`${tag} ❌ FAILED ${trigger.channel} to ${recipient}: ${lastError}`);
     }
 
-    const { error: logErr } = await supabase.from('notification_logs').insert({
-      ...logEntry,
-      sent_at: logEntry.status === 'sent' ? new Date().toISOString() : null,
-      provider_response: logEntry.status === 'failed' ? { error: lastError } : null,
-    });
-    if (logErr) console.error(`${tag} Failed to write notification_log: ${logErr.message}`);
+    // ── Update the log row with the final result ──────────────────────────
+    if (logRow?.id) {
+      const { error: logErr } = await supabase.from('notification_logs').update({
+        status:            logEntry.status,
+        provider:          finalProvider || 'unknown',
+        sent_at:           logEntry.status === 'sent' ? new Date().toISOString() : null,
+        provider_response: logEntry.status === 'failed' ? { error: lastError } : null,
+      }).eq('id', logRow.id);
+      if (logErr) console.error(`${tag} Failed to update notification_log: ${logErr.message}`);
+    } else {
+      // Fallback: insert a fresh row with final status if pre-insert failed
+      const { error: logErr } = await supabase.from('notification_logs').insert({
+        ...logEntry,
+        provider:          finalProvider || 'unknown',
+        sent_at:           logEntry.status === 'sent' ? new Date().toISOString() : null,
+        provider_response: logEntry.status === 'failed' ? { error: lastError } : null,
+      });
+      if (logErr) console.error(`${tag} Failed to write fallback notification_log: ${logErr.message}`);
+    }
   }
 
   console.log(`${tag} DONE`);

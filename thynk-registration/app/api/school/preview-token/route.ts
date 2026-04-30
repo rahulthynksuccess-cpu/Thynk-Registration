@@ -34,8 +34,9 @@ export async function GET(req: NextRequest) {
   const { data: rows, error } = await service
     .from('registrations')
     .select(`
-      id, created_at, student_name, class_grade, gender, parent_school, city,
+      id, created_at, school_id, student_name, class_grade, gender, parent_school, city,
       parent_name, contact_phone, contact_email, status,
+      schools(name),
       pricing(program_name, base_amount),
       payments(gateway, gateway_txn_id, base_amount, discount_amount, final_amount,
                discount_code, status, paid_at)
@@ -53,6 +54,8 @@ export async function GET(req: NextRequest) {
     )[0] ?? {};
     return {
       id: r.id, created_at: r.created_at,
+      school_id:    r.school_id        ?? null,
+      school_name:  (r.schools as any)?.name ?? null,
       student_name: r.student_name, class_grade: r.class_grade,
       gender: r.gender, parent_school: r.parent_school, city: r.city,
       parent_name: r.parent_name, contact_phone: r.contact_phone,

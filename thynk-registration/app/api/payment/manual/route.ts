@@ -15,6 +15,7 @@
 //   discount_code    string? — optional
 //   paid_at          string? — ISO timestamp, defaults to now
 //   notes            string? — admin note stored in gateway_response
+export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient }       from '@/lib/supabase/server';

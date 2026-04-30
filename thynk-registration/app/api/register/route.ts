@@ -3,6 +3,7 @@
 // CHANGES:
 //   1. Reads gateway credentials from integration_configs table (set via Admin → Integrations UI)
 //      Falls back to Vercel env vars only if not configured in UI
+export const maxDuration = 60;
 //   2. CASHFREE_MODE env var support added (no need to change code for test/live switch)
 //   3. All gateways redirect to https://www.thynksuccess.com/registration/success on success
 //   4. Payment status re-check endpoint added (GET /api/register?paymentId=xxx)

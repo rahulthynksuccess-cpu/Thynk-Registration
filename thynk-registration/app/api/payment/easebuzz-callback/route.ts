@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // seconds — allow SMTP + WhatsApp API calls to complete
 /**
  * /api/payment/easebuzz-callback
  *

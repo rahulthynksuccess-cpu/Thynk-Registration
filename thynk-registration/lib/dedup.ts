@@ -29,12 +29,19 @@ function normalisePhone(raw: string | null | undefined): string {
 }
 
 function dedupKey(r: FlatRow): string | null {
-  const schoolPart  = String(r.school_id  ?? r.school_name ?? '').toLowerCase().trim();
+  const schoolPart  = String(r.school_id ?? r.school_name ?? '').toLowerCase().trim();
   const studentName = String(r.student_name  ?? '').toLowerCase().trim();
   const phone       = normalisePhone(r.contact_phone);
   const email       = String(r.contact_email ?? '').toLowerCase().trim();
 
+  // If we have no way to identify the student at all — keep ungrouped
   if (!schoolPart && !studentName && !phone && !email) return null;
+
+  // Require at least phone OR email to be present for grouping.
+  // If both are empty we cannot safely match "same student" — treat each row as unique.
+  // This prevents empty-contact rows (common for initiated/pending) from all collapsing
+  // into a single bucket when only student_name is available.
+  if (!phone && !email) return null;
 
   return `${schoolPart}||${studentName}||${phone}||${email}`;
 }
