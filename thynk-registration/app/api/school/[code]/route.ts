@@ -101,6 +101,7 @@ export async function GET(
   // drag-and-drop reordering in the admin panel is immediately reflected
   // on the checkout page without needing to update every pricing row.
   let gatewaySequence: string[] = [];
+  let gatewayLabels: Record<string, string> = {};
   try {
     const PG_PROVIDERS = ['easebuzz', 'razorpay', 'cashfree'];
     const { data: gwCfgs } = await supabase
@@ -110,9 +111,6 @@ export async function GET(
       .in('provider', PG_PROVIDERS)
       .eq('is_active', true)
       .order('priority', { ascending: true });
-
-    // gateway_labels: { razorpay: "Recommended", cashfree: "Fastest Refund", ... }
-    const gatewayLabels: Record<string, string> = {};
 
     if (gwCfgs?.length) {
       // Deduplicate: prefer school-specific row over global row for same provider
