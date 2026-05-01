@@ -80,7 +80,7 @@ export async function GET(
 
   const { gateway_config, ...safeSchool } = data;
 
-  // Fetch PayPal client ID from integration_configs (saved via Admin → Integrations)
+  // ── Fetch PayPal client ID ────────────────────────────────────────
   // Only the public client_id is safe to expose to the browser; secret stays server-side.
   let ppClientId: string | null = process.env.PAYPAL_CLIENT_ID ?? null; // env fallback
   try {
@@ -95,11 +95,47 @@ export async function GET(
     }
   } catch { /* no paypal integration row — use env fallback above */ }
 
+  // ── Fetch gateway sequence from integration_configs ───────────────
+  // This is the source of truth for PG priority set in Admin → Integrations.
+  // It overrides whatever is stored in pricing.gateway_sequence so that
+  // drag-and-drop reordering in the admin panel is immediately reflected
+  // on the checkout page without needing to update every pricing row.
+  let gatewaySequence: string[] = [];
+  try {
+    const PG_PROVIDERS = ['easebuzz', 'razorpay', 'cashfree'];
+    const { data: gwCfgs } = await supabase
+      .from('integration_configs')
+      .select('provider, priority, is_active')
+      .or(`school_id.eq.${data.id},school_id.is.null`)  // school-specific first, then global
+      .in('provider', PG_PROVIDERS)
+      .eq('is_active', true)
+      .order('priority', { ascending: true });
+
+    if (gwCfgs?.length) {
+      // Deduplicate: prefer school-specific row over global row for same provider
+      const seen = new Set<string>();
+      const sorted = [...gwCfgs].sort((a: any, b: any) => {
+        // school-specific rows (non-null school_id) win over global (null school_id)
+        if (a.school_id && !b.school_id) return -1;
+        if (!a.school_id && b.school_id) return 1;
+        return (a.priority ?? 99) - (b.priority ?? 99);
+      });
+      for (const row of sorted as any[]) {
+        if (!seen.has(row.provider)) {
+          seen.add(row.provider);
+          gatewaySequence.push(row.provider);
+        }
+      }
+    }
+  } catch { /* fall through — PaymentStep will use pricing.gateway_sequence as fallback */ }
+
   const publicGatewayConfig = {
-    rzp_key_id:   (gateway_config as any)?.rzp_key_id ?? process.env.RAZORPAY_KEY_ID,
-    cf_mode:      (gateway_config as any)?.cf_mode    ?? 'production',
-    eb_env:       (gateway_config as any)?.eb_env     ?? 'production',
-    pp_client_id: ppClientId,
+    rzp_key_id:       (gateway_config as any)?.rzp_key_id ?? process.env.RAZORPAY_KEY_ID,
+    cf_mode:          (gateway_config as any)?.cf_mode    ?? 'production',
+    eb_env:           (gateway_config as any)?.eb_env     ?? 'production',
+    pp_client_id:     ppClientId,
+    // ✅ FIX: admin-configured PG order, consumed by PaymentStep & RegistrationCard
+    gateway_sequence: gatewaySequence.length ? gatewaySequence : null,
   };
 
   return NextResponse.json({
