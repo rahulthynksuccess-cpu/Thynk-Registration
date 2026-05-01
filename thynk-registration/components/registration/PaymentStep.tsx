@@ -42,7 +42,7 @@ interface FormData {
 }
 
 interface Props {
-  school: { id: string; name: string; org_name?: string; branding?: any; city?: string; state?: string; country?: string };
+  school: { id: string; name: string; org_name?: string; branding?: any; city?: string; state?: string; country?: string; public_gateway_config?: any };
   pricing: Pricing;
   formData: FormData;
   isIndia: boolean;
@@ -68,8 +68,12 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
   const finalAmount = baseAmount - discAmt;
   const symbol      = isIndia ? '₹' : '$';
 
+  // ✅ FIX: prefer admin-configured order from public_gateway_config (set in Admin → Integrations),
+  // fall back to pricing.gateway_sequence, then hardcoded default.
   const gwSequence: AllGatewayKey[] = isIndia
-    ? ((pricing.gateway_sequence as AllGatewayKey[]) ?? ['cashfree', 'razorpay', 'easebuzz'])
+    ? ((school.public_gateway_config?.gateway_sequence as AllGatewayKey[] | null)
+        ?? (pricing.gateway_sequence as AllGatewayKey[])
+        ?? ['cashfree', 'razorpay', 'easebuzz'])
     : ['paypal'];
 
   useEffect(() => {
