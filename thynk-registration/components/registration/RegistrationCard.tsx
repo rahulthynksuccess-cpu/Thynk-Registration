@@ -82,8 +82,12 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
   }, [paymentError]);
 
   // Gateway sequence: India = from pricing config, International = PayPal only
+  // ✅ FIX: prefer admin-configured order from public_gateway_config (set in Admin → Integrations),
+  // fall back to pricing.gateway_sequence, then hardcoded default.
   const gwSequence: AllGatewayKey[] = isIndia
-    ? (pricing.gateway_sequence as GatewayKey[])
+    ? ((school as any).public_gateway_config?.gateway_sequence as GatewayKey[] | null)
+        ?? (pricing.gateway_sequence as GatewayKey[])
+        ?? ['cashfree', 'razorpay', 'easebuzz']
     : ['paypal'];
 
   function showToast(text: string, type: 'ok' | 'err' | '') {
