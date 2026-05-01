@@ -90,6 +90,10 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
         ?? ['cashfree', 'razorpay', 'easebuzz']
     : ['paypal'];
 
+  // Per-gateway checkout labels set in Admin → Integrations (e.g. "Recommended")
+  const gatewayLabels: Record<string, string> =
+    ((school as any).public_gateway_config?.gateway_labels as Record<string, string> | null) ?? {};
+
   function showToast(text: string, type: 'ok' | 'err' | '') {
     setToast({ text, type });
     clearTimeout(toastTimer.current);
@@ -488,7 +492,25 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
                       className={`gw-btn${selGW === gw ? ' ' + GATEWAY_LABELS[gw].selClass : ''}`}
                       onClick={() => { setSelGW(gw); paypalRendered.current = false; }}
                     >
-                      {GATEWAY_LABELS[gw].name}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {GATEWAY_LABELS[gw].name}
+                        {gatewayLabels[gw] && (
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '1px 7px',
+                            borderRadius: 20,
+                            fontSize: 9,
+                            fontWeight: 700,
+                            letterSpacing: '.04em',
+                            textTransform: 'uppercase',
+                            background: 'rgba(99,102,241,.13)',
+                            color: 'var(--acc)',
+                            lineHeight: '16px',
+                          }}>
+                            {gatewayLabels[gw]}
+                          </span>
+                        )}
+                      </span>
                       {!isIndia && <div style={{ fontSize: 11, color: 'inherit', opacity: 0.7 }}>{GATEWAY_LABELS[gw].sub}</div>}
                     </button>
                   ))}

@@ -76,6 +76,10 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
         ?? ['cashfree', 'razorpay', 'easebuzz'])
     : ['paypal'];
 
+  // Per-gateway checkout labels set in Admin → Integrations (e.g. "Recommended")
+  const gatewayLabels: Record<string, string> =
+    (school.public_gateway_config?.gateway_labels as Record<string, string> | null) ?? {};
+
   useEffect(() => {
     if (paymentError) showToast('Previous payment was cancelled or failed. Please try again.', 'err');
   }, [paymentError]);
@@ -369,7 +373,27 @@ export default function PaymentStep({ school, pricing, formData, isIndia, paymen
                   className={`gw-btn${selGW === gw ? ' sel ' + GW_META[gw].selClass : ''}`}
                   onClick={() => { setSelGW(gw); paypalDone.current = false; }}
                 >
-                  <div className="gw-name">{GW_META[gw].name}</div>
+                  <div className="gw-name">
+                    {GW_META[gw].name}
+                    {gatewayLabels[gw] && (
+                      <span style={{
+                        display: 'inline-block',
+                        marginLeft: 6,
+                        padding: '1px 7px',
+                        borderRadius: 20,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        letterSpacing: '.04em',
+                        textTransform: 'uppercase',
+                        background: 'rgba(99,102,241,.12)',
+                        color: 'var(--acc)',
+                        verticalAlign: 'middle',
+                        lineHeight: '16px',
+                      }}>
+                        {gatewayLabels[gw]}
+                      </span>
+                    )}
+                  </div>
                   <div className="gw-sub">{GW_META[gw].sub}</div>
                 </button>
               ))}

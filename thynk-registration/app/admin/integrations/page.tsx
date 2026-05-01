@@ -16,7 +16,7 @@ const GATEWAY_META: Record<string,{name:string;logo:string;color:string;bg:strin
   easebuzz:{ name:'Easebuzz', logo:'🟠', color:'#FF6600', bg:'rgba(255,102,0,.08)', description:'Cost-effective with low MDR. Popular with EdTech platforms.', domestic:true, international:false, fields:[{key:'key_id',label:'Merchant Key',hint:'Easebuzz Dashboard → Settings → API Keys'},{key:'key_secret',label:'Salt',hint:'Your Easebuzz salt for hash generation',secret:true}], docs:'https://docs.easebuzz.in/payments' },
   paypal:{ name:'PayPal', logo:'🌐', color:'#003087', bg:'rgba(0,48,135,.08)', description:'International payments (USD/AED/SAR). Best for overseas schools.', domestic:false, international:true, fields:[{key:'key_id',label:'Client ID',hint:'PayPal Developer Dashboard → Apps'},{key:'key_secret',label:'Client Secret',hint:'PayPal Developer Dashboard → Apps',secret:true}], docs:'https://developer.paypal.com/api/rest/' },
 };
-interface GatewayState { id:string; enabled:boolean; priority:number; key_id:string; key_secret:string; mode:'live'|'test'; db_id?:string; }
+interface GatewayState { id:string; enabled:boolean; priority:number; key_id:string; key_secret:string; mode:'live'|'test'; pg_label?:string; db_id?:string; }
 
 // ── WhatsApp providers ───────────────────────────────────────────────────────
 const WA_PROVIDERS = {
@@ -89,6 +89,12 @@ function GatewayCard({gw,onUpdate,onMoveUp,onMoveDown,isFirst,isLast}:{gw:Gatewa
             <span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:'var(--m)'}}>Mode:</span>
             {(['test','live'] as const).map(m=>(<button key={m} onClick={()=>onUpdate(gw.id,{mode:m})} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 14px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,background:gw.mode===m?(m==='live'?'#B8860B':'var(--text)'):'transparent',color:gw.mode===m?'#fff':'var(--m)'}}>{m==='live'?'🌐 Live':'🧪 Test / Sandbox'}</button>))}
             {gw.mode==='live'&&<span style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--red)',fontWeight:600}}>⚠ Real money — double-check keys</span>}
+          </div>
+          {/* ── Checkout Label ───────────────────────────── */}
+          <div style={{marginBottom:16,padding:'12px 14px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
+            <label style={lbl}>Checkout Label <span style={{fontSize:10,fontWeight:400,textTransform:'none',letterSpacing:0,color:'var(--m)'}}>— optional, shown on payment page alongside gateway name</span></label>
+            <input type="text" value={gw.pg_label??''} onChange={e=>onUpdate(gw.id,{pg_label:e.target.value})} placeholder={`e.g. "Recommended" or "Fastest Refund" or "UPI Preferred"`} style={{...inp,marginBottom:4}}/>
+            <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:0}}>Keep it short — 2 to 4 words max. Displays as a badge on this gateway's card at checkout.</p>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
             {meta.fields.map(f=>f.secret?<SecretField key={f.key} label={f.label} hint={f.hint} value={(gw as any)[f.key]||''} onChange={v=>onUpdate(gw.id,{[f.key]:v} as any)}/>:(<div key={f.key}><label style={lbl}>{f.label}</label><input type="text" value={(gw as any)[f.key]||''} onChange={e=>onUpdate(gw.id,{[f.key]:e.target.value} as any)} placeholder={f.hint} style={inp}/><p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{f.hint}</p></div>))}
@@ -527,7 +533,7 @@ export default function IntegrationsPage() {
       const sourceRows=globalRows.length>0?globalRows:rows;
       const gwList:GatewayState[]=Object.keys(GATEWAY_META).map((id,i)=>{
         const row=sourceRows.find((r:Row)=>r.provider===id);
-        return{id,enabled:row?.is_active??false,priority:row?.config?.priority??(i+1),key_id:row?.config?.key_id??'',key_secret:row?.config?.key_secret??'',mode:row?.config?.mode??'live',db_id:row?.id};
+        return{id,enabled:row?.is_active??false,priority:row?.config?.priority??(i+1),key_id:row?.config?.key_id??'',key_secret:row?.config?.key_secret??'',mode:row?.config?.mode??'live',pg_label:row?.config?.pg_label??'',db_id:row?.id};
       });
       gwList.sort((a,b)=>a.priority-b.priority);
       setGateways(gwList);
@@ -554,7 +560,7 @@ export default function IntegrationsPage() {
           provider:  gw.id,
           is_active: gw.enabled,
           priority:  gw.priority,
-          config:{key_id:gw.key_id,key_secret:gw.key_secret,mode:gw.mode,priority:gw.priority},
+          config:{key_id:gw.key_id,key_secret:gw.key_secret,mode:gw.mode,priority:gw.priority,pg_label:gw.pg_label??''},
         }),
       })));
       showToast('✅ Payment gateways saved!');

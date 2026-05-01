@@ -105,11 +105,14 @@ export async function GET(
     const PG_PROVIDERS = ['easebuzz', 'razorpay', 'cashfree'];
     const { data: gwCfgs } = await supabase
       .from('integration_configs')
-      .select('provider, priority, is_active')
+      .select('provider, priority, is_active, config')
       .or(`school_id.eq.${data.id},school_id.is.null`)  // school-specific first, then global
       .in('provider', PG_PROVIDERS)
       .eq('is_active', true)
       .order('priority', { ascending: true });
+
+    // gateway_labels: { razorpay: "Recommended", cashfree: "Fastest Refund", ... }
+    const gatewayLabels: Record<string, string> = {};
 
     if (gwCfgs?.length) {
       // Deduplicate: prefer school-specific row over global row for same provider
@@ -124,6 +127,11 @@ export async function GET(
         if (!seen.has(row.provider)) {
           seen.add(row.provider);
           gatewaySequence.push(row.provider);
+          // Carry through the optional checkout label set in Admin → Integrations
+          const label = (row.config as any)?.pg_label;
+          if (label && typeof label === 'string' && label.trim()) {
+            gatewayLabels[row.provider] = label.trim();
+          }
         }
       }
     }
@@ -136,6 +144,8 @@ export async function GET(
     pp_client_id:     ppClientId,
     // ✅ FIX: admin-configured PG order, consumed by PaymentStep & RegistrationCard
     gateway_sequence: gatewaySequence.length ? gatewaySequence : null,
+    // Optional per-gateway checkout labels set in Admin → Integrations
+    gateway_labels:   Object.keys(gatewayLabels).length ? gatewayLabels : null,
   };
 
   return NextResponse.json({
