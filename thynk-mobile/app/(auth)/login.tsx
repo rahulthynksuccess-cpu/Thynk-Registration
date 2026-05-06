@@ -10,8 +10,8 @@ import { Colors, Spacing, Radius } from '@/constants/theme';
 const DEFAULT_BACKEND   = 'https://thynk-registration.vercel.app';
 const DEFAULT_EMAIL     = 'success@thynksuccess.com';
 // ⚠️ Replace with your Supabase credentials
-const SUPABASE_URL      = 'https://YOUR_PROJECT.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+const SUPABASE_URL      = 'https://ljagfjictbktvnzauynr.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqYWdmamljdGJrdHZuemF1eW5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MjkxNzgsImV4cCI6MjA5MTUwNTE3OH0.MkBV9sZaOn4FzWNAFCnBrC_O7CE25_2ZmNFgXz2BRIs';
 
 export default function LoginScreen() {
   const router = useRouter();
