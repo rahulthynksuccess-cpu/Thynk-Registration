@@ -22,21 +22,6 @@ export async function authFetch(path: string, options: RequestInit = {}): Promis
 export type PaymentStatus = 'pending' | 'initiated' | 'paid' | 'failed' | 'cancelled';
 export type GatewayKey    = 'razorpay' | 'cashfree' | 'easebuzz' | 'paypal';
 
-export interface School {
-  id: string;
-  school_code: string;
-  name: string;
-  org_name: string;
-  logo_url: string | null;
-  is_active: boolean;
-  status?: string;
-  country?: string;
-  city?: string;
-  state?: string;
-  created_at: string;
-  project_id?: string | null;
-}
-
 export interface AdminRow {
   id: string;
   created_at: string;

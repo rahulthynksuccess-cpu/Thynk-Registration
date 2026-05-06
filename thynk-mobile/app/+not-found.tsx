@@ -10,7 +10,6 @@ export default function NotFoundScreen() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   root:  { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   title: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 16 },

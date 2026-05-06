@@ -19,10 +19,10 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
     >
-      <Tabs.Screen name="index"    options={{ title: 'Schools',  tabBarIcon: ({ color, size }) => <Ionicons name="school-outline"    size={size} color={color} /> }} />
-      <Tabs.Screen name="students" options={{ title: 'Students', tabBarIcon: ({ color, size }) => <Ionicons name="people-outline"    size={size} color={color} /> }} />
-      <Tabs.Screen name="payments" options={{ title: 'Payments', tabBarIcon: ({ color, size }) => <Ionicons name="card-outline"      size={size} color={color} /> }} />
-      <Tabs.Screen name="dashboard" options={{ title: 'Reports', tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} /> }} />
+      <Tabs.Screen name="index"     options={{ title: 'Schools',  tabBarIcon: ({ color, size }) => <Ionicons name="school-outline"    size={size} color={color} /> }} />
+      <Tabs.Screen name="students"  options={{ title: 'Students', tabBarIcon: ({ color, size }) => <Ionicons name="people-outline"    size={size} color={color} /> }} />
+      <Tabs.Screen name="payments"  options={{ title: 'Payments', tabBarIcon: ({ color, size }) => <Ionicons name="card-outline"      size={size} color={color} /> }} />
+      <Tabs.Screen name="dashboard" options={{ title: 'Reports',  tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} /> }} />
     </Tabs>
   );
 }

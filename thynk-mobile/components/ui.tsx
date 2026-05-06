@@ -41,7 +41,7 @@ const ks = StyleSheet.create({
   card:  { flex: 1, backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1.5, borderColor: Colors.cardBorder, padding: Spacing.lg },
   icon:  { fontSize: 20, marginBottom: 6 },
   label: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 },
-  value: { fontSize: 24, fontWeight: '800', lineHeight: 28 },
+  value: { fontSize: 22, fontWeight: '800', lineHeight: 26 },
   sub:   { fontSize: 11, color: Colors.textMuted, marginTop: 4 },
 });
 
@@ -73,7 +73,7 @@ export function RowItem({ label, value, mono = false }: { label: string; value?:
   return (
     <View style={rs.row}>
       <Text style={rs.label}>{label}</Text>
-      <Text style={[rs.value, mono && rs.mono]}>{value ?? '—'}</Text>
+      <Text style={[rs.value, mono && rs.mono]} numberOfLines={1}>{value ?? '—'}</Text>
     </View>
   );
 }
@@ -101,21 +101,9 @@ const pb = StyleSheet.create({
 
 export function EmptyState({ icon, message }: { icon: string; message: string }) {
   return (
-    <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-      <Text style={{ fontSize: 40, marginBottom: 12 }}>{icon}</Text>
+    <View style={{ alignItems: 'center', paddingVertical: 50 }}>
+      <Text style={{ fontSize: 36, marginBottom: 12 }}>{icon}</Text>
       <Text style={{ fontSize: 14, color: Colors.textMuted, textAlign: 'center' }}>{message}</Text>
-    </View>
-  );
-}
-
-export function ScreenHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md }}>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 22, fontWeight: '800', color: Colors.text, letterSpacing: -0.3 }}>{title}</Text>
-        {subtitle && <Text style={{ fontSize: 12, color: Colors.textMuted, marginTop: 2 }}>{subtitle}</Text>}
-      </View>
-      {right}
     </View>
   );
 }

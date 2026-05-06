@@ -7,12 +7,11 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 
-const DEFAULT_BACKEND  = 'https://thynk-registration.vercel.app';
-const DEFAULT_EMAIL    = 'success@thynksuccess.in';
-
-// Replace these with values from Supabase dashboard → Project Settings → API
-const SUPABASE_URL      = 'https://ljagfjictbktvnzauynr.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqYWdmamljdGJrdHZuemF1eW5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MjkxNzgsImV4cCI6MjA5MTUwNTE3OH0.MkBV9sZaOn4FzWNAFCnBrC_O7CE25_2ZmNFgXz2BRIs';
+const DEFAULT_BACKEND   = 'https://thynk-registration.vercel.app';
+const DEFAULT_EMAIL     = 'success@thynksuccess.com';
+// ⚠️ Replace with your Supabase credentials
+const SUPABASE_URL      = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -31,25 +30,21 @@ export default function LoginScreen() {
     try {
       const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-        },
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
         body: JSON.stringify({ email: email.trim(), password }),
       });
-
       const data = await res.json();
-
       if (!res.ok || !data.access_token) {
         Alert.alert('Login failed', data.error_description ?? data.message ?? 'Incorrect email or password.');
         setLoading(false);
         return;
       }
-
       await SecureStore.setItemAsync('thynk_backend_url', backendUrl.replace(/\/$/, ''));
       await SecureStore.setItemAsync('thynk_admin_token', data.access_token);
       await SecureStore.setItemAsync('thynk_admin_email', email.trim());
-
+      if (data.refresh_token) {
+        await SecureStore.setItemAsync('thynk_refresh_token', data.refresh_token);
+      }
       router.replace('/(tabs)');
     } catch (e: any) {
       Alert.alert('Connection error', 'Could not reach the server.\n\n' + e.message);
@@ -62,20 +57,15 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.brand}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>T</Text>
-          </View>
+          <View style={styles.logoBox}><Text style={styles.logoText}>T</Text></View>
           <Text style={styles.brandName}>Thynk Admin</Text>
           <Text style={styles.brandSub}>Registration Management Platform</Text>
         </View>
-
         <View style={styles.card}>
           <Text style={styles.label}>Backend URL</Text>
           <TextInput style={styles.input} value={backendUrl} onChangeText={setBackendUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" />
-
           <Text style={[styles.label, { marginTop: Spacing.lg }]}>Email</Text>
           <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
-
           <Text style={[styles.label, { marginTop: Spacing.lg }]}>Password</Text>
           <View style={styles.pwRow}>
             <TextInput
@@ -92,12 +82,10 @@ export default function LoginScreen() {
               <Text style={{ fontSize: 18 }}>{showPassword ? '🙈' : '👁️'}</Text>
             </TouchableOpacity>
           </View>
-
           <TouchableOpacity style={[styles.btn, loading && { opacity: 0.7 }]} onPress={handleLogin} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Sign In</Text>}
           </TouchableOpacity>
         </View>
-
         <Text style={styles.hint}>Backend URL and email are pre-filled. Just enter your password.</Text>
       </ScrollView>
     </KeyboardAvoidingView>
