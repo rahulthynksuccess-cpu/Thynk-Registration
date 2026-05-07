@@ -183,10 +183,10 @@ function ContactForm({ index, contact, onChange, onRemove, canRemove }: {
           </TouchableOpacity>
         )}
       </View>
-      <Field label="Name" required><TInput value={contact.name} onChangeText={set('name')} placeholder="Full Name" autoCapitalize="words" /></Field>
-      <Field label="Designation" required><TInput value={contact.designation} onChangeText={set('designation')} placeholder="Principal / Coordinator" autoCapitalize="words" /></Field>
-      <Field label="Email" required><TInput value={contact.email} onChangeText={set('email')} placeholder="contact@school.edu" keyboardType="email-address" /></Field>
-      <Field label="Mobile" required><TInput value={contact.mobile} onChangeText={set('mobile')} placeholder="+91 98765 43210" keyboardType="phone-pad" /></Field>
+      <Field label="Name"><TInput value={contact.name} onChangeText={set('name')} placeholder="Full Name" autoCapitalize="words" /></Field>
+      <Field label="Designation"><TInput value={contact.designation} onChangeText={set('designation')} placeholder="Principal / Coordinator" autoCapitalize="words" /></Field>
+      <Field label="Email"><TInput value={contact.email} onChangeText={set('email')} placeholder="contact@school.edu" keyboardType="email-address" /></Field>
+      <Field label="Mobile"><TInput value={contact.mobile} onChangeText={set('mobile')} placeholder="+91 98765 43210" keyboardType="phone-pad" /></Field>
     </View>
   );
 }
@@ -307,17 +307,10 @@ export default function CreateSchoolScreen() {
     if (!schoolCode.trim()) return 'School Code is required';
     if (!name.trim())       return 'School Name is required';
     if (!orgName.trim())    return 'Organisation Name is required';
-    if (!address.trim())    return 'Address is required';
-    if (!pinCode.trim())    return 'Pin Code is required';
     if (!country)           return 'Country is required';
     if (!state)             return 'State is required';
     if (!projectId)         return 'Program is required';
     if (!schoolPrice)       return 'School Price is required';
-    const c = contacts[0];
-    if (!c.name.trim())        return 'Contact Name is required';
-    if (!c.designation.trim()) return 'Contact Designation is required';
-    if (!c.email.trim())       return 'Contact Email is required';
-    if (!c.mobile.trim())      return 'Contact Mobile is required';
     return null;
   }
 
@@ -469,10 +462,10 @@ export default function CreateSchoolScreen() {
 
         {/* ── Address ── */}
         <SectionHeader title="Address" />
-        <Field label="Complete Address" required>
+        <Field label="Complete Address">
           <TInput value={address} onChangeText={setAddress} placeholder="Enter full street address…" autoCapitalize="sentences" multiline numberOfLines={3} />
         </Field>
-        <Field label="Pin Code" required>
+        <Field label="Pin Code">
           <TInput value={pinCode} onChangeText={setPinCode} placeholder="110001" keyboardType="number-pad" />
         </Field>
         <PickerField label="Country" required value={country} placeholder="Select Country" options={countries} onSelect={setCountry} />
