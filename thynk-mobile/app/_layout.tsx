@@ -7,8 +7,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '@/constants/theme';
 
 // ⚠️ Replace with your Supabase credentials (same as login.tsx)
-const SUPABASE_URL      = 'https://ljagfjictbktvnzauynr.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqYWdmamljdGJrdHZuemF1eW5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MjkxNzgsImV4cCI6MjA5MTUwNTE3OH0.MkBV9sZaOn4FzWNAFCnBrC_O7CE25_2ZmNFgXz2BRIs';
+const SUPABASE_URL      = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
 
 async function tryRefreshToken(): Promise<void> {
   try {

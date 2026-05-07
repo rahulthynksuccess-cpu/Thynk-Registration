@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, FlatList, TextInput, TouchableOpacity,
   SafeAreaView, Alert, ActivityIndicator, Modal, Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,30 +55,98 @@ function PickerModal({ visible, title, options, selected, onSelect, onClose }: {
   visible: boolean; title: string; options: string[]; selected: string;
   onSelect: (v: string) => void; onClose: () => void;
 }) {
+  const [search, setSearch] = React.useState('');
+  const filtered = search.trim()
+    ? options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  // Reset search when modal closes
+  React.useEffect(() => {
+    if (!visible) setSearch('');
+  }, [visible]);
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.xl, borderBottomWidth: 1, borderBottomColor: Colors.cardBorder }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.cardBorder }}>
           <Text style={{ fontSize: 16, fontWeight: '800', color: Colors.text }}>{title}</Text>
-          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={Colors.textMuted} /></TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+            <Ionicons name="close" size={22} color={Colors.textMuted} />
+          </TouchableOpacity>
         </View>
-        <ScrollView>
-          {options.map(opt => (
-            <TouchableOpacity
-              key={opt}
-              style={{ flexDirection: 'row', alignItems: 'center', padding: Spacing.xl, borderBottomWidth: 1, borderBottomColor: Colors.cardBorder, backgroundColor: selected === opt ? Colors.primaryBg : 'transparent' }}
-              onPress={() => { onSelect(opt); onClose(); }}
-            >
-              {selected === opt && <Ionicons name="checkmark" size={18} color={Colors.primary} style={{ marginRight: 10 }} />}
-              <Text style={{ fontSize: 15, color: selected === opt ? Colors.primary : Colors.text, fontWeight: selected === opt ? '700' : '400' }}>{opt}</Text>
+
+        {/* Search bar — always shown, essential for long lists like India states */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', margin: Spacing.md, backgroundColor: Colors.card, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.cardBorder, paddingHorizontal: Spacing.md }}>
+          <Ionicons name="search-outline" size={16} color={Colors.textDim} style={{ marginRight: 8 }} />
+          <TextInput
+            style={{ flex: 1, height: 42, color: Colors.text, fontSize: 14 }}
+            placeholder={`Search ${title.toLowerCase()}...`}
+            placeholderTextColor={Colors.textDim}
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color={Colors.textDim} />
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+          )}
+        </View>
+
+        {/* Count */}
+        <Text style={{ fontSize: 11, color: Colors.textDim, paddingHorizontal: Spacing.xl, marginBottom: Spacing.sm }}>
+          {filtered.length} {filtered.length === 1 ? 'option' : 'options'}
+          {selected ? ' · ' + selected + ' selected' : ''}
+        </Text>
+
+        {/* List — flex: 1 ensures it fills remaining space and scrolls */}
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item}
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={20}
+          getItemLayout={(_, index) => ({ length: 54, offset: 54 * index, index })}
+          renderItem={({ item: opt }) => (
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: Spacing.xl,
+                paddingVertical: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: Colors.cardBorder,
+                backgroundColor: selected === opt ? Colors.primaryBg : 'transparent',
+              }}
+              onPress={() => { onSelect(opt); onClose(); }}
+              activeOpacity={0.7}
+            >
+              <View style={{
+                width: 22, height: 22, borderRadius: 11,
+                borderWidth: 2,
+                borderColor: selected === opt ? Colors.primary : Colors.cardBorder,
+                backgroundColor: selected === opt ? Colors.primary : 'transparent',
+                alignItems: 'center', justifyContent: 'center',
+                marginRight: 14, flexShrink: 0,
+              }}>
+                {selected === opt && <Ionicons name="checkmark" size={13} color="#fff" />}
+              </View>
+              <Text style={{ fontSize: 15, color: selected === opt ? Colors.primary : Colors.text, fontWeight: selected === opt ? '700' : '400', flex: 1 }}>{opt}</Text>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+              <Text style={{ fontSize: 32, marginBottom: 10 }}>🔍</Text>
+              <Text style={{ fontSize: 14, color: Colors.textMuted }}>No results for "{search}"</Text>
+            </View>
+          }
+        />
+      </SafeAreaView>
     </Modal>
   );
 }
-
 function PickerField({ label, required, value, placeholder, options, onSelect }: {
   label: string; required?: boolean; value: string; placeholder: string; options: string[]; onSelect: (v: string) => void;
 }) {
