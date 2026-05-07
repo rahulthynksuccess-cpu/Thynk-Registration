@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, TextInput, TouchableOpacity,
   SafeAreaView, Alert, ActivityIndicator, Modal, Switch,
@@ -320,65 +321,120 @@ export default function CreateSchoolScreen() {
     return null;
   }
 
+  function resetForm() {
+    setSchoolCode(''); setName(''); setOrgName(''); setAddress('');
+    setPinCode(''); setCountry('India'); setState_(''); setCity('');
+    setProjectId(''); setSchoolPrice(''); setDiscountCode('');
+    setIsActive(true); setIsRegActive(true); setSaving(false);
+    setContacts([{ name: '', designation: '', email: '', mobile: '' }]);
+  }
+
+  // Reset saving spinner every time this tab comes into focus
+  // (handles case where user navigated away while it was processing)
+  useFocusEffect(
+    useCallback(() => {
+      setSaving(false);
+      return () => {};
+    }, [])
+  );
+
   async function handleSave() {
     const err = validate();
     if (err) { Alert.alert('Validation Error', err); return; }
 
     setSaving(true);
+
     try {
+      // Get credentials directly from SecureStore
+      const SecureStore = await import('expo-secure-store');
+      const token   = await SecureStore.getItemAsync('thynk_admin_token');
+      const baseUrl = await SecureStore.getItemAsync('thynk_backend_url');
+
+      if (!token || !baseUrl) {
+        Alert.alert('Session Expired', 'Please log out and log back in.');
+        setSaving(false);
+        return;
+      }
+
       const payload = {
-        school_code:           schoolCode.trim(),
-        name:                  name.trim(),
-        org_name:              orgName.trim(),
-        address:               address.trim(),
-        pin_code:              pinCode.trim(),
+        school_code:            schoolCode.trim(),
+        name:                   name.trim(),
+        org_name:               orgName.trim(),
+        address:                address.trim(),
+        pin_code:               pinCode.trim(),
         country,
         state,
         city,
-        project_id:            projectId,
-        project_slug:          selectedProgram?.slug ?? '',
-        school_price:          Math.round(Number(schoolPrice) * 100),
+        project_id:             projectId,
+        project_slug:           selectedProgram?.slug ?? '',
+        school_price:           Math.round(Number(schoolPrice) * 100),
         currency,
-        discount_code:         discountCode.trim() || schoolCode.toUpperCase(),
-        pricing: [{
-          base_amount: Math.round(Number(schoolPrice) * 100),
-          currency,
-        }],
-        primary_color:         primaryColor,
-        accent_color:          '#8b5cf6',
-        is_active:             isActive,
+        discount_code:          discountCode.trim() || schoolCode.toUpperCase(),
+        pricing: [{ base_amount: Math.round(Number(schoolPrice) * 100), currency }],
+        primary_color:          primaryColor,
+        accent_color:           '#8b5cf6',
+        is_active:              isActive,
         is_registration_active: isRegActive,
-        contact_persons:       contacts,
+        contact_persons:        contacts,
         branding: {
           primaryColor,
           accentColor: '#8b5cf6',
-          redirectURL: selectedProgram ? `https://thynksuccess.com/registration/${selectedProgram.slug}/` : '',
+          redirectURL: selectedProgram
+            ? `https://thynksuccess.com/registration/${selectedProgram.slug}/`
+            : '',
         },
       };
 
-      const res = await authFetch('/api/admin/schools', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+      console.log('[CreateSchool] Posting to', baseUrl + '/api/admin/schools');
+      console.log('[CreateSchool] Payload', JSON.stringify(payload).slice(0, 200));
 
-      const data = await res.json();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl}/api/admin/schools`, {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      console.log('[CreateSchool] Response status', res.status);
+
+      let data: any = {};
+      try {
+        const text = await res.text();
+        console.log('[CreateSchool] Response body', text.slice(0, 300));
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: 'Invalid response from server' };
+      }
 
       if (res.ok) {
-        setSuccess(true);
-        // Reset form
-        setSchoolCode(''); setName(''); setOrgName(''); setAddress('');
-        setPinCode(''); setCountry('India'); setState_(''); setCity('');
-        setProjectId(''); setSchoolPrice(''); setDiscountCode('');
-        setIsActive(true); setIsRegActive(true);
-        setContacts([{ name: '', designation: '', email: '', mobile: '' }]);
-        Alert.alert('✅ School Created', `${name} has been created successfully!`);
+        const schoolName = name.trim();
+        resetForm();
+        Alert.alert('✅ School Created', `${schoolName} has been created successfully!`);
       } else {
-        Alert.alert('Error', data.error ?? 'Failed to create school. Please try again.');
+        const msg = data.error ?? data.message ?? `Server error (${res.status})`;
+        Alert.alert('Failed to Create School', msg);
+        setSaving(false);
       }
     } catch (e: any) {
-      Alert.alert('Connection Error', e.message);
+      console.log('[CreateSchool] Error', e);
+      if (e.name === 'AbortError') {
+        Alert.alert('Request Timeout', 'The server took too long to respond. Please try again.');
+      } else {
+        Alert.alert('Connection Error', e.message ?? 'Unknown error');
+      }
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   const CURRENCIES = ['INR', 'USD'];
@@ -539,19 +595,36 @@ export default function CreateSchoolScreen() {
         </View>
 
         {/* ── Save Button ── */}
-        <TouchableOpacity
-          style={[styles.saveBtn, saving && { opacity: 0.7 }]}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          {saving
-            ? <ActivityIndicator color="#fff" />
-            : <>
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.saveBtnTxt}>Create School</Text>
-              </>
-          }
-        </TouchableOpacity>
+        {/* Buttons row */}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: Spacing.xl }}>
+          <TouchableOpacity
+            style={styles.resetBtn}
+            onPress={() => {
+              Alert.alert('Reset Form', 'Clear all fields?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Reset', style: 'destructive', onPress: resetForm },
+              ]);
+            }}
+            disabled={saving}
+          >
+            <Ionicons name="refresh-outline" size={18} color={Colors.textMuted} />
+            <Text style={styles.resetBtnTxt}>Reset</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            {saving
+              ? <><ActivityIndicator color="#fff" size="small" /><Text style={styles.saveBtnTxt}>  Creating...</Text></>
+              : <>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.saveBtnTxt}>Create School</Text>
+                </>
+            }
+          </TouchableOpacity>
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -578,6 +651,8 @@ const styles = StyleSheet.create({
   switchLabel:{ fontSize: 14, fontWeight: '700', color: Colors.text },
   switchSub:  { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
 
-  saveBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: 16, marginTop: Spacing.xl, elevation: 6 },
+  resetBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.card, borderRadius: Radius.md, paddingVertical: 16, paddingHorizontal: Spacing.xl, borderWidth: 1, borderColor: Colors.cardBorder },
+  resetBtnTxt:{ color: Colors.textMuted, fontSize: 14, fontWeight: '700' },
+  saveBtn:    { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: 16, elevation: 6 },
   saveBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
