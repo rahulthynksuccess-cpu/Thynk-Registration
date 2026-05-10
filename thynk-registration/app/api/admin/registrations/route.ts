@@ -205,3 +205,52 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ rows: filtered, count: filtered.length });
 }
+
+export async function DELETE(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const service = createServiceClient();
+
+  // Only super_admins can delete registrations
+  const { data: roleRows } = await service
+    .from('admin_roles')
+    .select('role, school_id')
+    .eq('user_id', user.id);
+
+  const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
+  if (!isSuperAdmin) {
+    return NextResponse.json({ error: 'Forbidden: only super admins can delete registrations' }, { status: 403 });
+  }
+
+  let body: Record<string, any>;
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+  const { id } = body;
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+
+  // Delete associated payments first (FK constraint)
+  const { error: payErr } = await service
+    .from('payments')
+    .delete()
+    .eq('registration_id', id);
+
+  if (payErr) {
+    console.error('[registrations DELETE] payment delete error', payErr);
+    return NextResponse.json({ error: payErr.message }, { status: 500 });
+  }
+
+  // Delete the registration
+  const { error: regErr } = await service
+    .from('registrations')
+    .delete()
+    .eq('id', id);
+
+  if (regErr) {
+    console.error('[registrations DELETE] registration delete error', regErr);
+    return NextResponse.json({ error: regErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true, deleted_id: id });
+}

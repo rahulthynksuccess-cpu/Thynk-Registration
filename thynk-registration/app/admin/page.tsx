@@ -115,11 +115,13 @@ const NAV = [
 function StudentDetailModal({
   student,
   onClose,
+  onDeleteSuccess,
   showToast,
   fmtR,
 }: {
   student: Row;
   onClose: () => void;
+  onDeleteSuccess?: () => void;
   showToast: (m: string, i?: string) => void;
   fmtR: (n: number) => string;
 }) {
@@ -130,6 +132,32 @@ function StudentDetailModal({
   const [toEmail,     setToEmail]     = React.useState(student.contact_email ?? '');
   const [sending,     setSending]     = React.useState(false);
   const [preview,     setPreview]     = React.useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const [deleting,    setDeleting]    = React.useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/registrations`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: student.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? 'Failed to delete student.', '❌');
+        setDeleting(false);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      showToast('Student deleted successfully.', '🗑️');
+      if (onDeleteSuccess) onDeleteSuccess(); else onClose();
+    } catch (e: any) {
+      showToast(`Network error: ${e.message}`, '❌');
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }
 
   React.useEffect(() => {
     authFetch(`${BACKEND}/api/admin/templates`)
@@ -318,6 +346,41 @@ function StudentDetailModal({
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 0', borderRadius: 12, border: '1.5px solid rgba(245,158,11,.3)', background: 'rgba(245,158,11,.07)', color: '#b45309', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               \u2709\ufe0f Email
             </button>
+          </div>
+        )}
+
+        {/* Delete button */}
+        {!sendChannel && !showDeleteConfirm && (
+          <div style={{ padding: '0 24px 20px' }}>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              style={{ width: '100%', padding: '9px 0', borderRadius: 12, border: '1.5px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              🗑️ Delete Student
+            </button>
+          </div>
+        )}
+
+        {/* Delete confirmation dialog */}
+        {showDeleteConfirm && (
+          <div style={{ margin: '0 24px 20px', padding: 16, borderRadius: 14, background: 'rgba(239,68,68,0.07)', border: '1.5px solid rgba(239,68,68,0.25)' }}>
+            <div style={{ fontFamily: 'Sora,sans-serif', fontSize: 14, fontWeight: 800, color: '#ef4444', marginBottom: 8 }}>⚠️ Confirm Deletion</div>
+            <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 14, lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete <strong>{student.student_name}</strong>? This will also remove all associated payment records and cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: '1.5px solid var(--bd)', background: 'var(--card)', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: 'var(--m)' }}>
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ flex: 2, padding: '9px 0', borderRadius: 10, border: 'none', background: deleting ? 'rgba(239,68,68,0.4)' : '#ef4444', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer', color: '#fff' }}>
+                {deleting ? '⏳ Deleting…' : '🗑️ Yes, Delete Permanently'}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -1356,6 +1419,7 @@ export default function AdminDashboard() {
         <StudentDetailModal
           student={modal}
           onClose={() => setModal(null)}
+          onDeleteSuccess={() => { setModal(null); loadRegistrations(); }}
           showToast={showToast}
           fmtR={fmtR}
         />

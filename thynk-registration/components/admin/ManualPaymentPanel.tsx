@@ -158,7 +158,7 @@ export function ManualPaymentPanel({
 
     setSaving(true);
     try {
-      const res = await authFetch(`${BACKEND}/api/admin/payment/manual`, {
+      const res = await authFetch(`${BACKEND}/api/payment/manual`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
