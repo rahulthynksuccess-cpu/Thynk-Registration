@@ -1578,6 +1578,14 @@ export default function AdminDashboard() {
       {integrationForm!==null&&<IntegrationFormModal initial={integrationForm} schools={schools} onClose={()=>setIntegrationForm(null)} onSave={async(data)=>{await saveForm('/api/admin/integrations',data,()=>{setIntegrationForm(null);loadIntegrations();},data.id?'Integration updated!':'Integration saved!');}} />}
       {triggerForm!==null&&<TriggerFormModal initial={triggerForm} schools={schools} templates={templates} onClose={()=>setTriggerForm(null)} onSave={async(data)=>{await saveForm('/api/admin/triggers',data,()=>{setTriggerForm(null);loadTriggers();},data.id?'Trigger updated!':'Trigger created!');}} />}
       {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
+      {consultantForm!==null&&<ConsultantFormModal
+        initial={consultantForm}
+        BACKEND={BACKEND}
+        authHeaders={authHeaders}
+        onClose={()=>setConsultantForm(null)}
+        onSave={()=>{ setConsultantForm(null); loadConsultants(); showToast(consultantForm.id?'Consultant updated!':'Consultant created!','✅'); }}
+        showToast={showToast}
+      />}
     </>
   );
 }
@@ -1899,17 +1907,6 @@ function ConsultantsTab({ consultants, schools, BACKEND, authHeaders, isSuperAdm
         </div>
       )}
 
-      {/* Add / Edit Modal */}
-      {consultantForm !== null && (
-        <ConsultantFormModal
-          initial={consultantForm}
-          BACKEND={BACKEND}
-          authHeaders={authHeaders}
-          onClose={()=>setConsultantForm(null)}
-          onSave={()=>{ setConsultantForm(null); onReload(); showToast(consultantForm.id?'Consultant updated!':'Consultant created!','✅'); }}
-          showToast={showToast}
-        />
-      )}
     </div>
   );
 }
