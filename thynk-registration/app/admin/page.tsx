@@ -1888,7 +1888,7 @@ function ConsultantsTab({ consultants, schools, allRows, BACKEND, authHeaders, i
   schools.forEach(s => { if (s.consultant_id) schoolConsultantMap[s.id] = s.consultant_id; });
 
   // Enrich allRows with consultant_id via school lookup
-  const enrichedRows = allRows.map(r => ({
+ const enrichedRows: Row[] = allRows.map(r => ({
     ...r,
     consultant_id: r.consultant_id ?? schoolConsultantMap[r.school_id] ?? null,
   }));
