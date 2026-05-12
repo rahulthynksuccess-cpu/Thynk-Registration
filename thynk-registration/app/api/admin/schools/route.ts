@@ -18,6 +18,23 @@ async function requireSuperAdmin(req: NextRequest) {
   return data ? user : null;
 }
 
+// Returns user + their role if they are super_admin OR consultant
+async function requireSuperAdminOrConsultant(req: NextRequest): Promise<{ user: any; role: string } | null> {
+  const user = await getUserFromRequest(req);
+  if (!user) return null;
+  const service = createServiceClient();
+  const { data: roleRows } = await service
+    .from('admin_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .in('role', ['super_admin', 'consultant']);
+  const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin');
+  const isConsultant = roleRows?.some(r => r.role === 'consultant');
+  if (isSuperAdmin) return { user, role: 'super_admin' };
+  if (isConsultant)  return { user, role: 'consultant' };
+  return null;
+}
+
 function currencyForCountry(country: string): string {
   return (country || '').toLowerCase() === 'india' ? 'INR' : 'USD';
 }
@@ -35,10 +52,11 @@ export async function GET(req: NextRequest) {
     .select('role, school_id, all_schools')
     .eq('user_id', user.id);
 
-  const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
-  const isSubAdmin   = roleRows?.some(r => r.role === 'sub_admin');
+  const isSuperAdmin  = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
+  const isSubAdmin    = roleRows?.some(r => r.role === 'sub_admin');
+  const isConsultant  = roleRows?.some(r => r.role === 'consultant');
 
-  if (!isSuperAdmin && !isSubAdmin) {
+  if (!isSuperAdmin && !isSubAdmin && !isConsultant) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -51,7 +69,7 @@ export async function GET(req: NextRequest) {
       id, school_code, name, org_name, logo_url, branding, gateway_config,
       is_active, is_registration_active, status, approved_at, approved_by,
       city, state, country, address, pin_code, contact_persons,
-      project_id, project_slug, discount_code, created_at,
+      project_id, project_slug, discount_code, created_at, consultant_id,
       pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)
     `)
     .order('created_at', { ascending: false });
@@ -72,13 +90,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Consultant: scope to schools where consultant_id = their user id
+  if (isConsultant && !isSuperAdmin) {
+    query = query.eq('consultant_id', user.id) as any;
+  }
+
   const { data: schools } = await query;
   return NextResponse.json({ schools: schools ?? [] });
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireSuperAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await requireSuperAdminOrConsultant(req);
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const { user, role: callerRole } = auth;
 
   const service = createServiceClient();
   const body = await req.json();
@@ -90,6 +114,7 @@ export async function POST(req: NextRequest) {
     discount_code,
     primary_color, accent_color,
     is_active, is_registration_active,
+    consultant_id: bodyConsultantId,
   } = body;
 
   if (!school_code || !name || !org_name || !project_id || !school_price)
@@ -109,6 +134,12 @@ export async function POST(req: NextRequest) {
   const redirectURL = `https://thynksuccess.com/registration/${program.slug}/?school=${code}`;
   const discCode    = (discount_code || code).toUpperCase();
 
+  // Resolve consultant_id:
+  // - If caller is a consultant → always use their own id
+  // - If caller is super_admin  → use the bodyConsultantId (may be null)
+  const resolvedConsultantId =
+    callerRole === 'consultant' ? user.id : (bodyConsultantId || null);
+
   const { data: school, error } = await service
     .from('schools')
     .insert({
@@ -124,6 +155,7 @@ export async function POST(req: NextRequest) {
       project_id,
       project_slug:           program.slug,
       discount_code:          discCode,
+      consultant_id:          resolvedConsultantId,
       // Admin-created schools are approved immediately
       status:                 'approved',
       is_active:              is_active !== false,
@@ -234,6 +266,7 @@ export async function PATCH(req: NextRequest) {
     discount_code,
     address, pin_code, contact_persons,
     is_registration_active,
+    consultant_id: patchConsultantId,
     ...rest
   } = await req.json();
 
@@ -262,6 +295,7 @@ export async function PATCH(req: NextRequest) {
   // Strip status from rest if accidentally passed — PATCH must not change approval status
   delete updatePayload.status;
 
+  if (patchConsultantId !== undefined)      updatePayload.consultant_id          = patchConsultantId || null;
   if (discount_code)                        updatePayload.discount_code          = discount_code.toUpperCase();
   if (address !== undefined)                updatePayload.address                = address || null;
   if (pin_code !== undefined)               updatePayload.pin_code               = pin_code || null;

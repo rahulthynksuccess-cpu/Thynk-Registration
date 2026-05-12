@@ -93,6 +93,7 @@ const NAV = [
   { id:'manage_school', icon:'⚙️', label:'Manage Schools' },
   { id:'discounts',     icon:'🏷️', label:'Discount Codes' },
   { id:'users',         icon:'👥', label:'Admin Users'    },
+  { id:'consultants',   icon:'🤝', label:'Consultants'    },
   { section:'Client Portal' },
   { id:'documents',     icon:'📁', label:'Document Upload' },
   { id:'notifications', icon:'🔔', label:'Notifications',  badge:true },
@@ -116,12 +117,14 @@ function StudentDetailModal({
   student,
   onClose,
   onDeleteSuccess,
+  onPaymentSuccess,
   showToast,
   fmtR,
 }: {
   student: Row;
   onClose: () => void;
   onDeleteSuccess?: () => void;
+  onPaymentSuccess?: (updated: Partial<Row>) => void;
   showToast: (m: string, i?: string) => void;
   fmtR: (n: number) => string;
 }) {
@@ -246,7 +249,7 @@ function StudentDetailModal({
 
   const currency = student.currency === 'USD' ? '$' : '\u20b9';
   const rows: [string, React.ReactNode][] = [
-    ['Status',   <span key="s" className={`badge badge-${student.payment_status ?? 'pending'}`}>{student.payment_status ?? '\u2014'}</span>],
+    ['Status',   <span key="s" className={`badge badge-${student.payment_status ?? student.reg_status ?? 'pending'}`}>{student.payment_status ?? student.reg_status ?? '\u2014'}</span>],
     ['Date',     student.created_at?.slice(0, 10) ?? '\u2014'],
     ['Student',  student.student_name],
     ['Class',    student.class_grade],
@@ -287,7 +290,10 @@ function StudentDetailModal({
 <ManualPaymentPanel
   student={student}
   BACKEND={BACKEND}
-  onSuccess={() => showToast('✅ Payment recorded!', '✅')}
+  onSuccess={(updated) => {
+    showToast('✅ Payment recorded!', '✅');
+    onPaymentSuccess?.({ ...student, ...updated, payment_status: 'paid' });
+  }}
         />
 
         {sendChannel && (
@@ -416,6 +422,7 @@ export default function AdminDashboard() {
   const [schools,      setSchools]      = useState<Row[]>([]);
   const [discounts,    setDiscounts]    = useState<Row[]>([]);
   const [adminUsers,   setAdminUsers]   = useState<Row[]>([]);
+  const [consultants,  setConsultants]  = useState<Row[]>([]);
   const [integrations, setIntegrations] = useState<Row[]>([]);
   const [triggers,     setTriggers]     = useState<Row[]>([]);
   const [templates,    setTemplates]    = useState<Row[]>([]);
@@ -434,6 +441,7 @@ export default function AdminDashboard() {
   const [resetPasswordUser, setResetPasswordUser] = useState<Row|null>(null);
   const [programForm,     setProgramForm]     = useState<Row|null>(null);
   const [schoolForm,      setSchoolForm]      = useState<Row|null>(null);
+  const [consultantForm,  setConsultantForm]  = useState<Row|null>(null);
   const [discountForm,    setDiscountForm]     = useState<Row|null>(null);
   const [userForm,        setUserForm]         = useState<Row|null>(null);
   const [integrationForm, setIntegrationForm] = useState<Row|null>(null);
@@ -441,6 +449,7 @@ export default function AdminDashboard() {
   const [templateForm,    setTemplateForm]    = useState<Row|null>(null);
 
   const [overviewProgram, setOverviewProgram] = useState('');
+  const [schoolSearch,    setSchoolSearch]    = useState('');
 
   const chartsRef  = useRef<Record<string,any>>({});
   const toastTimer = useRef<any>();
@@ -509,10 +518,21 @@ export default function AdminDashboard() {
     finally { setLoading(false); }
   }, [api]);
 
+  // Silent version — reloads allRows without showing toast (used after manual payment / delete)
+  const silentReload = useCallback(async () => {
+    try {
+      const data = await api('/api/admin/registrations?limit=1000');
+      const rows = (data.rows??[]).filter((r:Row) => r.student_name?.trim());
+      setAllRows(rows);
+      setLastUpdated(`Last updated ${new Date().toLocaleTimeString('en-IN')} · ${rows.length} records`);
+    } catch(_) {}
+  }, [api]);
+
   const loadPrograms     = useCallback(async () => { const d = await api('/api/admin/projects');     setPrograms(d.projects??[]); }, [api]);
   const loadSchools      = useCallback(async () => { const d = await api('/api/admin/schools');      setSchools(d.schools??[]); }, [api]);
   const loadDiscounts    = useCallback(async () => { const d = await api('/api/admin/discounts');    setDiscounts(d.discounts??[]); }, [api]);
   const loadUsers        = useCallback(async () => { const d = await api('/api/admin/users');        setAdminUsers(d.users??[]); }, [api]);
+  const loadConsultants  = useCallback(async () => { try { const d = await api('/api/admin/consultants'); setConsultants(d.consultants??[]); } catch {} }, [api]);
   const loadIntegrations = useCallback(async () => { const d = await api('/api/admin/integrations'); setIntegrations(d.integrations??[]); }, [api]);
   const loadTriggers     = useCallback(async () => { const d = await api('/api/admin/triggers');     setTriggers(d.triggers??[]); }, [api]);
   const loadTemplates    = useCallback(async () => { const d = await api('/api/admin/templates');    setTemplates(d.templates??[]); }, [api]);
@@ -530,6 +550,7 @@ export default function AdminDashboard() {
     if (activePage === 'manage_school') { loadSchools(); loadPrograms(); }
     if (activePage === 'discounts')    loadDiscounts();
     if (activePage === 'users')      { loadUsers(); loadSchools(); }
+    if (activePage === 'consultants') { loadConsultants(); loadSchools(); }
     if (activePage === 'integrations') loadIntegrations();
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')    loadTemplates();
@@ -633,6 +654,14 @@ export default function AdminDashboard() {
   const visibleSchools = (isSubAdmin && subAdminSchools)
     ? schools.filter(s => subAdminSchools.includes(s.id))
     : schools;
+
+  const searchedSchools = schoolSearch.trim()
+    ? visibleSchools.filter(s =>
+        [s.name, s.school_code, s.city, s.state, s.country, s.org_name]
+          .join(' ').toLowerCase()
+          .includes(schoolSearch.toLowerCase())
+      )
+    : visibleSchools;
 
   // Helper: block a page from rendering if sub-admin doesn't have access
   function canSeePage(pageId: string): boolean {
@@ -1082,8 +1111,36 @@ export default function AdminDashboard() {
           {/* ── SCHOOLS ─────────────────────────────────────────────── */}
           <div className={`page${activePage==='schools'?' active':''}`}>
             {activePage==='schools' && !canSeePage('schools') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('schools') && (
+              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+                <input
+                  placeholder="🔍 Search by name, code, city, state, country…"
+                  value={schoolSearch}
+                  onChange={e => setSchoolSearch(e.target.value)}
+                  style={{
+                    flex: 1, minWidth: 240, maxWidth: 420,
+                    border: '1.5px solid var(--bd)', borderRadius: 10,
+                    padding: '9px 14px', fontSize: 13,
+                    fontFamily: 'DM Sans,sans-serif', outline: 'none',
+                    color: 'var(--text)', background: 'var(--card)',
+                  }}
+                />
+                {schoolSearch && (
+                  <>
+                    <span style={{ fontSize:12, color:'var(--m)', whiteSpace:'nowrap' }}>
+                      {searchedSchools.length} of {visibleSchools.length} schools
+                    </span>
+                    <button
+                      onClick={() => setSchoolSearch('')}
+                      style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(239,68,68,.3)', background:'rgba(239,68,68,.06)', color:'#ef4444', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>
+                      ✕ Clear
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <SchoolsPageWithApproval
-              schools={visibleSchools}
+              schools={searchedSchools}
               programs={programs}
               isSuperAdmin={isSuperAdmin}
               BACKEND={BACKEND}
@@ -1398,6 +1455,31 @@ export default function AdminDashboard() {
             <LocationMasterPage rows={locations} BACKEND={BACKEND} onReload={loadLocations} showToast={showToast} />
           </div>
 
+          {/* ── CONSULTANTS ──────────────────────────────────────────── */}
+          <div className={`page${activePage==='consultants'?' active':''}`}>
+            <div className="topbar">
+              <div className="topbar-left"><h1>🤝 <span>Consultants</span></h1><p>Manage consultant accounts and their school assignments</p></div>
+              <div className="topbar-right">
+                {isSuperAdmin && <button className="btn btn-primary" onClick={()=>{setConsultantForm({});loadConsultants();}}>+ Add Consultant</button>}
+                <a href={`${BACKEND||'https://thynk-registration.vercel.app'}/consultant/login`} target="_blank" rel="noreferrer"
+                  style={{marginLeft:8,padding:'8px 14px',borderRadius:9,background:'rgba(79,70,229,.1)',border:'1px solid rgba(79,70,229,.3)',color:'#4f46e5',fontSize:12,fontWeight:700,textDecoration:'none'}}>
+                  🔗 Consultant Portal
+                </a>
+              </div>
+            </div>
+            {activePage==='consultants' && <ConsultantsTab
+              consultants={consultants}
+              schools={schools}
+              BACKEND={BACKEND}
+              authHeaders={authHeaders}
+              isSuperAdmin={isSuperAdmin}
+              onReload={loadConsultants}
+              showToast={showToast}
+              consultantForm={consultantForm}
+              setConsultantForm={setConsultantForm}
+            />}
+          </div>
+
           {/* ── DOCUMENT UPLOAD ──────────────────────────────────────── */}
           <div className={`page${activePage==='documents'?' active':''}`}>
             <div className="topbar">
@@ -1419,7 +1501,15 @@ export default function AdminDashboard() {
         <StudentDetailModal
           student={modal}
           onClose={() => setModal(null)}
-          onDeleteSuccess={() => { setModal(null); loadRegistrations(); }}
+          onDeleteSuccess={() => { setModal(null); silentReload(); }}
+          onPaymentSuccess={(updated) => {
+            // Update the open modal immediately so status badge flips
+            setModal(prev => prev ? { ...prev, ...updated } : prev);
+            // Patch allRows so dashboard counts & table update without a full reload
+            setAllRows(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+            // Fire a background reload to sync any server-side changes
+            silentReload();
+          }}
           showToast={showToast}
           fmtR={fmtR}
         />
@@ -1445,7 +1535,7 @@ export default function AdminDashboard() {
 
       {resetPasswordUser!==null&&<ResetPasswordModal user={resetPasswordUser} BACKEND={BACKEND} authHeaders={authHeaders} onClose={()=>setResetPasswordUser(null)} showToast={showToast} />}
       {programForm!==null&&<ProgramFormModal initial={programForm} onClose={()=>setProgramForm(null)} onSave={async(data)=>{await saveForm('/api/admin/projects',data,()=>{setProgramForm(null);loadPrograms();},data.id?'Program updated!':'Program created!');}} />}
-      {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);setSchools([]);loadSchools();},data.id?'School updated!':'School created!');}} />}
+      {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} consultants={consultants} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);setSchools([]);loadSchools();},data.id?'School updated!':'School created!');}} />}
       {discountForm!==null&&<DiscountFormModal initial={discountForm} schools={schools} onClose={()=>setDiscountForm(null)} onSave={async(data)=>{await saveForm('/api/admin/discounts',data,()=>{setDiscountForm(null);loadDiscounts();},data.id?'Code updated!':'Code created!');}} />}
       {userForm!==null&&<UserFormModal
   schools={schools}
@@ -1603,9 +1693,9 @@ const isIndianCountry = (c: string) => c === 'India';
 // ── School Form ─────────────────────────────────────────────────────
 const EMPTY_CONTACT = { name:'', designation:'', email:'', mobile:'' };
 
-function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
+function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ initial:Row; programs:Row[]; consultants?:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
   const initContacts = (() => { if (Array.isArray(initial.contact_persons) && initial.contact_persons.length) return initial.contact_persons; return [{ ...EMPTY_CONTACT }]; })();
-  const [f,setF] = useState({ id:initial.id??'', school_code:initial.school_code??'', name:initial.name??'', org_name:initial.org_name??'', address:initial.address??'', pin_code:initial.pin_code??'', country:initial.country||'India', state:initial.state??'', city:initial.city??'', project_id:initial.project_id??'', school_price:initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '', currency:initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'), discount_code:initial.discount_code ?? initial.school_code?.toUpperCase() ?? '', primary_color:initial.branding?.primaryColor??'#4f46e5', accent_color:initial.branding?.accentColor??'#8b5cf6', is_active:initial.is_active!==false, is_registration_active:initial.is_registration_active!==false });
+  const [f,setF] = useState({ id:initial.id??'', school_code:initial.school_code??'', name:initial.name??'', org_name:initial.org_name??'', consultant_id:initial.consultant_id??'', address:initial.address??'', pin_code:initial.pin_code??'', country:initial.country||'India', state:initial.state??'', city:initial.city??'', project_id:initial.project_id??'', school_price:initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '', currency:initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'), discount_code:initial.discount_code ?? initial.school_code?.toUpperCase() ?? '', primary_color:initial.branding?.primaryColor??'#4f46e5', accent_color:initial.branding?.accentColor??'#8b5cf6', is_active:initial.is_active!==false, is_registration_active:initial.is_registration_active!==false });
   const [contacts, setContacts] = useState<{name:string;designation:string;email:string;mobile:string}[]>(initContacts);
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => { const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value; setF(p => { const updated = {...p, [k]: val}; if (k === 'country') { updated.currency = isIndianCountry(val as string) ? 'INR' : 'USD'; updated.state = ''; updated.city = ''; } if (k === 'state') updated.city = ''; if (k === 'school_code' && !p.id) { updated.discount_code = (val as string).toUpperCase(); } return updated; }); };
   const setContact = (idx:number, field:string) => (e:React.ChangeEvent<HTMLInputElement>) => { setContacts(prev => prev.map((c,i) => i===idx ? {...c,[field]:e.target.value} : c)); };
@@ -1700,6 +1790,18 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
         <Field label="Primary Colour"><input style={{...IS,height:40}} type="color" value={f.primary_color} onChange={set('primary_color')}/></Field>
         <Field label="Accent Colour"><input style={{...IS,height:40}} type="color" value={f.accent_color} onChange={set('accent_color')}/></Field>
       </div>
+      {/* Consultant Assignment */}
+      {consultants && consultants.length > 0 && (
+        <div style={{background:'rgba(79,70,229,.05)',border:'1.5px solid rgba(79,70,229,.2)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#4f46e5',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>🤝 Consultant Assignment</div>
+          <Field label="Assign to Consultant (optional)">
+            <select style={{...IS}} value={f.consultant_id} onChange={set('consultant_id')}>
+              <option value="">— None (Direct Admin School) —</option>
+              {consultants.map(c=><option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}
+            </select>
+          </Field>
+        </div>
+      )}
       <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:14,padding:'12px 14px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto',accentColor:'var(--acc)'}}/><label htmlFor="is_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>School is Active</label></div>
         <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/><label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>Registration Active</label></div>
@@ -1713,6 +1815,163 @@ function SchoolFormModal({ initial, programs, onClose, onSave }:{ initial:Row; p
 }
 
 // ── Discount Form ───────────────────────────────────────────────────
+
+// ── Consultants Tab ────────────────────────────────────────────────────────
+function ConsultantsTab({ consultants, schools, BACKEND, authHeaders, isSuperAdmin, onReload, showToast, consultantForm, setConsultantForm }: {
+  consultants: Row[]; schools: Row[]; BACKEND: string; authHeaders: ()=>HeadersInit;
+  isSuperAdmin: boolean; onReload: ()=>void; showToast: (m:string,i?:string)=>void;
+  consultantForm: Row|null; setConsultantForm: (r:Row|null)=>void;
+}) {
+  const IS: React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', borderRadius:10, padding:'10px 14px', fontSize:14, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--bg)', boxSizing:'border-box' };
+  function Field({ label, children }: { label:string; children:React.ReactNode }) {
+    return <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:5}}>{label}</label>{children}</div>;
+  }
+
+  const [deleting, setDeleting] = React.useState<string|null>(null);
+
+  async function handleDelete(id: string) {
+    if (!confirm('Remove this consultant? Their schools will remain but become unassigned.')) return;
+    setDeleting(id);
+    try {
+      const res = await fetch(`${BACKEND}/api/admin/consultants`, { method:'DELETE', headers: authHeaders() as any, body: JSON.stringify({ id }) });
+      if (res.ok) { showToast('Consultant removed','🗑️'); onReload(); }
+      else { const d = await res.json(); showToast(d.error??'Failed','❌'); }
+    } finally { setDeleting(null); }
+  }
+
+  return (
+    <div style={{padding:'0 0 40px'}}>
+      {/* Portal URL banner */}
+      <div style={{background:'rgba(79,70,229,.06)',border:'1.5px solid rgba(79,70,229,.2)',borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
+        <div style={{fontSize:22}}>🤝</div>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontWeight:700,fontSize:13,color:'#4f46e5',marginBottom:3}}>Consultant Portal URL</div>
+          <div style={{fontSize:11,color:'var(--m)',marginBottom:6}}>Share this link with consultants so they can log in, create schools and view their reports.</div>
+          <code style={{fontFamily:'monospace',fontSize:12,color:'var(--text)',background:'var(--bg)',padding:'6px 10px',borderRadius:7,display:'inline-block',wordBreak:'break-all'}}>
+            {(BACKEND||'https://thynk-registration.vercel.app')}/consultant/login
+          </code>
+        </div>
+        <button onClick={()=>{navigator.clipboard.writeText(`${BACKEND||'https://thynk-registration.vercel.app'}/consultant/login`);showToast('Consultant portal URL copied!','✅');}} style={{padding:'8px 16px',borderRadius:9,background:'#4f46e5',border:'none',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0}}>📋 Copy URL</button>
+      </div>
+
+      {/* Table */}
+      {consultants.length === 0 ? (
+        <div style={{textAlign:'center',padding:'60px 0',color:'var(--m)'}}>
+          <div style={{fontSize:48,marginBottom:12}}>🤝</div>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>No consultants yet</div>
+          <div style={{fontSize:13,marginBottom:24}}>Add consultants who will create and manage schools on your behalf</div>
+          {isSuperAdmin && <button className="btn btn-primary" onClick={()=>setConsultantForm({})}>+ Add Consultant</button>}
+        </div>
+      ) : (
+        <div style={{overflowX:'auto',borderRadius:14,border:'1.5px solid var(--bd)'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{background:'var(--bg)'}}>
+                {['Name','Email','Schools','Added','Actions'].map(h=>(
+                  <th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid var(--bd)',whiteSpace:'nowrap'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {consultants.map((c,i)=>(
+                <tr key={c.id} style={{borderBottom:'1px solid var(--bd)',background:i%2===0?'transparent':'rgba(0,0,0,.015)'}}>
+                  <td style={{padding:'10px 14px',fontWeight:700,color:'var(--text)'}}>{c.name||'—'}</td>
+                  <td style={{padding:'10px 14px',color:'var(--m)'}}>{c.email}</td>
+                  <td style={{padding:'10px 14px',fontWeight:700,color:'#4f46e5'}}>{c.school_count}</td>
+                  <td style={{padding:'10px 14px',color:'var(--m)',whiteSpace:'nowrap'}}>{new Date(c.created_at).toLocaleDateString('en-IN')}</td>
+                  <td style={{padding:'10px 14px'}}>
+                    {isSuperAdmin && (
+                      <div style={{display:'flex',gap:6}}>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px'}}
+                          onClick={()=>setConsultantForm(c)}>✏️ Edit</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',color:'#ef4444',borderColor:'rgba(239,68,68,.3)'}}
+                          disabled={deleting===c.id}
+                          onClick={()=>handleDelete(c.id)}>
+                          {deleting===c.id?'⏳':'🗑️'} Remove
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add / Edit Modal */}
+      {consultantForm !== null && (
+        <ConsultantFormModal
+          initial={consultantForm}
+          BACKEND={BACKEND}
+          authHeaders={authHeaders}
+          onClose={()=>setConsultantForm(null)}
+          onSave={()=>{ setConsultantForm(null); onReload(); showToast(consultantForm.id?'Consultant updated!':'Consultant created!','✅'); }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, showToast }: {
+  initial:Row; BACKEND:string; authHeaders:()=>HeadersInit; onClose:()=>void; onSave:()=>void; showToast:(m:string,i?:string)=>void;
+}) {
+  const IS: React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', borderRadius:10, padding:'10px 14px', fontSize:14, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--bg)', boxSizing:'border-box' };
+  function Field({ label, children }: { label:string; children:React.ReactNode }) {
+    return <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:5}}>{label}</label>{children}</div>;
+  }
+  const [f, setF] = React.useState({ name: initial.name??'', email: initial.email??'', password:'' });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError]   = React.useState('');
+  const isEdit = !!initial.id;
+
+  async function handleSave() {
+    if (!f.name.trim()) { setError('Name is required'); return; }
+    if (!isEdit && (!f.email.trim() || !f.password.trim())) { setError('Email and password are required'); return; }
+    setSaving(true); setError('');
+    try {
+      const method = isEdit ? 'PATCH' : 'POST';
+      const body   = isEdit ? { id:initial.id, name:f.name, ...(f.password?{password:f.password}:{}) } : f;
+      const res = await fetch(`${BACKEND}/api/admin/consultants`, { method, headers:{ ...(authHeaders() as any), 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error??'Failed'); setSaving(false); return; }
+      onSave();
+    } catch(e:any) { setError(e.message); setSaving(false); }
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}
+      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:20,width:'100%',maxWidth:460,padding:'28px 28px 24px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+          <h2 style={{margin:0,fontSize:18,fontWeight:800,color:'var(--text)',fontFamily:'Sora,sans-serif'}}>
+            {isEdit ? '✏️ Edit Consultant' : '🤝 Add Consultant'}
+          </h2>
+          <button onClick={onClose} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',color:'var(--m)'}}>✕</button>
+        </div>
+        {error && <div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#ef4444',marginBottom:16}}>{error}</div>}
+        <Field label="Full Name *"><input style={IS} value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))} placeholder="Rahul Sharma" /></Field>
+        {!isEdit && <Field label="Email *"><input style={IS} type="email" value={f.email} onChange={e=>setF(p=>({...p,email:e.target.value}))} placeholder="consultant@example.com" /></Field>}
+        <Field label={isEdit ? 'New Password (leave blank to keep)' : 'Password *'}>
+          <input style={IS} type="password" value={f.password} onChange={e=>setF(p=>({...p,password:e.target.value}))} placeholder={isEdit ? 'Leave blank to keep current' : 'Min 8 characters'} />
+        </Field>
+        {!isEdit && (
+          <div style={{background:'rgba(79,70,229,.06)',border:'1px solid rgba(79,70,229,.2)',borderRadius:10,padding:'10px 14px',fontSize:12,color:'var(--m)',marginBottom:14}}>
+            💡 After creation, share the <strong>Consultant Portal URL</strong> along with these credentials. The consultant can log in and immediately start creating schools.
+          </div>
+        )}
+        <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={saving} onClick={handleSave}>
+            {saving ? '⏳ Saving…' : isEdit ? 'Save Changes' : 'Create Consultant'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DiscountFormModal({ initial, schools, onClose, onSave }:{ initial:Row; schools:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
   const [f,setF] = useState({ id:initial.id??'', school_id:initial.school_id??'', code:initial.code??'', discount_amount:initial.discount_amount?String(initial.discount_amount/100):'', max_uses:initial.max_uses??'', expires_at:initial.expires_at?.slice(0,10)??'', is_active:initial.is_active!==false });
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.type==='checkbox'?(e.target as HTMLInputElement).checked:e.target.value}));
@@ -2327,8 +2586,10 @@ function CheckDropdown({ label, options, selected, onChange, colorDots }: {
 }
 
 // ── Students Analytics — CRM Dashboard ─────────────────────────────
-function StudentsAnalytics({ rows }: { rows: Row[] }) {
-  const programs = [...new Set(rows.map(r => r.program_name).filter(Boolean))].sort();
+function StudentsAnalytics({ rows, allPrograms: allProgramsProp }: { rows: Row[]; allPrograms?: string[] }) {
+  const programs = allProgramsProp?.length
+    ? allProgramsProp
+    : [...new Set(rows.map(r => r.program_name).filter(Boolean))].sort() as string[];
   const [selProgram, setSelProgram] = useState<string>('__all__');
   const base = selProgram === '__all__' ? rows : rows.filter(r => r.program_name === selProgram);
 
@@ -2399,7 +2660,7 @@ function StudentsAnalytics({ rows }: { rows: Row[] }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
 
-      {programs.length > 1 && (
+      {programs.length > 0 && (
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:12, fontWeight:600, color:'var(--m)' }}>Filter by Program:</span>
           {['__all__',...programs].map(p => (
@@ -2515,7 +2776,7 @@ function StudentsAnalytics({ rows }: { rows: Row[] }) {
 
       {/* All breakdowns */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-        {selProgram==='__all__' && programs.length>1 && (
+        {selProgram==='__all__' && programs.length>0 && (
           <ChartCard title="📚 By Program">
             {byProgram.map((d,i) => <BarRow key={d.label} {...d} color={COLORS[i%COLORS.length]} />)}
           </ChartCard>
@@ -2599,7 +2860,7 @@ function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: 
         ))}
       </div>
 
-      {studentPageTab === 'analytics' && <StudentsAnalytics rows={rows} />}
+      {studentPageTab === 'analytics' && <StudentsAnalytics rows={rows} allPrograms={programs.map((p: Row) => p.name).filter(Boolean)} />}
 
       {studentPageTab === 'list' && (<>
         <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
