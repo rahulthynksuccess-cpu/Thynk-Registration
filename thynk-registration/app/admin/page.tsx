@@ -1036,7 +1036,7 @@ export default function AdminDashboard() {
           {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
             {activePage==='reporting' && !canSeePage('reporting') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <ReportingPage allRows={visibleRows} programs={programs} schools={visibleSchools} consultants={consultants} />
+            <ReportingPage allRows={visibleRows} programs={programs} schools={visibleSchools} />
           </div>
 
           {/* ── STUDENTS ────────────────────────────────────────────── */}
