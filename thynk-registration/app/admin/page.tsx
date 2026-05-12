@@ -449,7 +449,8 @@ export default function AdminDashboard() {
   const [templateForm,    setTemplateForm]    = useState<Row|null>(null);
 
   const [overviewProgram, setOverviewProgram] = useState('');
-  const [schoolSearch,    setSchoolSearch]    = useState('');
+  const [schoolSearch,           setSchoolSearch]           = useState('');
+  const [schoolConsultantFilter, setSchoolConsultantFilter] = useState('');
 
   const chartsRef  = useRef<Record<string,any>>({});
   const toastTimer = useRef<any>();
@@ -546,7 +547,7 @@ export default function AdminDashboard() {
     if (activePage === 'reporting')  { loadPrograms(); loadSchools(); }
     if (activePage === 'students')     loadPrograms();
     if (activePage === 'programs')     loadPrograms();
-    if (activePage === 'schools')      loadSchools();
+    if (activePage === 'schools')      { loadSchools(); loadConsultants(); }
     if (activePage === 'manage_school') { loadSchools(); loadPrograms(); }
     if (activePage === 'discounts')    loadDiscounts();
     if (activePage === 'users')      { loadUsers(); loadSchools(); }
@@ -655,13 +656,12 @@ export default function AdminDashboard() {
     ? schools.filter(s => subAdminSchools.includes(s.id))
     : schools;
 
-  const searchedSchools = schoolSearch.trim()
-    ? visibleSchools.filter(s =>
-        [s.name, s.school_code, s.city, s.state, s.country, s.org_name]
-          .join(' ').toLowerCase()
-          .includes(schoolSearch.toLowerCase())
-      )
-    : visibleSchools;
+  const searchedSchools = (() => {
+    let s = visibleSchools;
+    if (schoolSearch.trim()) s = s.filter(x => [x.name,x.school_code,x.city,x.state,x.country,x.org_name].join(' ').toLowerCase().includes(schoolSearch.toLowerCase()));
+    if (schoolConsultantFilter) s = s.filter(x => x.consultant_id === schoolConsultantFilter);
+    return s;
+  })();
 
   // Helper: block a page from rendering if sub-admin doesn't have access
   function canSeePage(pageId: string): boolean {
@@ -1036,14 +1036,14 @@ export default function AdminDashboard() {
           {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
             {activePage==='reporting' && !canSeePage('reporting') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <ReportingPage allRows={visibleRows} programs={programs} schools={visibleSchools} />
+            <ReportingPage allRows={visibleRows} programs={programs} schools={visibleSchools} consultants={consultants} />
           </div>
 
           {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
             {activePage==='students' && !canSeePage('students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
-            <StudentsTable rows={visibleRows} programs={programs} onRowClick={setModal} />
+            <StudentsTable rows={visibleRows} programs={programs} consultants={consultants} onRowClick={setModal} />
           </div>
 
           {/* ── TRENDS ──────────────────────────────────────────────── */}
@@ -1118,20 +1118,30 @@ export default function AdminDashboard() {
                   value={schoolSearch}
                   onChange={e => setSchoolSearch(e.target.value)}
                   style={{
-                    flex: 1, minWidth: 240, maxWidth: 420,
+                    flex: 1, minWidth: 240, maxWidth: 380,
                     border: '1.5px solid var(--bd)', borderRadius: 10,
                     padding: '9px 14px', fontSize: 13,
                     fontFamily: 'DM Sans,sans-serif', outline: 'none',
                     color: 'var(--text)', background: 'var(--card)',
                   }}
                 />
-                {schoolSearch && (
+                {consultants.length > 0 && (
+                  <select
+                    value={schoolConsultantFilter}
+                    onChange={e => setSchoolConsultantFilter(e.target.value)}
+                    style={{ border:'1.5px solid var(--bd)', borderRadius:10, padding:'9px 14px', fontSize:13, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--card)', cursor:'pointer', minWidth:180 }}
+                  >
+                    <option value="">🤝 All Consultants</option>
+                    {consultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                )}
+                {(schoolSearch || schoolConsultantFilter) && (
                   <>
                     <span style={{ fontSize:12, color:'var(--m)', whiteSpace:'nowrap' }}>
                       {searchedSchools.length} of {visibleSchools.length} schools
                     </span>
                     <button
-                      onClick={() => setSchoolSearch('')}
+                      onClick={() => { setSchoolSearch(''); setSchoolConsultantFilter(''); }}
                       style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(239,68,68,.3)', background:'rgba(239,68,68,.06)', color:'#ef4444', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>
                       ✕ Clear
                     </button>
@@ -1469,7 +1479,8 @@ export default function AdminDashboard() {
             </div>
             {activePage==='consultants' && <ConsultantsTab
               consultants={consultants}
-              schools={schools}
+              schools={visibleSchools}
+              allRows={visibleRows}
               BACKEND={BACKEND}
               authHeaders={authHeaders}
               isSuperAdmin={isSuperAdmin}
@@ -1825,16 +1836,12 @@ function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ i
 // ── Discount Form ───────────────────────────────────────────────────
 
 // ── Consultants Tab ────────────────────────────────────────────────────────
-function ConsultantsTab({ consultants, schools, BACKEND, authHeaders, isSuperAdmin, onReload, showToast, consultantForm, setConsultantForm }: {
-  consultants: Row[]; schools: Row[]; BACKEND: string; authHeaders: ()=>HeadersInit;
+function ConsultantsTab({ consultants, schools, allRows, BACKEND, authHeaders, isSuperAdmin, onReload, showToast, consultantForm, setConsultantForm }: {
+  consultants: Row[]; schools: Row[]; allRows: Row[]; BACKEND: string; authHeaders: ()=>HeadersInit;
   isSuperAdmin: boolean; onReload: ()=>void; showToast: (m:string,i?:string)=>void;
   consultantForm: Row|null; setConsultantForm: (r:Row|null)=>void;
 }) {
-  const IS: React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', borderRadius:10, padding:'10px 14px', fontSize:14, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--bg)', boxSizing:'border-box' };
-  function Field({ label, children }: { label:string; children:React.ReactNode }) {
-    return <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:5}}>{label}</label>{children}</div>;
-  }
-
+  const [tab, setTab] = React.useState<'list'|'analytics'>('list');
   const [deleting, setDeleting] = React.useState<string|null>(null);
 
   async function handleDelete(id: string) {
@@ -1846,6 +1853,18 @@ function ConsultantsTab({ consultants, schools, BACKEND, authHeaders, isSuperAdm
       else { const d = await res.json(); showToast(d.error??'Failed','❌'); }
     } finally { setDeleting(null); }
   }
+
+  // Build school→consultant lookup
+  const schoolConsultantMap: Record<string, string> = {};
+  schools.forEach(s => { if (s.consultant_id) schoolConsultantMap[s.id] = s.consultant_id; });
+
+  // Enrich allRows with consultant_id via school lookup
+  const enrichedRows = allRows.map(r => ({
+    ...r,
+    consultant_id: r.consultant_id ?? schoolConsultantMap[r.school_id] ?? null,
+  }));
+
+  const COLORS = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#84cc16'];
 
   return (
     <div style={{padding:'0 0 40px'}}>
@@ -1862,74 +1881,250 @@ function ConsultantsTab({ consultants, schools, BACKEND, authHeaders, isSuperAdm
         <button onClick={()=>{navigator.clipboard.writeText(`${BACKEND||'https://thynk-registration.vercel.app'}/consultant/login`);showToast('Consultant portal URL copied!','✅');}} style={{padding:'8px 16px',borderRadius:9,background:'#4f46e5',border:'none',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0}}>📋 Copy URL</button>
       </div>
 
-      {/* Table */}
-      {consultants.length === 0 ? (
-        <div style={{textAlign:'center',padding:'60px 0',color:'var(--m)'}}>
-          <div style={{fontSize:48,marginBottom:12}}>🤝</div>
-          <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>No consultants yet</div>
-          <div style={{fontSize:13,marginBottom:24}}>Add consultants who will create and manage schools on your behalf</div>
-          {isSuperAdmin && <button className="btn btn-primary" onClick={()=>setConsultantForm({})}>+ Add Consultant</button>}
-        </div>
-      ) : (
-        <div style={{overflowX:'auto',borderRadius:14,border:'1.5px solid var(--bd)'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-            <thead>
-              <tr style={{background:'var(--bg)'}}>
-                {['Name','Email','Schools','Added','Actions'].map(h=>(
-                  <th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid var(--bd)',whiteSpace:'nowrap'}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {consultants.map((c,i)=>(
-                <tr key={c.id} style={{borderBottom:'1px solid var(--bd)',background:i%2===0?'transparent':'rgba(0,0,0,.015)'}}>
-                  <td style={{padding:'10px 14px',fontWeight:700,color:'var(--text)'}}>{c.name||'—'}</td>
-                  <td style={{padding:'10px 14px',color:'var(--m)'}}>{c.email}</td>
-                  <td style={{padding:'10px 14px',fontWeight:700,color:'#4f46e5'}}>{c.school_count}</td>
-                  <td style={{padding:'10px 14px',color:'var(--m)',whiteSpace:'nowrap'}}>{new Date(c.created_at).toLocaleDateString('en-IN')}</td>
-                  <td style={{padding:'10px 14px'}}>
-                    {isSuperAdmin && (
-                      <div style={{display:'flex',gap:6}}>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px'}}
-                          onClick={()=>setConsultantForm(c)}>✏️ Edit</button>
-                        <button className="btn" style={{fontSize:11,padding:'4px 10px',color:'#ef4444',borderColor:'rgba(239,68,68,.3)'}}
-                          disabled={deleting===c.id}
-                          onClick={()=>handleDelete(c.id)}>
-                          {deleting===c.id?'⏳':'🗑️'} Remove
-                        </button>
-                      </div>
-                    )}
-                  </td>
+      {/* Tabs */}
+      <div style={{display:'flex',gap:6,marginBottom:20,background:'var(--bg)',borderRadius:12,padding:4,width:'fit-content'}}>
+        {([['list','👥 Consultants'],['analytics','📊 Analytics']] as const).map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)}
+            style={{padding:'8px 18px',border:'none',cursor:'pointer',fontSize:13,fontWeight:700,borderRadius:9,transition:'all .18s',fontFamily:'DM Sans,sans-serif',
+              background:tab===id?'var(--acc)':'transparent',color:tab===id?'#fff':'var(--m)',
+              boxShadow:tab===id?'0 2px 8px rgba(79,70,229,0.3)':'none'}}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── LIST TAB ── */}
+      {tab==='list' && (
+        consultants.length === 0 ? (
+          <div style={{textAlign:'center',padding:'60px 0',color:'var(--m)'}}>
+            <div style={{fontSize:48,marginBottom:12}}>🤝</div>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>No consultants yet</div>
+            <div style={{fontSize:13,marginBottom:24}}>Add consultants who will create and manage schools on your behalf</div>
+            {isSuperAdmin && <button className="btn btn-primary" onClick={()=>setConsultantForm({})}>+ Add Consultant</button>}
+          </div>
+        ) : (
+          <div style={{overflowX:'auto',borderRadius:14,border:'1.5px solid var(--bd)'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead>
+                <tr style={{background:'var(--bg)'}}>
+                  {['Name','Email','Schools','Registrations','Paid','Revenue','Added','Actions'].map(h=>(
+                    <th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid var(--bd)',whiteSpace:'nowrap'}}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {consultants.map((c,i)=>{
+                  const cRows = enrichedRows.filter(r=>r.consultant_id===c.id);
+                  const cPaid = cRows.filter(r=>r.payment_status==='paid');
+                  const cRev  = cPaid.reduce((s:number,r:Row)=>s+(r.final_amount??0),0);
+                  return (
+                    <tr key={c.id} style={{borderBottom:'1px solid var(--bd)',background:i%2===0?'transparent':'rgba(0,0,0,.015)'}}>
+                      <td style={{padding:'10px 14px',fontWeight:700,color:'var(--text)'}}>{c.name||'—'}</td>
+                      <td style={{padding:'10px 14px',color:'var(--m)'}}>{c.email}</td>
+                      <td style={{padding:'10px 14px',fontWeight:700,color:'#4f46e5'}}>{c.school_count}</td>
+                      <td style={{padding:'10px 14px',fontWeight:600}}>{cRows.length}</td>
+                      <td style={{padding:'10px 14px',fontWeight:700,color:'#10b981'}}>{cPaid.length}</td>
+                      <td style={{padding:'10px 14px',fontWeight:700,color:'#f59e0b',fontFamily:'Sora,sans-serif'}}>₹{fmtR(cRev)}</td>
+                      <td style={{padding:'10px 14px',color:'var(--m)',whiteSpace:'nowrap'}}>{new Date(c.created_at).toLocaleDateString('en-IN')}</td>
+                      <td style={{padding:'10px 14px'}}>
+                        {isSuperAdmin && (
+                          <div style={{display:'flex',gap:6}}>
+                            <button className="btn" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setConsultantForm(c)}>✏️ Edit</button>
+                            <button className="btn" style={{fontSize:11,padding:'4px 10px',color:'#ef4444',borderColor:'rgba(239,68,68,.3)'}}
+                              disabled={deleting===c.id} onClick={()=>handleDelete(c.id)}>
+                              {deleting===c.id?'⏳':'🗑️'} Remove
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
 
+      {/* ── ANALYTICS TAB ── */}
+      {tab==='analytics' && (
+        <ConsultantAnalytics consultants={consultants} enrichedRows={enrichedRows} schools={schools} colors={COLORS} />
+      )}
     </div>
   );
 }
 
+// ── Consultant Analytics ────────────────────────────────────────────
+function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
+  consultants: Row[]; enrichedRows: Row[]; schools: Row[]; colors: string[];
+}) {
+  const [selConsultant, setSelConsultant] = React.useState<string>('__all__');
+
+  const baseRows = selConsultant === '__all__'
+    ? enrichedRows
+    : enrichedRows.filter(r => r.consultant_id === selConsultant);
+
+  const paid    = baseRows.filter(r => r.payment_status === 'paid');
+  const pending = baseRows.filter(r => ['pending','initiated'].includes(r.payment_status));
+  const failed  = baseRows.filter(r => ['failed','cancelled'].includes(r.payment_status));
+  const totalRev = paid.reduce((s,r) => s + (r.final_amount??0), 0);
+  const conv = baseRows.length ? Math.round(paid.length / baseRows.length * 100) : 0;
+  const avgTicket = paid.length ? Math.round(totalRev / paid.length) : 0;
+
+  // Per-consultant leaderboard
+  const leaderboard = consultants.map(c => {
+    const rows = enrichedRows.filter(r => r.consultant_id === c.id);
+    const p    = rows.filter(r => r.payment_status === 'paid');
+    const rev  = p.reduce((s:number,r:Row) => s + (r.final_amount??0), 0);
+    const schoolCount = [...new Set(rows.map(r => r.school_id).filter(Boolean))].length;
+    return { ...c, rows: rows.length, paid: p.length, rev, conv: rows.length ? Math.round(p.length/rows.length*100) : 0, schoolCount };
+  }).sort((a,b) => b.rev - a.rev);
+
+  const mkBreakdown = (key: (r: Row) => string) => {
+    const tot: Record<string,number> = {}, p: Record<string,number> = {};
+    baseRows.forEach(r => { const k = key(r)||'Unknown'; tot[k]=(tot[k]??0)+1; if(r.payment_status==='paid') p[k]=(p[k]??0)+1; });
+    return Object.keys(tot).sort((a,b)=>tot[b]-tot[a]).slice(0,8).map(k => ({ label:k, total:tot[k], paid:p[k]??0, conv: tot[k]>0?Math.round(((p[k]??0)/tot[k])*100):0 }));
+  };
+
+  const bySchool  = mkBreakdown(r => r.school_name ?? r.parent_school ?? '');
+  const byCity    = mkBreakdown(r => r.city ?? '');
+  const byProgram = mkBreakdown(r => r.program_name ?? '');
+  const byClass   = mkBreakdown(r => r.class_grade ?? '');
+
+  function BarRow({ label, total, paid: p, conv: c, color }: { label:string; total:number; paid:number; conv:number; color:string }) {
+    const maxTotal = baseRows.length || 1;
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'1px solid var(--bd)'}}>
+        <span style={{fontSize:12,color:'var(--text)',minWidth:120,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500}} title={label}>{label}</span>
+        <div style={{flex:1,height:10,background:'var(--bg)',borderRadius:5,overflow:'hidden',position:'relative'}}>
+          <div style={{position:'absolute',left:0,top:0,width:`${Math.round(total/maxTotal*100)}%`,height:'100%',background:`${color}25`,borderRadius:5}}/>
+          <div style={{position:'absolute',left:0,top:0,width:`${Math.round(p/maxTotal*100)}%`,height:'100%',background:color,borderRadius:5}}/>
+        </div>
+        <span style={{fontSize:11,fontWeight:700,color:'var(--m)',minWidth:24,textAlign:'right'}}>{total}</span>
+        <span style={{fontSize:11,color:'#10b981',fontWeight:800,minWidth:24,textAlign:'right'}}>{p}</span>
+        <span style={{fontSize:10,color:c>=60?'#10b981':c>=30?'#f59e0b':'#ef4444',fontWeight:700,minWidth:36,textAlign:'right',background:c>=60?'#d1fae5':c>=30?'#fef3c7':'#fee2e2',padding:'1px 5px',borderRadius:4}}>{c}%</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:20}}>
+
+      {/* Consultant filter pills */}
+      {consultants.length > 0 && (
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--m)'}}>Filter by Consultant:</span>
+          {['__all__',...consultants.map(c=>c.id)].map((id,i) => {
+            const c = consultants.find(x=>x.id===id);
+            const label = id==='__all__' ? '🌐 All Consultants' : c?.name ?? id;
+            const count = id==='__all__' ? enrichedRows.length : enrichedRows.filter(r=>r.consultant_id===id).length;
+            return (
+              <button key={id} onClick={()=>setSelConsultant(id)}
+                style={{padding:'6px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .15s',fontFamily:'DM Sans,sans-serif',
+                  background:selConsultant===id?colors[(i-1)%colors.length]??'var(--acc)':'transparent',
+                  borderColor:selConsultant===id?colors[(i-1)%colors.length]??'var(--acc)':'var(--bd)',
+                  color:selConsultant===id?'#fff':'var(--m)'}}>
+                {label} <span style={{opacity:.7,fontSize:10}}>({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* KPI row */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
+        {[
+          {label:'Total Registrations',val:baseRows.length,     sub:`${conv}% conv rate`,          color:'#4f46e5',bg:'#eef2ff',icon:'📋'},
+          {label:'Paid',               val:paid.length,          sub:`₹${fmtR(totalRev)} collected`, color:'#10b981',bg:'#ecfdf5',icon:'✅'},
+          {label:'Pending',            val:pending.length,       sub:'need follow-up',               color:'#f59e0b',bg:'#fffbeb',icon:'⏳'},
+          {label:'Failed',             val:failed.length,        sub:'lost conversions',             color:'#ef4444',bg:'#fff1f2',icon:'❌'},
+          {label:'Total Revenue',      val:`₹${fmtR(totalRev)}`, sub:'from paid registrations',      color:'#8b5cf6',bg:'#f5f3ff',icon:'💰'},
+          {label:'Avg Ticket',         val:`₹${fmtR(avgTicket)}`,sub:'per paid student',             color:'#06b6d4',bg:'#ecfeff',icon:'🎫'},
+        ].map(m=>(
+          <div key={m.label} style={{background:m.bg,border:`1.5px solid ${m.color}30`,borderRadius:14,padding:'16px 14px 12px'}}>
+            <div style={{fontSize:22,marginBottom:8}}>{m.icon}</div>
+            <div style={{fontSize:26,fontWeight:900,color:m.color,fontFamily:'Sora,sans-serif',lineHeight:1,letterSpacing:'-0.5px'}}>{m.val}</div>
+            <div style={{fontSize:12,fontWeight:700,color:m.color,marginTop:5,opacity:.9}}>{m.label}</div>
+            <div style={{fontSize:10,color:'var(--m)',marginTop:2}}>{m.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Leaderboard — only in All view */}
+      {selConsultant==='__all__' && leaderboard.length > 0 && (
+        <div style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px'}}>
+          <div style={{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:14}}>🏆 Consultant Leaderboard</div>
+          <div style={{display:'flex',flexDirection:'column',gap:0}}>
+            {leaderboard.map((c,i)=>{
+              const maxRev = leaderboard[0]?.rev || 1;
+              return (
+                <div key={c.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:i<leaderboard.length-1?'1px solid var(--bd)':'none'}}>
+                  <span style={{fontSize:i<3?18:12,width:24,textAlign:'center',fontWeight:700,color:'#f59e0b',flexShrink:0}}>
+                    {i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}
+                  </span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>{c.name}</div>
+                    <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{c.email} · {c.schoolCount} schools</div>
+                    <div style={{marginTop:5,height:5,background:'var(--bd)',borderRadius:3,overflow:'hidden'}}>
+                      <div style={{width:`${Math.round(c.rev/maxRev*100)}%`,height:'100%',background:colors[i%colors.length],borderRadius:3}}/>
+                    </div>
+                  </div>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontSize:15,fontWeight:800,color:'#10b981',fontFamily:'Sora,sans-serif'}}>₹{fmtR(c.rev)}</div>
+                    <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{c.paid} paid · {c.conv}% conv</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Breakdowns grid */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        {[
+          {title:'🏫 By School (Top 8)',   data:bySchool},
+          {title:'🗺️ By City (Top 8)',     data:byCity},
+          {title:'📚 By Program',          data:byProgram},
+          {title:'🎓 By Class',            data:byClass},
+        ].map(({title,data},ci)=>(
+          <div key={title} style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px'}}>
+            <div style={{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:4}}>{title}</div>
+            <div style={{fontSize:10,color:'var(--m2)',marginBottom:14,display:'flex',gap:16}}>
+              <span>■ Total</span><span style={{color:'#10b981'}}>■ Paid</span><span>Conv%</span>
+            </div>
+            {data.length===0
+              ? <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>
+              : data.map((d,i)=><BarRow key={d.label} {...d} color={colors[i%colors.length]}/>)
+            }
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Stable label style — defined outside any component so it never changes identity ──
+const CFM_LABEL: React.CSSProperties = { fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase' as const, letterSpacing:'0.5px', display:'block', marginBottom:5 };
+const CFM_IS: React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', borderRadius:10, padding:'10px 14px', fontSize:14, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--bg)', boxSizing:'border-box' as const };
+
 function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, showToast }: {
   initial:Row; BACKEND:string; authHeaders:()=>HeadersInit; onClose:()=>void; onSave:()=>void; showToast:(m:string,i?:string)=>void;
 }) {
-  const IS: React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', borderRadius:10, padding:'10px 14px', fontSize:14, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--bg)', boxSizing:'border-box' };
-  function Field({ label, children }: { label:string; children:React.ReactNode }) {
-    return <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:5}}>{label}</label>{children}</div>;
-  }
-  const [f, setF] = React.useState({ name: initial.name??'', email: initial.email??'', password:'' });
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError]   = React.useState('');
+  const [name,     setName]     = React.useState(initial.name     ?? '');
+  const [email,    setEmail]    = React.useState(initial.email    ?? '');
+  const [password, setPassword] = React.useState('');
+  const [saving,   setSaving]   = React.useState(false);
+  const [error,    setError]    = React.useState('');
   const isEdit = !!initial.id;
 
   async function handleSave() {
-    if (!f.name.trim()) { setError('Name is required'); return; }
-    if (!isEdit && (!f.email.trim() || !f.password.trim())) { setError('Email and password are required'); return; }
+    if (!name.trim()) { setError('Name is required'); return; }
+    if (!isEdit && (!email.trim() || !password.trim())) { setError('Email and password are required'); return; }
     setSaving(true); setError('');
     try {
       const method = isEdit ? 'PATCH' : 'POST';
-      const body   = isEdit ? { id:initial.id, name:f.name, ...(f.password?{password:f.password}:{}) } : f;
+      const body   = isEdit ? { id:initial.id, name, ...(password?{password}:{}) } : { name, email, password };
       const res = await fetch(`${BACKEND}/api/admin/consultants`, { method, headers:{ ...(authHeaders() as any), 'Content-Type':'application/json' }, body:JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) { setError(data.error??'Failed'); setSaving(false); return; }
@@ -1948,14 +2143,25 @@ function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, s
           <button onClick={onClose} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',color:'var(--m)'}}>✕</button>
         </div>
         {error && <div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#ef4444',marginBottom:16}}>{error}</div>}
-        <Field label="Full Name *"><input style={IS} value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))} placeholder="Rahul Sharma" /></Field>
-        {!isEdit && <Field label="Email *"><input style={IS} type="email" value={f.email} onChange={e=>setF(p=>({...p,email:e.target.value}))} placeholder="consultant@example.com" /></Field>}
-        <Field label={isEdit ? 'New Password (leave blank to keep)' : 'Password *'}>
-          <input style={IS} type="password" value={f.password} onChange={e=>setF(p=>({...p,password:e.target.value}))} placeholder={isEdit ? 'Leave blank to keep current' : 'Min 8 characters'} />
-        </Field>
+
+        <div style={{marginBottom:14}}>
+          <label style={CFM_LABEL}>Full Name *</label>
+          <input style={CFM_IS} value={name} onChange={e=>setName(e.target.value)} placeholder="Rahul Sharma" autoFocus />
+        </div>
+        {!isEdit && (
+          <div style={{marginBottom:14}}>
+            <label style={CFM_LABEL}>Email *</label>
+            <input style={CFM_IS} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="consultant@example.com" />
+          </div>
+        )}
+        <div style={{marginBottom:14}}>
+          <label style={CFM_LABEL}>{isEdit ? 'New Password (leave blank to keep)' : 'Password *'}</label>
+          <input style={CFM_IS} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder={isEdit ? 'Leave blank to keep current' : 'Min 8 characters'} />
+        </div>
+
         {!isEdit && (
           <div style={{background:'rgba(79,70,229,.06)',border:'1px solid rgba(79,70,229,.2)',borderRadius:10,padding:'10px 14px',fontSize:12,color:'var(--m)',marginBottom:14}}>
-            💡 After creation, share the <strong>Consultant Portal URL</strong> along with these credentials. The consultant can log in and immediately start creating schools.
+            💡 After creation, share the <strong>Consultant Portal URL</strong> along with these credentials.
           </div>
         )}
         <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
@@ -2583,12 +2789,15 @@ function CheckDropdown({ label, options, selected, onChange, colorDots }: {
 }
 
 // ── Students Analytics — CRM Dashboard ─────────────────────────────
-function StudentsAnalytics({ rows, allPrograms: allProgramsProp }: { rows: Row[]; allPrograms?: string[] }) {
+function StudentsAnalytics({ rows, allPrograms: allProgramsProp, consultants }: { rows: Row[]; allPrograms?: string[]; consultants?: Row[] }) {
   const programs = allProgramsProp?.length
     ? allProgramsProp
     : [...new Set(rows.map(r => r.program_name).filter(Boolean))].sort() as string[];
-  const [selProgram, setSelProgram] = useState<string>('__all__');
-  const base = selProgram === '__all__' ? rows : rows.filter(r => r.program_name === selProgram);
+  const [selProgram,    setSelProgram]    = React.useState<string>('__all__');
+  const [selConsultant, setSelConsultant] = React.useState<string>('__all__');
+
+  const afterConsultant = selConsultant === '__all__' ? rows : rows.filter(r => r.consultant_id === selConsultant);
+  const base = selProgram === '__all__' ? afterConsultant : afterConsultant.filter(r => r.program_name === selProgram);
 
   const paid    = base.filter(r => r.payment_status === 'paid');
   const failed  = base.filter(r => ['failed','cancelled'].includes(r.payment_status));
@@ -2656,6 +2865,26 @@ function StudentsAnalytics({ rows, allPrograms: allProgramsProp }: { rows: Row[]
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      {consultants && consultants.length > 0 && (
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--m)'}}>Consultant:</span>
+          {['__all__',...consultants.map(c=>c.id)].map((id,i)=>{
+            const c = consultants.find(x=>x.id===id);
+            const label = id==='__all__'?'All':''+c?.name;
+            const count = id==='__all__'?rows.length:rows.filter(r=>r.consultant_id===id).length;
+            return (
+              <button key={id} onClick={()=>setSelConsultant(id)}
+                style={{padding:'5px 12px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'DM Sans,sans-serif',
+                  background:selConsultant===id?'var(--acc)':'transparent',
+                  borderColor:selConsultant===id?'var(--acc)':'var(--bd)',
+                  color:selConsultant===id?'#fff':'var(--m)'}}>
+                {label} <span style={{opacity:.7,fontSize:10}}>({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {programs.length > 0 && (
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -2804,7 +3033,7 @@ function StudentsAnalytics({ rows, allPrograms: allProgramsProp }: { rows: Row[]
 }
 
 // ── Students Table ──────────────────────────────────────────────────
-function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: Row[]; onRowClick: (r: Row) => void }) {
+function StudentsTable({ rows, programs, consultants, onRowClick }: { rows: Row[]; programs: Row[]; consultants?: Row[]; onRowClick: (r: Row) => void }) {
   const [studentPageTab, setStudentPageTab] = useState<'analytics' | 'list'>('list');
   const [search,   setSearch]   = useState('');
   const [statuses, setStatuses_f] = useState<string[]>([]);
@@ -2857,7 +3086,7 @@ function StudentsTable({ rows, programs, onRowClick }: { rows: Row[]; programs: 
         ))}
       </div>
 
-      {studentPageTab === 'analytics' && <StudentsAnalytics rows={rows} allPrograms={programs.map((p: Row) => p.name).filter(Boolean)} />}
+      {studentPageTab === 'analytics' && <StudentsAnalytics rows={rows} allPrograms={programs.map((p: Row) => p.name).filter(Boolean)} consultants={consultants} />}
 
       {studentPageTab === 'list' && (<>
         <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
