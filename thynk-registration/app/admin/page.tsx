@@ -1973,12 +1973,13 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
   const avgTicket = paid.length ? Math.round(totalRev / paid.length) : 0;
 
   // Per-consultant leaderboard
-  const leaderboard = consultants.map(c => {
+  type LeaderboardEntry = { id:string; name:string; email:string; rows:number; paid:number; rev:number; conv:number; schoolCount:number };
+  const leaderboard: LeaderboardEntry[] = consultants.map(c => {
     const rows = enrichedRows.filter(r => r.consultant_id === c.id);
     const p    = rows.filter(r => r.payment_status === 'paid');
     const rev  = p.reduce((s:number,r:Row) => s + (r.final_amount??0), 0);
     const schoolCount = [...new Set(rows.map(r => r.school_id).filter(Boolean))].length;
-    return { ...c, rows: rows.length, paid: p.length, rev, conv: rows.length ? Math.round(p.length/rows.length*100) : 0, schoolCount };
+    return { id: c.id, name: c.name??'', email: c.email??'', rows: rows.length, paid: p.length, rev, conv: rows.length ? Math.round(p.length/rows.length*100) : 0, schoolCount };
   }).sort((a,b) => b.rev - a.rev);
 
   const mkBreakdown = (key: (r: Row) => string) => {
