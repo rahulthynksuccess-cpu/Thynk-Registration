@@ -1590,6 +1590,7 @@ export default function AdminDashboard() {
       {triggerForm!==null&&<TriggerFormModal initial={triggerForm} schools={schools} templates={templates} onClose={()=>setTriggerForm(null)} onSave={async(data)=>{await saveForm('/api/admin/triggers',data,()=>{setTriggerForm(null);loadTriggers();},data.id?'Trigger updated!':'Trigger created!');}} />}
       {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
       {consultantForm!==null&&<ConsultantFormModal
+        key={consultantForm.id ?? '__new__'}
         initial={consultantForm}
         BACKEND={BACKEND}
         authHeaders={authHeaders}
@@ -1859,7 +1860,7 @@ function ConsultantsTab({ consultants, schools, allRows, BACKEND, authHeaders, i
   schools.forEach(s => { if (s.consultant_id) schoolConsultantMap[s.id] = s.consultant_id; });
 
   // Enrich allRows with consultant_id via school lookup
-  const enrichedRows = allRows.map(r => ({
+  const enrichedRows: Row[] = allRows.map(r => ({
     ...r,
     consultant_id: r.consultant_id ?? schoolConsultantMap[r.school_id] ?? null,
   }));
