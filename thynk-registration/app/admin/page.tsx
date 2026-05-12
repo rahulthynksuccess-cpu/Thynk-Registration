@@ -450,8 +450,8 @@ export default function AdminDashboard() {
 
   const [overviewProgram, setOverviewProgram] = useState('');
   const [schoolSearch,           setSchoolSearch]           = useState('');
-  const [schoolConsultantFilter, setSchoolConsultantFilter] = useState('');
   const [schoolPageTab, setSchoolPageTab] = useState<'list'|'analytics'>('list');
+  const [schoolConsultantFilter, setSchoolConsultantFilter] = useState('');
 
   const chartsRef  = useRef<Record<string,any>>({});
   const toastTimer = useRef<any>();
@@ -1045,7 +1045,7 @@ export default function AdminDashboard() {
           {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
             {activePage==='reporting' && !canSeePage('reporting') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <ReportingPage allRows={enrichedVisibleRows} programs={programs} schools={visibleSchools} consultants={consultants} />
+            <ReportingPage allRows={enrichedVisibleRows} programs={programs} schools={visibleSchools} />
           </div>
 
           {/* ── STUDENTS ────────────────────────────────────────────── */}
@@ -1619,7 +1619,6 @@ export default function AdminDashboard() {
       {triggerForm!==null&&<TriggerFormModal initial={triggerForm} schools={schools} templates={templates} onClose={()=>setTriggerForm(null)} onSave={async(data)=>{await saveForm('/api/admin/triggers',data,()=>{setTriggerForm(null);loadTriggers();},data.id?'Trigger updated!':'Trigger created!');}} />}
       {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
       {consultantForm!==null&&<ConsultantFormModal
-        key={consultantForm.id ?? '__new__'}
         initial={consultantForm}
         BACKEND={BACKEND}
         authHeaders={authHeaders}
@@ -1889,7 +1888,7 @@ function ConsultantsTab({ consultants, schools, allRows, BACKEND, authHeaders, i
   schools.forEach(s => { if (s.consultant_id) schoolConsultantMap[s.id] = s.consultant_id; });
 
   // Enrich allRows with consultant_id via school lookup
-  const enrichedRows: Row[] = allRows.map(r => ({
+  const enrichedRows = allRows.map(r => ({
     ...r,
     consultant_id: r.consultant_id ?? schoolConsultantMap[r.school_id] ?? null,
   }));
@@ -1989,7 +1988,6 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
   consultants: Row[]; enrichedRows: Row[]; schools: Row[]; colors: string[];
 }) {
   const [selConsultant, setSelConsultant] = React.useState<string>('__all__');
-  const [anaTab, setAnaTab] = React.useState<'overview'|'performance'|'geography'|'trends'|'schools'>('overview');
 
   const baseRows = selConsultant === '__all__'
     ? enrichedRows
@@ -2003,69 +2001,24 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
   const avgTicket = paid.length ? Math.round(totalRev / paid.length) : 0;
 
   // Per-consultant leaderboard
-  type LeaderboardEntry = { id:string; name:string; email:string; rows:number; paid:number; rev:number; conv:number; schoolCount:number };
-  const leaderboard: LeaderboardEntry[] = consultants.map(c => {
+  const leaderboard = consultants.map(c => {
     const rows = enrichedRows.filter(r => r.consultant_id === c.id);
     const p    = rows.filter(r => r.payment_status === 'paid');
     const rev  = p.reduce((s:number,r:Row) => s + (r.final_amount??0), 0);
     const schoolCount = [...new Set(rows.map(r => r.school_id).filter(Boolean))].length;
-    return { id: c.id, name: c.name??'', email: c.email??'', rows: rows.length, paid: p.length, rev, conv: rows.length ? Math.round(p.length/rows.length*100) : 0, schoolCount };
+    return { ...c, rows: rows.length, paid: p.length, rev, conv: rows.length ? Math.round(p.length/rows.length*100) : 0, schoolCount };
   }).sort((a,b) => b.rev - a.rev);
 
-  const mkBreakdown = (rows: Row[], key: (r: Row) => string) => {
+  const mkBreakdown = (key: (r: Row) => string) => {
     const tot: Record<string,number> = {}, p: Record<string,number> = {};
-    rows.forEach(r => { const k = key(r)||'Unknown'; tot[k]=(tot[k]??0)+1; if(r.payment_status==='paid') p[k]=(p[k]??0)+1; });
+    baseRows.forEach(r => { const k = key(r)||'Unknown'; tot[k]=(tot[k]??0)+1; if(r.payment_status==='paid') p[k]=(p[k]??0)+1; });
     return Object.keys(tot).sort((a,b)=>tot[b]-tot[a]).slice(0,8).map(k => ({ label:k, total:tot[k], paid:p[k]??0, conv: tot[k]>0?Math.round(((p[k]??0)/tot[k])*100):0 }));
   };
 
-  const bySchool  = mkBreakdown(baseRows, r => r.school_name ?? r.parent_school ?? '');
-  const byCity    = mkBreakdown(baseRows, r => r.city ?? '');
-  const byProgram = mkBreakdown(baseRows, r => r.program_name ?? '');
-  const byClass   = mkBreakdown(baseRows, r => r.class_grade ?? '');
-  const byGender  = mkBreakdown(baseRows, r => r.gender ?? '');
-  const byGateway = mkBreakdown(baseRows, r => r.gateway ?? '');
-  const byCountry = mkBreakdown(baseRows, r => r.country ?? '');
-  const byState   = mkBreakdown(baseRows, r => r.state ?? '');
-
-  // 30-day trend
-  const today = new Date();
-  const trend30 = Array.from({length:30}, (_,i) => {
-    const d = new Date(today); d.setDate(d.getDate() - (29-i));
-    const ds = d.toISOString().slice(0,10);
-    const dayRows = baseRows.filter(r => r.created_at?.slice(0,10) === ds);
-    return { label: d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}), total: dayRows.length, paid: dayRows.filter(r => r.payment_status==='paid').length, rev: dayRows.filter(r=>r.payment_status==='paid').reduce((s:number,r:Row)=>s+(r.final_amount??0),0) };
-  });
-  const trendMax = Math.max(...trend30.map(d => d.total), 1);
-  const revMax   = Math.max(...trend30.map(d => d.rev), 1);
-
-  // Weekly cohort — last 8 weeks
-  const weeks = Array.from({length:8}, (_,i) => {
-    const wEnd = new Date(today); wEnd.setDate(wEnd.getDate() - i*7);
-    const wStart = new Date(wEnd); wStart.setDate(wStart.getDate() - 6);
-    const wRows = baseRows.filter(r => {
-      const d = r.created_at?.slice(0,10);
-      return d >= wStart.toISOString().slice(0,10) && d <= wEnd.toISOString().slice(0,10);
-    });
-    const wPaid = wRows.filter(r => r.payment_status==='paid');
-    return { label: `W${8-i}`, start: wStart.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}), total: wRows.length, paid: wPaid.length, rev: wPaid.reduce((s:number,r:Row)=>s+(r.final_amount??0),0) };
-  }).reverse();
-
-  // Consultant-specific school performance
-  const selC = consultants.find(c => c.id === selConsultant);
-  const cSchools = selConsultant === '__all__' ? schools : schools.filter(s => s.consultant_id === selConsultant);
-  const schoolPerf = cSchools.map(s => {
-    const sRows  = baseRows.filter(r => r.school_id === s.id || r.parent_school === s.name);
-    const sPaid  = sRows.filter(r => r.payment_status === 'paid');
-    const sRev   = sPaid.reduce((sum:number,r:Row) => sum+(r.final_amount??0), 0);
-    return { id:s.id, name:s.name??s.school_code, code:s.school_code, city:s.city, total:sRows.length, paid:sPaid.length, rev:sRev, conv: sRows.length?Math.round(sPaid.length/sRows.length*100):0 };
-  }).sort((a,b) => b.rev - a.rev);
-
-  const CTAB_STYLE = (active:boolean) => ({
-    padding:'7px 16px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
-    borderRadius:8, transition:'all .15s', fontFamily:'DM Sans,sans-serif',
-    background:active?'var(--acc)':'transparent', color:active?'#fff':'var(--m)',
-    boxShadow:active?'0 2px 8px rgba(79,70,229,0.25)':'none',
-  } as React.CSSProperties);
+  const bySchool  = mkBreakdown(r => r.school_name ?? r.parent_school ?? '');
+  const byCity    = mkBreakdown(r => r.city ?? '');
+  const byProgram = mkBreakdown(r => r.program_name ?? '');
+  const byClass   = mkBreakdown(r => r.class_grade ?? '');
 
   function BarRow({ label, total, paid: p, conv: c, color }: { label:string; total:number; paid:number; conv:number; color:string }) {
     const maxTotal = baseRows.length || 1;
@@ -2083,31 +2036,22 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
     );
   }
 
-  function Card({ title, children, full=false }: { title:string; children:React.ReactNode; full?:boolean }) {
-    return (
-      <div style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px',gridColumn:full?'1/-1':'auto'}}>
-        <div style={{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:14}}>{title}</div>
-        {children}
-      </div>
-    );
-  }
-
   return (
     <div style={{display:'flex',flexDirection:'column',gap:20}}>
 
       {/* Consultant filter pills */}
       {consultants.length > 0 && (
         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <span style={{fontSize:12,fontWeight:600,color:'var(--m)'}}>Filter:</span>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--m)'}}>Filter by Consultant:</span>
           {['__all__',...consultants.map(c=>c.id)].map((id,i) => {
             const c = consultants.find(x=>x.id===id);
-            const label = id==='__all__' ? '🌐 All' : c?.name ?? id;
+            const label = id==='__all__' ? '🌐 All Consultants' : c?.name ?? id;
             const count = id==='__all__' ? enrichedRows.length : enrichedRows.filter(r=>r.consultant_id===id).length;
             return (
               <button key={id} onClick={()=>setSelConsultant(id)}
                 style={{padding:'6px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .15s',fontFamily:'DM Sans,sans-serif',
-                  background:selConsultant===id?colors[(i-1+colors.length)%colors.length]??'var(--acc)':'transparent',
-                  borderColor:selConsultant===id?colors[(i-1+colors.length)%colors.length]??'var(--acc)':'var(--bd)',
+                  background:selConsultant===id?colors[(i-1)%colors.length]??'var(--acc)':'transparent',
+                  borderColor:selConsultant===id?colors[(i-1)%colors.length]??'var(--acc)':'var(--bd)',
                   color:selConsultant===id?'#fff':'var(--m)'}}>
                 {label} <span style={{opacity:.7,fontSize:10}}>({count})</span>
               </button>
@@ -2116,340 +2060,75 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
         </div>
       )}
 
-      {/* Sub-tabs */}
-      <div style={{display:'flex',gap:4,background:'var(--bg)',borderRadius:10,padding:4,width:'fit-content',flexWrap:'wrap'}}>
-        {([['overview','📊 Overview'],['performance','🏆 Performance'],['trends','📈 Trends'],['geography','🗺️ Geography'],['schools','🏫 Schools']] as const).map(([id,label])=>(
-          <button key={id} onClick={()=>setAnaTab(id)} style={CTAB_STYLE(anaTab===id)}>{label}</button>
+      {/* KPI row */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
+        {[
+          {label:'Total Registrations',val:baseRows.length,     sub:`${conv}% conv rate`,          color:'#4f46e5',bg:'#eef2ff',icon:'📋'},
+          {label:'Paid',               val:paid.length,          sub:`₹${fmtR(totalRev)} collected`, color:'#10b981',bg:'#ecfdf5',icon:'✅'},
+          {label:'Pending',            val:pending.length,       sub:'need follow-up',               color:'#f59e0b',bg:'#fffbeb',icon:'⏳'},
+          {label:'Failed',             val:failed.length,        sub:'lost conversions',             color:'#ef4444',bg:'#fff1f2',icon:'❌'},
+          {label:'Total Revenue',      val:`₹${fmtR(totalRev)}`, sub:'from paid registrations',      color:'#8b5cf6',bg:'#f5f3ff',icon:'💰'},
+          {label:'Avg Ticket',         val:`₹${fmtR(avgTicket)}`,sub:'per paid student',             color:'#06b6d4',bg:'#ecfeff',icon:'🎫'},
+        ].map(m=>(
+          <div key={m.label} style={{background:m.bg,border:`1.5px solid ${m.color}30`,borderRadius:14,padding:'16px 14px 12px'}}>
+            <div style={{fontSize:22,marginBottom:8}}>{m.icon}</div>
+            <div style={{fontSize:26,fontWeight:900,color:m.color,fontFamily:'Sora,sans-serif',lineHeight:1,letterSpacing:'-0.5px'}}>{m.val}</div>
+            <div style={{fontSize:12,fontWeight:700,color:m.color,marginTop:5,opacity:.9}}>{m.label}</div>
+            <div style={{fontSize:10,color:'var(--m)',marginTop:2}}>{m.sub}</div>
+          </div>
         ))}
       </div>
 
-      {/* ── OVERVIEW TAB ── */}
-      {anaTab==='overview' && (<>
-        {/* KPI row */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
-          {[
-            {label:'Total Registrations',val:baseRows.length,     sub:`${conv}% conv rate`,          color:'#4f46e5',bg:'#eef2ff',icon:'📋'},
-            {label:'Paid',               val:paid.length,          sub:`₹${fmtR(totalRev)} collected`, color:'#10b981',bg:'#ecfdf5',icon:'✅'},
-            {label:'Pending',            val:pending.length,       sub:'need follow-up',               color:'#f59e0b',bg:'#fffbeb',icon:'⏳'},
-            {label:'Failed',             val:failed.length,        sub:'lost conversions',             color:'#ef4444',bg:'#fff1f2',icon:'❌'},
-            {label:'Total Revenue',      val:`₹${fmtR(totalRev)}`, sub:'from paid registrations',      color:'#8b5cf6',bg:'#f5f3ff',icon:'💰'},
-            {label:'Avg Ticket',         val:`₹${fmtR(avgTicket)}`,sub:'per paid student',             color:'#06b6d4',bg:'#ecfeff',icon:'🎫'},
-            {label:'Active Schools',     val:cSchools.filter(s=>s.is_active!==false).length, sub:`of ${cSchools.length} total`, color:'#ec4899',bg:'#fdf2f8',icon:'🏫'},
-            {label:'Conv Rate',          val:`${conv}%`,            sub:`${paid.length} of ${baseRows.length}`, color:'#84cc16',bg:'#f7fee7',icon:'🎯'},
-          ].map(m=>(
-            <div key={m.label} style={{background:m.bg,border:`1.5px solid ${m.color}30`,borderRadius:14,padding:'16px 14px 12px'}}>
-              <div style={{fontSize:22,marginBottom:8}}>{m.icon}</div>
-              <div style={{fontSize:26,fontWeight:900,color:m.color,fontFamily:'Sora,sans-serif',lineHeight:1,letterSpacing:'-0.5px'}}>{m.val}</div>
-              <div style={{fontSize:12,fontWeight:700,color:m.color,marginTop:5,opacity:.9}}>{m.label}</div>
-              <div style={{fontSize:10,color:'var(--m)',marginTop:2}}>{m.sub}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Conversion funnel */}
-        <Card title="📊 Conversion Funnel">
-          <div style={{display:'flex',gap:4,alignItems:'center'}}>
-            {[
-              {label:'Registered',val:baseRows.length,color:'#4f46e5'},
-              {label:'Initiated', val:baseRows.filter(r=>['initiated','pending'].includes(r.payment_status)).length+paid.length,color:'#8b5cf6'},
-              {label:'Paid',      val:paid.length,color:'#10b981'},
-              {label:'Failed',    val:failed.length,color:'#ef4444'},
-            ].map((step,i,arr)=>{
-              const pct = arr[0].val>0?Math.round(step.val/arr[0].val*100):0;
+      {/* Leaderboard — only in All view */}
+      {selConsultant==='__all__' && leaderboard.length > 0 && (
+        <div style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px'}}>
+          <div style={{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:14}}>🏆 Consultant Leaderboard</div>
+          <div style={{display:'flex',flexDirection:'column',gap:0}}>
+            {leaderboard.map((c,i)=>{
+              const maxRev = leaderboard[0]?.rev || 1;
               return (
-                <React.Fragment key={step.label}>
-                  <div style={{flex:1,background:`${step.color}12`,border:`2px solid ${step.color}40`,borderRadius:12,padding:'14px 10px',textAlign:'center'}}>
-                    <div style={{fontSize:26,fontWeight:900,color:step.color,fontFamily:'Sora,sans-serif',lineHeight:1}}>{step.val}</div>
-                    <div style={{fontSize:11,color:'var(--m)',fontWeight:600,marginTop:4}}>{step.label}</div>
-                    <div style={{fontSize:14,fontWeight:800,color:step.color,marginTop:6}}>{pct}%</div>
+                <div key={c.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:i<leaderboard.length-1?'1px solid var(--bd)':'none'}}>
+                  <span style={{fontSize:i<3?18:12,width:24,textAlign:'center',fontWeight:700,color:'#f59e0b',flexShrink:0}}>
+                    {i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}
+                  </span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>{c.name}</div>
+                    <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{c.email} · {c.schoolCount} schools</div>
+                    <div style={{marginTop:5,height:5,background:'var(--bd)',borderRadius:3,overflow:'hidden'}}>
+                      <div style={{width:`${Math.round(c.rev/maxRev*100)}%`,height:'100%',background:colors[i%colors.length],borderRadius:3}}/>
+                    </div>
                   </div>
-                  {i<arr.length-1&&<div style={{fontSize:18,color:'var(--m2)',flexShrink:0}}>→</div>}
-                </React.Fragment>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontSize:15,fontWeight:800,color:'#10b981',fontFamily:'Sora,sans-serif'}}>₹{fmtR(c.rev)}</div>
+                    <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{c.paid} paid · {c.conv}% conv</div>
+                  </div>
+                </div>
               );
             })}
           </div>
-        </Card>
-
-        {/* Leaderboard — only in All view */}
-        {selConsultant==='__all__' && leaderboard.length > 0 && (
-          <Card title="🏆 Consultant Leaderboard">
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
-              {leaderboard.map((c,i)=>{
-                const maxRev = leaderboard[0]?.rev || 1;
-                return (
-                  <div key={c.id} style={{background:i===0?'rgba(245,158,11,.06)':i===1?'rgba(156,163,175,.06)':i===2?'rgba(180,120,50,.06)':'var(--bg)',border:`1.5px solid ${i===0?'rgba(245,158,11,.3)':i===1?'rgba(156,163,175,.3)':i===2?'rgba(180,120,50,.3)':'var(--bd)'}`,borderRadius:14,padding:'16px'}}>
-                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-                      <span style={{fontSize:i<3?22:14,width:28,textAlign:'center',fontWeight:700,color:'#f59e0b',flexShrink:0}}>
-                        {i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}
-                      </span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:14,fontWeight:800,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
-                        <div style={{fontSize:11,color:'var(--m)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</div>
-                      </div>
-                      <div style={{textAlign:'right',flexShrink:0}}>
-                        <div style={{fontSize:16,fontWeight:900,color:'#10b981',fontFamily:'Sora,sans-serif'}}>₹{fmtR(c.rev)}</div>
-                      </div>
-                    </div>
-                    <div style={{height:4,background:'var(--bd)',borderRadius:3,overflow:'hidden',marginBottom:10}}>
-                      <div style={{width:`${Math.round(c.rev/maxRev*100)}%`,height:'100%',background:colors[i%colors.length],borderRadius:3}}/>
-                    </div>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,textAlign:'center'}}>
-                      {[
-                        {label:'Registrations',val:c.rows,color:'#4f46e5'},
-                        {label:'Paid',val:c.paid,color:'#10b981'},
-                        {label:'Conv',val:`${c.conv}%`,color:c.conv>=60?'#10b981':c.conv>=30?'#f59e0b':'#ef4444'},
-                        {label:'Schools',val:c.schoolCount,color:'#8b5cf6'},
-                      ].map(m=>(
-                        <div key={m.label} style={{background:'var(--bg)',borderRadius:8,padding:'8px 4px'}}>
-                          <div style={{fontSize:15,fontWeight:800,color:m.color,fontFamily:'Sora,sans-serif'}}>{m.val}</div>
-                          <div style={{fontSize:9,color:'var(--m)',marginTop:2,fontWeight:600}}>{m.label}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        )}
-
-        {/* Program + class breakdown */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-          {[
-            {title:'📚 By Program',  data:byProgram},
-            {title:'🎓 By Class',    data:byClass},
-            {title:'⚧ By Gender',   data:byGender},
-            {title:'🔧 By Gateway',  data:byGateway},
-          ].map(({title,data},ci)=>(
-            <div key={title} style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px'}}>
-              <div style={{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:4}}>{title}</div>
-              <div style={{fontSize:10,color:'var(--m2)',marginBottom:14,display:'flex',gap:16}}>
-                <span>■ Total</span><span style={{color:'#10b981'}}>■ Paid</span><span>Conv%</span>
-              </div>
-              {data.length===0
-                ? <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>
-                : data.map((d,i)=><BarRow key={d.label} {...d} color={colors[i%colors.length]}/>)
-              }
-            </div>
-          ))}
-        </div>
-      </>)}
-
-      {/* ── PERFORMANCE TAB ── */}
-      {anaTab==='performance' && (<>
-        {selConsultant==='__all__' ? (
-          <Card title="📊 Side-by-Side Consultant Comparison" full>
-            <div style={{overflowX:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-                <thead>
-                  <tr style={{background:'var(--bg)'}}>
-                    {['Rank','Consultant','Registrations','Paid','Conv%','Revenue','Avg Ticket','Schools','Pending','Failed'].map(h=>(
-                      <th key={h} style={{padding:'10px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid var(--bd)',whiteSpace:'nowrap'}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.map((c,i)=>{
-                    const cPending = enrichedRows.filter(r=>r.consultant_id===c.id&&['pending','initiated'].includes(r.payment_status)).length;
-                    const cFailed  = enrichedRows.filter(r=>r.consultant_id===c.id&&['failed','cancelled'].includes(r.payment_status)).length;
-                    const cAvgT    = c.paid ? Math.round(c.rev/c.paid) : 0;
-                    return (
-                      <tr key={c.id} style={{borderBottom:'1px solid var(--bd)',background:i%2===0?'transparent':'rgba(0,0,0,.015)',cursor:'pointer'}}
-                        onClick={()=>setSelConsultant(c.id)}>
-                        <td style={{padding:'10px 12px',fontWeight:700,color:'#f59e0b'}}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</td>
-                        <td style={{padding:'10px 12px'}}>
-                          <div style={{fontWeight:700,color:'var(--text)'}}>{c.name}</div>
-                          <div style={{fontSize:11,color:'var(--m)'}}>{c.email}</div>
-                        </td>
-                        <td style={{padding:'10px 12px',fontWeight:700,color:'#4f46e5'}}>{c.rows}</td>
-                        <td style={{padding:'10px 12px',fontWeight:700,color:'#10b981'}}>{c.paid}</td>
-                        <td style={{padding:'10px 12px'}}>
-                          <span style={{background:c.conv>=60?'#d1fae5':c.conv>=30?'#fef3c7':'#fee2e2',color:c.conv>=60?'#065f46':c.conv>=30?'#92400e':'#991b1b',padding:'2px 8px',borderRadius:20,fontSize:12,fontWeight:700}}>{c.conv}%</span>
-                        </td>
-                        <td style={{padding:'10px 12px',fontWeight:800,color:'#8b5cf6',fontFamily:'Sora,sans-serif'}}>₹{fmtR(c.rev)}</td>
-                        <td style={{padding:'10px 12px',color:'var(--m)',fontSize:12}}>₹{fmtR(cAvgT)}</td>
-                        <td style={{padding:'10px 12px',fontWeight:700,color:'#06b6d4'}}>{c.schoolCount}</td>
-                        <td style={{padding:'10px 12px',color:'#f59e0b',fontWeight:700}}>{cPending}</td>
-                        <td style={{padding:'10px 12px',color:'#ef4444',fontWeight:700}}>{cFailed}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        ) : (
-          <Card title={`📋 ${selC?.name ?? 'Consultant'} — Detailed Profile`} full>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginBottom:20}}>
-              {[
-                {label:'Registrations',val:baseRows.length,color:'#4f46e5',icon:'📋'},
-                {label:'Paid',val:paid.length,color:'#10b981',icon:'✅'},
-                {label:'Pending',val:pending.length,color:'#f59e0b',icon:'⏳'},
-                {label:'Failed',val:failed.length,color:'#ef4444',icon:'❌'},
-                {label:'Revenue',val:`₹${fmtR(totalRev)}`,color:'#8b5cf6',icon:'💰'},
-                {label:'Avg Ticket',val:`₹${fmtR(avgTicket)}`,color:'#06b6d4',icon:'🎫'},
-                {label:'Conv Rate',val:`${conv}%`,color:'#84cc16',icon:'🎯'},
-                {label:'Schools',val:cSchools.length,color:'#ec4899',icon:'🏫'},
-              ].map(m=>(
-                <div key={m.label} style={{background:'var(--bg)',border:`1.5px solid ${m.color}30`,borderRadius:12,padding:'14px 12px',textAlign:'center'}}>
-                  <div style={{fontSize:18,marginBottom:6}}>{m.icon}</div>
-                  <div style={{fontSize:22,fontWeight:900,color:m.color,fontFamily:'Sora,sans-serif'}}>{m.val}</div>
-                  <div style={{fontSize:10,color:'var(--m)',marginTop:4,fontWeight:600}}>{m.label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-              {[
-                {title:'📚 Programs',data:byProgram},
-                {title:'🎓 Classes', data:byClass},
-                {title:'⚧ Gender',   data:byGender},
-                {title:'🔧 Gateway', data:byGateway},
-              ].map(({title,data},ci)=>(
-                <div key={title} style={{background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:12,padding:'14px 16px'}}>
-                  <div style={{fontSize:12,fontWeight:700,color:'var(--text)',marginBottom:10}}>{title}</div>
-                  {data.length===0?<div style={{color:'var(--m)',fontSize:12}}>No data</div>:data.map((d,i)=><BarRow key={d.label} {...d} color={colors[i%colors.length]}/>)}
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-      </>)}
-
-      {/* ── TRENDS TAB ── */}
-      {anaTab==='trends' && (<>
-        <Card title="📈 30-Day Registration & Revenue Trend" full>
-          <div style={{display:'flex',gap:16,marginBottom:10,fontSize:11,color:'var(--m)'}}>
-            <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:10,height:3,background:'#4f46e5',borderRadius:2,display:'inline-block'}}/> Registrations</span>
-            <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:10,height:3,background:'#10b981',borderRadius:2,display:'inline-block'}}/> Paid</span>
-          </div>
-          <div style={{display:'flex',alignItems:'flex-end',gap:2,height:100}}>
-            {trend30.map((d,i)=>(
-              <div key={i} title={`${d.label}: ${d.total} total, ${d.paid} paid`}
-                style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:'100%',gap:1}}>
-                <div style={{width:'100%',background:'#4f46e520',borderRadius:'3px 3px 0 0',minHeight:2,height:`${Math.max(Math.round(d.total/trendMax*90),2)}px`,position:'relative'}}>
-                  {d.paid>0&&<div style={{position:'absolute',bottom:0,left:0,right:0,background:'#10b981',height:`${Math.round(d.paid/trendMax*90)}px`,borderRadius:'3px 3px 0 0'}}/>}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
-            <span style={{fontSize:10,color:'var(--m2)'}}>{trend30[0]?.label}</span>
-            <span style={{fontSize:10,color:'var(--m2)'}}>{trend30[trend30.length-1]?.label}</span>
-          </div>
-        </Card>
-
-        <Card title="💰 30-Day Revenue Trend" full>
-          <div style={{display:'flex',alignItems:'flex-end',gap:2,height:80}}>
-            {trend30.map((d,i)=>(
-              <div key={i} title={`${d.label}: ₹${fmtR(d.rev)}`}
-                style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:'100%'}}>
-                <div style={{width:'100%',background:'#8b5cf6',borderRadius:'3px 3px 0 0',minHeight:d.rev>0?2:0,height:`${Math.max(Math.round(d.rev/revMax*72),d.rev>0?2:0)}px`}}/>
-              </div>
-            ))}
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
-            <span style={{fontSize:10,color:'var(--m2)'}}>{trend30[0]?.label}</span>
-            <span style={{fontSize:10,color:'var(--m2)'}}>{trend30[trend30.length-1]?.label}</span>
-          </div>
-        </Card>
-
-        <Card title="📅 Weekly Cohort Summary" full>
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead>
-                <tr style={{background:'var(--bg)'}}>
-                  {['Week','Period','Registrations','Paid','Conv%','Revenue'].map(h=>(
-                    <th key={h} style={{padding:'8px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',borderBottom:'1.5px solid var(--bd)'}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {weeks.map((w,i)=>{
-                  const wConv = w.total?Math.round(w.paid/w.total*100):0;
-                  return (
-                    <tr key={w.label} style={{borderBottom:'1px solid var(--bd)',background:i%2===0?'transparent':'rgba(0,0,0,.015)'}}>
-                      <td style={{padding:'8px 12px',fontWeight:700,color:'#4f46e5'}}>{w.label}</td>
-                      <td style={{padding:'8px 12px',color:'var(--m)',fontSize:12}}>{w.start}</td>
-                      <td style={{padding:'8px 12px',fontWeight:700}}>{w.total}</td>
-                      <td style={{padding:'8px 12px',color:'#10b981',fontWeight:700}}>{w.paid}</td>
-                      <td style={{padding:'8px 12px'}}>
-                        <span style={{background:wConv>=60?'#d1fae5':wConv>=30?'#fef3c7':'#fee2e2',color:wConv>=60?'#065f46':wConv>=30?'#92400e':'#991b1b',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:700}}>{wConv}%</span>
-                      </td>
-                      <td style={{padding:'8px 12px',fontWeight:700,color:'#8b5cf6',fontFamily:'Sora,sans-serif'}}>₹{fmtR(w.rev)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </>)}
-
-      {/* ── GEOGRAPHY TAB ── */}
-      {anaTab==='geography' && (
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-          {[
-            {title:'🌍 By Country',    data:byCountry},
-            {title:'🗺️ By State',      data:byState},
-            {title:'🏙️ By City (Top 8)',data:byCity},
-            {title:'🏫 By School (Top 8)',data:bySchool},
-          ].map(({title,data},ci)=>(
-            <div key={title} style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px'}}>
-              <div style={{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:4}}>{title}</div>
-              <div style={{fontSize:10,color:'var(--m2)',marginBottom:14,display:'flex',gap:16}}>
-                <span>■ Total</span><span style={{color:'#10b981'}}>■ Paid</span><span>Conv%</span>
-              </div>
-              {data.length===0
-                ? <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>
-                : data.map((d,i)=><BarRow key={d.label} {...d} color={colors[i%colors.length]}/>)
-              }
-            </div>
-          ))}
         </div>
       )}
 
-      {/* ── SCHOOLS TAB ── */}
-      {anaTab==='schools' && (
-        <Card title={selConsultant==='__all__'?'🏫 All Schools Performance':'🏫 Schools Managed by '+selC?.name} full>
-          {schoolPerf.length === 0 ? (
-            <div style={{color:'var(--m)',fontSize:13,padding:'20px 0',textAlign:'center'}}>No schools found</div>
-          ) : (
-            <div style={{overflowX:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-                <thead>
-                  <tr style={{background:'var(--bg)'}}>
-                    {['School','City','Registrations','Paid','Conv%','Revenue','Avg Ticket'].map(h=>(
-                      <th key={h} style={{padding:'10px 12px',textAlign:'left',fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid var(--bd)',whiteSpace:'nowrap'}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {schoolPerf.map((s,i)=>{
-                    const sAvg = s.paid ? Math.round(s.rev/s.paid) : 0;
-                    return (
-                      <tr key={s.id} style={{borderBottom:'1px solid var(--bd)',background:i%2===0?'transparent':'rgba(0,0,0,.015)'}}>
-                        <td style={{padding:'10px 12px'}}>
-                          <div style={{fontWeight:700,color:'var(--text)'}}>{s.name}</div>
-                          <div style={{fontSize:11,color:'var(--m)'}}>{s.code}</div>
-                        </td>
-                        <td style={{padding:'10px 12px',color:'var(--m)',fontSize:12}}>{s.city||'—'}</td>
-                        <td style={{padding:'10px 12px',fontWeight:700,color:'#4f46e5'}}>{s.total}</td>
-                        <td style={{padding:'10px 12px',fontWeight:700,color:'#10b981'}}>{s.paid}</td>
-                        <td style={{padding:'10px 12px'}}>
-                          <span style={{background:s.conv>=60?'#d1fae5':s.conv>=30?'#fef3c7':'#fee2e2',color:s.conv>=60?'#065f46':s.conv>=30?'#92400e':'#991b1b',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:700}}>{s.conv}%</span>
-                        </td>
-                        <td style={{padding:'10px 12px',fontWeight:800,color:'#8b5cf6',fontFamily:'Sora,sans-serif'}}>₹{fmtR(s.rev)}</td>
-                        <td style={{padding:'10px 12px',color:'var(--m)',fontSize:12}}>₹{fmtR(sAvg)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      {/* Breakdowns grid */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        {[
+          {title:'🏫 By School (Top 8)',   data:bySchool},
+          {title:'🗺️ By City (Top 8)',     data:byCity},
+          {title:'📚 By Program',          data:byProgram},
+          {title:'🎓 By Class',            data:byClass},
+        ].map(({title,data},ci)=>(
+          <div key={title} style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px'}}>
+            <div style={{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:4}}>{title}</div>
+            <div style={{fontSize:10,color:'var(--m2)',marginBottom:14,display:'flex',gap:16}}>
+              <span>■ Total</span><span style={{color:'#10b981'}}>■ Paid</span><span>Conv%</span>
             </div>
-          )}
-        </Card>
-      )}
-
+            {data.length===0
+              ? <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>
+              : data.map((d,i)=><BarRow key={d.label} {...d} color={colors[i%colors.length]}/>)
+            }
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -3139,6 +2818,7 @@ function CheckDropdown({ label, options, selected, onChange, colorDots }: {
 }
 
 // ── Students Analytics — CRM Dashboard ─────────────────────────────
+
 // ── School Analytics ────────────────────────────────────────────────
 function SchoolAnalytics({ schools, allRows, consultants }: { schools: Row[]; allRows: Row[]; consultants: Row[] }) {
   const [selConsultant, setSelConsultant] = React.useState<string>('__all__');
@@ -3412,6 +3092,7 @@ function SchoolAnalytics({ schools, allRows, consultants }: { schools: Row[]; al
   );
 }
 
+
 function StudentsAnalytics({ rows, allPrograms: allProgramsProp, consultants }: { rows: Row[]; allPrograms?: string[]; consultants?: Row[] }) {
   const programs = allProgramsProp?.length
     ? allProgramsProp
@@ -3651,59 +3332,6 @@ function StudentsAnalytics({ rows, allPrograms: allProgramsProp, consultants }: 
           {bySchool.length===0 && <div style={{color:'var(--m)',fontSize:12,padding:'8px 0'}}>No data</div>}
         </ChartCard>
       </div>
-
-      {/* ── Consultant contribution breakdown ── */}
-      {consultants && consultants.length > 0 && (
-        <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:16, padding:'18px 20px' }}>
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>🤝 Consultant Contribution</div>
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-              <thead>
-                <tr style={{ background:'var(--bg)' }}>
-                  {['Consultant','Registrations','Paid','Conv%','Revenue','Avg Ticket','Share%'].map(h=>(
-                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase' as const, letterSpacing:'0.5px', borderBottom:'1.5px solid var(--bd)', whiteSpace:'nowrap' as const }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const totalAll = base.length || 1;
-                  const cStats = consultants.map(c => {
-                    const cr = base.filter(r => r.consultant_id === c.id);
-                    const cp = cr.filter(r => r.payment_status === 'paid');
-                    const rev = cp.reduce((s:number,r:Row)=>s+(r.final_amount??0),0);
-                    return { id:c.id, name:c.name??'', rows:cr.length, paid:cp.length, rev, conv:cr.length?Math.round(cp.length/cr.length*100):0, share:Math.round(cr.length/totalAll*100), avg:cp.length?Math.round(rev/cp.length):0 };
-                  }).filter(c=>c.rows>0).sort((a,b)=>b.rev-a.rev);
-                  const unassigned = base.filter(r => !r.consultant_id);
-                  const uPaid = unassigned.filter(r=>r.payment_status==='paid');
-                  const uRev = uPaid.reduce((s:number,r:Row)=>s+(r.final_amount??0),0);
-                  if (unassigned.length>0) cStats.push({ id:'__unassigned__', name:'(Unassigned)', rows:unassigned.length, paid:uPaid.length, rev:uRev, conv:unassigned.length?Math.round(uPaid.length/unassigned.length*100):0, share:Math.round(unassigned.length/totalAll*100), avg:uPaid.length?Math.round(uRev/uPaid.length):0 });
-                  return cStats.map((c,i)=>(
-                    <tr key={c.id} style={{ borderBottom:'1px solid var(--bd)', background:i%2===0?'transparent':'rgba(0,0,0,.015)' }}>
-                      <td style={{ padding:'8px 12px', fontWeight:700, color:'var(--text)' }}>{c.name}</td>
-                      <td style={{ padding:'8px 12px', fontWeight:700, color:'#4f46e5' }}>{c.rows}</td>
-                      <td style={{ padding:'8px 12px', fontWeight:700, color:'#10b981' }}>{c.paid}</td>
-                      <td style={{ padding:'8px 12px' }}>
-                        <span style={{ background:c.conv>=60?'#d1fae5':c.conv>=30?'#fef3c7':'#fee2e2', color:c.conv>=60?'#065f46':c.conv>=30?'#92400e':'#991b1b', padding:'2px 8px', borderRadius:20, fontSize:11, fontWeight:700 }}>{c.conv}%</span>
-                      </td>
-                      <td style={{ padding:'8px 12px', fontWeight:800, color:'#8b5cf6', fontFamily:'Sora,sans-serif' }}>₹{fmtR(c.rev)}</td>
-                      <td style={{ padding:'8px 12px', color:'var(--m)', fontSize:12 }}>₹{fmtR(c.avg)}</td>
-                      <td style={{ padding:'8px 12px' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <div style={{ flex:1, height:6, background:'var(--bg)', borderRadius:3, overflow:'hidden', minWidth:60 }}>
-                            <div style={{ width:`${c.share}%`, height:'100%', background:COLORS[i%COLORS.length], borderRadius:3 }}/>
-                          </div>
-                          <span style={{ fontSize:11, fontWeight:700, color:'var(--m)', minWidth:28 }}>{c.share}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ));
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
