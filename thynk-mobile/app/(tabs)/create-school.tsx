@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { authFetch } from '@/lib/api';
+import * as SecureStore from 'expo-secure-store';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { SectionHeader } from '@/components/ui';
 
@@ -349,6 +350,10 @@ export default function CreateSchoolScreen() {
         return;
       }
 
+      // Attach consultant_id if this user is a consultant
+      const userRole   = await SecureStore.getItemAsync('thynk_user_role');
+      const userId     = await SecureStore.getItemAsync('thynk_user_id');
+
       const payload = {
         school_code:            schoolCode.trim(),
         name:                   name.trim(),
@@ -369,6 +374,9 @@ export default function CreateSchoolScreen() {
         is_active:              isActive,
         is_registration_active: isRegActive,
         contact_persons:        contacts,
+        // The API will override this with user.id if the caller is a consultant;
+        // but sending it makes the intent explicit and works for both roles.
+        ...(userRole === 'consultant' && userId ? { consultant_id: userId } : {}),
         branding: {
           primaryColor,
           accentColor: '#8b5cf6',

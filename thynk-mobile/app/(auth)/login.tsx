@@ -42,9 +42,26 @@ export default function LoginScreen() {
       await SecureStore.setItemAsync('thynk_backend_url', backendUrl.replace(/\/$/, ''));
       await SecureStore.setItemAsync('thynk_admin_token', data.access_token);
       await SecureStore.setItemAsync('thynk_admin_email', email.trim());
+      if (data.user?.id) await SecureStore.setItemAsync('thynk_user_id', data.user.id);
       if (data.refresh_token) {
         await SecureStore.setItemAsync('thynk_refresh_token', data.refresh_token);
       }
+
+      // Detect role so the app can show the right tabs
+      try {
+        const roleRes = await fetch(`${backendUrl.replace(/\/$/, '')}/api/admin/me`, {
+          headers: { 'Authorization': `Bearer ${data.access_token}`, 'Content-Type': 'application/json' },
+        });
+        if (roleRes.ok) {
+          const roleData = await roleRes.json();
+          const role = roleData.roles?.includes('super_admin') ? 'super_admin'
+                     : roleData.roles?.includes('consultant')   ? 'consultant'
+                     : roleData.roles?.includes('sub_admin')    ? 'sub_admin'
+                     : 'school_admin';
+          await SecureStore.setItemAsync('thynk_user_role', role);
+        }
+      } catch {}
+
       router.replace('/(tabs)');
     } catch (e: any) {
       Alert.alert('Connection error', 'Could not reach the server.\n\n' + e.message);
