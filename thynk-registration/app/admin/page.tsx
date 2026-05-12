@@ -657,6 +657,14 @@ export default function AdminDashboard() {
     ? schools.filter(s => subAdminSchools.includes(s.id))
     : schools;
 
+  // Enrich visibleRows with consultant_id via school lookup (for Student Analytics & Reporting)
+  const schoolConsLookup: Record<string,string> = {};
+  visibleSchools.forEach(s => { if (s.consultant_id) schoolConsLookup[s.id] = s.consultant_id; });
+  const enrichedVisibleRows: Row[] = visibleRows.map(r => ({
+    ...r,
+    consultant_id: r.consultant_id ?? schoolConsLookup[r.school_id] ?? null,
+  }));
+
   const searchedSchools = (() => {
     let s = visibleSchools;
     if (schoolSearch.trim()) s = s.filter(x => [x.name,x.school_code,x.city,x.state,x.country,x.org_name].join(' ').toLowerCase().includes(schoolSearch.toLowerCase()));
@@ -1037,14 +1045,14 @@ export default function AdminDashboard() {
           {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
             {activePage==='reporting' && !canSeePage('reporting') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <ReportingPage allRows={visibleRows} programs={programs} schools={visibleSchools} consultants={consultants} />
+            <ReportingPage allRows={enrichedVisibleRows} programs={programs} schools={visibleSchools} consultants={consultants} />
           </div>
 
           {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
             {activePage==='students' && !canSeePage('students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
-            <StudentsTable rows={visibleRows} programs={programs} consultants={consultants} onRowClick={setModal} />
+            <StudentsTable rows={enrichedVisibleRows} programs={programs} consultants={consultants} onRowClick={setModal} />
           </div>
 
           {/* ── TRENDS ──────────────────────────────────────────────── */}
@@ -1177,7 +1185,7 @@ export default function AdminDashboard() {
               )}
 
               {schoolPageTab==='analytics' && (
-                <SchoolAnalytics schools={visibleSchools} allRows={visibleRows} consultants={consultants} />
+                <SchoolAnalytics schools={visibleSchools} allRows={enrichedVisibleRows} consultants={consultants} />
               )}
             </>)}
           </div>
@@ -1501,7 +1509,7 @@ export default function AdminDashboard() {
             {activePage==='consultants' && <ConsultantsTab
               consultants={consultants}
               schools={visibleSchools}
-              allRows={visibleRows}
+              allRows={enrichedVisibleRows}
               BACKEND={BACKEND}
               authHeaders={authHeaders}
               isSuperAdmin={isSuperAdmin}
@@ -3701,7 +3709,6 @@ function StudentsAnalytics({ rows, allPrograms: allProgramsProp, consultants }: 
 }
 
 // ── Students Table ──────────────────────────────────────────────────
- ──────────────────────────────────────────────────
 function StudentsTable({ rows, programs, consultants, onRowClick }: { rows: Row[]; programs: Row[]; consultants?: Row[]; onRowClick: (r: Row) => void }) {
   const [studentPageTab, setStudentPageTab] = useState<'analytics' | 'list'>('list');
   const [search,   setSearch]   = useState('');
