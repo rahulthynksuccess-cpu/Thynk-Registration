@@ -2001,13 +2001,13 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
   const avgTicket = paid.length ? Math.round(totalRev / paid.length) : 0;
 
   // Per-consultant leaderboard
-  const leaderboard = consultants.map(c => {
-    const rows = enrichedRows.filter(r => r.consultant_id === c.id);
-    const p    = rows.filter(r => r.payment_status === 'paid');
-    const rev  = p.reduce((s:number,r:Row) => s + (r.final_amount??0), 0);
-    const schoolCount = [...new Set(rows.map(r => r.school_id).filter(Boolean))].length;
-    return { ...c, rows: rows.length, paid: p.length, rev, conv: rows.length ? Math.round(p.length/rows.length*100) : 0, schoolCount };
-  }).sort((a,b) => b.rev - a.rev);
+  const leaderboard: Row[] = consultants.map((c): Row => {
+  const cRows = enrichedRows.filter(r => r.consultant_id === c.id);
+  const p     = cRows.filter(r => r.payment_status === 'paid');
+  const rev   = p.reduce((s: number, r: Row) => s + (r.final_amount ?? 0), 0);
+  const schoolCount = [...new Set(cRows.map(r => r.school_id).filter(Boolean))].length;
+  return { ...c, rows: cRows.length, paid: p.length, rev, conv: cRows.length ? Math.round(p.length / cRows.length * 100) : 0, schoolCount } as Row;
+}).sort((a, b) => b.rev - a.rev);
 
   const mkBreakdown = (key: (r: Row) => string) => {
     const tot: Record<string,number> = {}, p: Record<string,number> = {};
