@@ -55,6 +55,35 @@ export async function GET(req: NextRequest) {
 
   const allSchools = data ?? [];
 
+  // ── Fetch global gateway config once for all schools ─────────────────────
+  // This reads from integration_configs (school_id IS NULL = global/admin-set)
+  // and is the single source of truth set via Admin → Integrations page.
+  const PG_PROVIDERS = ['easebuzz', 'razorpay', 'cashfree'];
+  let globalGatewaySequence: string[] = [];
+  let globalGatewayLabels: Record<string, string> = {};
+
+  try {
+    const { data: gwCfgs } = await supabase
+      .from('integration_configs')
+      .select('provider, priority, is_active, config')
+      .is('school_id', null)
+      .in('provider', PG_PROVIDERS)
+      .eq('is_active', true)
+      .order('priority', { ascending: true });
+
+    if (gwCfgs?.length) {
+      for (const row of gwCfgs as any[]) {
+        globalGatewaySequence.push(row.provider);
+        const label = (row.config as any)?.pg_label;
+        if (label && typeof label === 'string' && label.trim()) {
+          globalGatewayLabels[row.provider] = label.trim();
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[/api/school/list] Could not load gateway config:', e);
+  }
+
   // Keep only schools that have at least one active pricing entry
   const schools = allSchools
     .filter((s: any) => (s.pricing as any[]).some((p: any) => p.is_active))
@@ -69,7 +98,10 @@ export async function GET(req: NextRequest) {
       branding:             s.branding ?? {},
       pricing:              (s.pricing as any[]).filter((p: any) => p.is_active),
       public_gateway_config: {
-        pp_client_id: (s.gateway_config as any)?.pp_client_id ?? process.env.PAYPAL_CLIENT_ID ?? null,
+        pp_client_id:     (s.gateway_config as any)?.pp_client_id ?? process.env.PAYPAL_CLIENT_ID ?? null,
+        // ✅ Admin → Integrations controls PG order and labels for all schools
+        gateway_sequence: globalGatewaySequence.length ? globalGatewaySequence : null,
+        gateway_labels:   Object.keys(globalGatewayLabels).length ? globalGatewayLabels : null,
       },
     }));
 
