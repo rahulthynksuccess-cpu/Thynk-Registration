@@ -10,7 +10,7 @@ type Row = Record<string, any>;
 type Channel  = 'email' | 'whatsapp';
 const CHANNEL_COLOR: Record<Channel, string> = { email:'#60A5FA', whatsapp:'#25D366' };
 
-interface Template { id:string; name:string; channel:Channel; subject?:string; body:string; is_active:boolean; whatsapp_template_name?:string; whatsapp_template_lang?:string; }
+interface Template { id:string; name:string; channel:Channel; subject?:string; body:string; is_active:boolean; whatsapp_template_name?:string; whatsapp_template_lang?:string; project_id?:string; projects?:{id:string;name:string}; }
 interface Trigger  {
   id:string; event_type:string; channel:Channel; school_id:string|null;
   template_id:string|null; is_active:boolean; created_at:string;
@@ -62,8 +62,8 @@ function useToast() {
 }
 
 // ── Template Form Modal ──────────────────────────────────────────────────────
-function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>void;onSave:(d:Partial<Template>)=>void}) {
-  const [f,setF] = useState<Partial<Template>>(initial??{channel:'email',is_active:true,name:'',subject:'',body:'',whatsapp_template_name:'',whatsapp_template_lang:'en'});
+function TemplateModal({initial,programs,onClose,onSave}:{initial?:Template;programs:Row[];onClose:()=>void;onSave:(d:Partial<Template>)=>void}) {
+  const [f,setF] = useState<Partial<Template>>(initial??{channel:'email',is_active:true,name:'',subject:'',body:'',whatsapp_template_name:'',whatsapp_template_lang:'en',project_id:''});
   const set = (k:keyof Template,v:any)=>setF(p=>({...p,[k]:v}));
   const [preview,setPreview] = useState(false);
 
@@ -104,6 +104,30 @@ function TemplateModal({initial,onClose,onSave}:{initial?:Template;onClose:()=>v
               <input value={f.subject??''} onChange={e=>set('subject',e.target.value)} placeholder="Registration Confirmed — {{student_name}}" style={inp}/>
             </div>
           )}
+
+          {/* Program Scope */}
+          <div style={{padding:'14px 16px',borderRadius:12,background:'rgba(139,92,246,0.06)',border:'1.5px solid rgba(139,92,246,0.25)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:10}}>
+              <span style={{fontSize:14}}>🎯</span>
+              <div style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:'#8b5cf6',letterSpacing:'0.05em',textTransform:'uppercase' as const}}>Program Scope</div>
+            </div>
+            <select
+              value={f.project_id??''}
+              onChange={e=>set('project_id', e.target.value||'')}
+              style={{...inp, borderColor: f.project_id ? 'rgba(139,92,246,0.5)' : undefined, marginBottom:8}}
+            >
+              <option value="">🌐 All Programs (Global — applies to every program)</option>
+              {programs.filter((p:Row)=>p.status==='active').map((p:Row)=>(
+                <option key={p.id} value={p.id}>🎯 {p.name}</option>
+              ))}
+            </select>
+            <div style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',lineHeight:1.55}}>
+              {f.project_id
+                ? <><strong style={{color:'#8b5cf6'}}>Program-specific:</strong> This template will only be used for registrations under the selected program. Other programs will use their own templates.</>
+                : <><strong style={{color:'var(--acc)'}}>Global fallback:</strong> This template applies to all programs that don't have a program-specific template defined.</>
+              }
+            </div>
+          </div>
 
           <div>
             <label style={lbl}>Insert Variable (click to add)</label>
@@ -364,6 +388,7 @@ export default function MessageTriggersPage() {
   const [templates,   setTemplates]   = useState<Template[]>([]);
   const [triggers,    setTriggers]    = useState<Trigger[]>([]);
   const [schools,     setSchools]     = useState<Row[]>([]);
+  const [programs,    setPrograms]    = useState<Row[]>([]);
   const [activeTrigger, setActiveTrig] = useState<Trigger|null>(null);
 
   const [templateModal, setTemplateModal] = useState<Template|true|null>(null);
@@ -372,14 +397,16 @@ export default function MessageTriggersPage() {
   const [channelFilter, setChannelFilter] = useState<Channel|'all'>('all');
 
   const load = useCallback(async()=>{
-    const [td,trd,sd] = await Promise.all([
+    const [td,trd,sd,pd] = await Promise.all([
       authFetch(`${BACKEND}/api/admin/templates`).then(r=>r.json()),
       authFetch(`${BACKEND}/api/admin/triggers`).then(r=>r.json()),
       authFetch(`${BACKEND}/api/admin/schools`).then(r=>r.json()),
+      authFetch(`${BACKEND}/api/admin/projects`).then(r=>r.json()),
     ]);
     setTemplates(td.templates??[]);
     setTriggers(trd.triggers??[]);
     setSchools(sd.schools??[]);
+    setPrograms(pd.projects??[]);
     if (!activeTrigger && (trd.triggers??[]).length) setActiveTrig((trd.triggers??[])[0]);
   },[activeTrigger]);
 
@@ -491,6 +518,10 @@ export default function MessageTriggersPage() {
                         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:4}}>
                           <span style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:14,color:'var(--text)'}}>{t.name}</span>
                           <span style={{padding:'2px 8px',borderRadius:100,background:color+'20',color,fontSize:11,fontWeight:700,fontFamily:'DM Sans,sans-serif'}}>{t.channel}</span>
+                          {t.project_id
+                            ? <span style={{padding:'2px 8px',borderRadius:100,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',fontSize:11,fontWeight:700,fontFamily:'DM Sans,sans-serif'}}>🎯 {(t as any).projects?.name ?? programs.find((p:Row)=>p.id===t.project_id)?.name ?? 'Program-specific'}</span>
+                            : <span style={{padding:'2px 8px',borderRadius:100,background:'rgba(99,102,241,0.06)',color:'var(--m)',fontSize:11,fontFamily:'DM Sans,sans-serif',fontStyle:'italic'}}>🌐 All Programs</span>
+                          }
                           {t.is_active
                             ? <span style={{padding:'2px 8px',borderRadius:100,background:'rgba(16,185,129,.1)',color:'#15803d',fontSize:11,fontWeight:700}}>Active</span>
                             : <span style={{padding:'2px 8px',borderRadius:100,background:'var(--bd)',color:'var(--m)',fontSize:11,fontWeight:700}}>Inactive</span>}
@@ -648,6 +679,7 @@ export default function MessageTriggersPage() {
       {templateModal && (
         <TemplateModal
           initial={templateModal===true?undefined:templateModal}
+          programs={programs}
           onClose={()=>setTemplateModal(null)}
           onSave={saveTemplate}
         />
