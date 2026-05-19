@@ -1098,16 +1098,18 @@ export default function AdminDashboard() {
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setProgramForm({})}>+ Add Program</button>}</div>
             </div>
             <div className="tbl-wrap"><table>
-              <thead><tr><th>Program Name</th><th>Slug</th><th>Base Price INR (₹)</th><th>Base Price USD ($)</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Program Name</th><th>Slug</th><th>Base Price INR (₹)</th><th>Base Price USD ($)</th><th>Email Trigger</th><th>WhatsApp Trigger</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {programs.length===0
-                  ? <tr><td colSpan={6} className="table-empty">No programs yet.</td></tr>
+                  ? <tr><td colSpan={8} className="table-empty">No programs yet.</td></tr>
                   : programs.map(p=>(
                     <tr key={p.id}>
                       <td style={{fontWeight:700}}>{p.name}</td>
                       <td><code style={{background:'var(--acc3)',color:'var(--acc)',padding:'2px 8px',borderRadius:6,fontSize:12}}>{p.slug}</code></td>
                       <td><span className="amt">₹{fmtR(p.base_amount_inr ?? p.base_amount ?? 0)}</span></td>
                       <td><span className="amt" style={{color:'#22c55e'}}>{p.base_amount_usd ? `$${fmtR(p.base_amount_usd)}` : <span style={{color:'var(--m)',fontWeight:400}}>—</span>}</span></td>
+                      <td><span className={`badge ${p.email_trigger_enabled!==false?'badge-paid':'badge-cancelled'}`}>{p.email_trigger_enabled!==false?'✅ Yes':'🚫 No'}</span></td>
+                      <td><span className={`badge ${p.whatsapp_trigger_enabled!==false?'badge-paid':'badge-cancelled'}`}>{p.whatsapp_trigger_enabled!==false?'✅ Yes':'🚫 No'}</span></td>
                       <td><span className={`badge ${p.status==='active'?'badge-paid':'badge-cancelled'}`}>{p.status}</span></td>
                       <td><button className="btn btn-outline" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setProgramForm(p)}>Edit</button></td>
                     </tr>
@@ -1680,6 +1682,8 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
     base_amount_usd: initial.base_amount_usd ? String(initial.base_amount_usd/100) : '',
     status: initial.status??'active',
     allowed_grades: (initial.allowed_grades ?? []) as string[],
+    email_trigger_enabled:    initial.email_trigger_enabled    !== false,
+    whatsapp_trigger_enabled: initial.whatsapp_trigger_enabled !== false,
   });
   const [allGrades, setAllGrades] = useState<Row[]>([]);
   const [gradesLoading, setGradesLoading] = useState(true);
@@ -1715,9 +1719,65 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
             {allGrades.map(g => { const checked = f.allowed_grades.includes(g.name); return (<label key={g.id} onClick={() => toggleGrade(g.name)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:`1.5px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc3)' : 'var(--card)',cursor:'pointer',transition:'all .12s',userSelect:'none'}}><div style={{width:16,height:16,borderRadius:4,border:`2px solid ${checked ? 'var(--acc)' : 'var(--bd)'}`,background: checked ? 'var(--acc)' : 'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{checked && <span style={{color:'#fff',fontSize:10,fontWeight:800,lineHeight:1}}>✓</span>}</div><span style={{fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight: checked ? 700 : 500,color: checked ? 'var(--acc)' : 'var(--text)',whiteSpace:'nowrap'}}>{g.name}</span></label>); })}
           </div>)}
       </div>
+      <div style={{marginTop:20,marginBottom:4}}>
+        <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:12}}>🔔 Trigger Settings</div>
+        <div style={{display:'flex',flexDirection:'column',gap:0,padding:'14px 16px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
+
+          {/* Email Trigger */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,paddingBottom:12}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>✉️ Email Trigger Required</div>
+              <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>Send automated emails when events occur for this program</div>
+            </div>
+            <div style={{display:'flex',gap:8,flexShrink:0}}>
+              {([true,false] as const).map(val => {
+                const active = f.email_trigger_enabled === val;
+                return (
+                  <label key={String(val)} onClick={() => setF(p=>({...p,email_trigger_enabled:val}))} style={{
+                    display:'flex',alignItems:'center',gap:6,padding:'6px 16px',borderRadius:8,cursor:'pointer',
+                    border:`1.5px solid ${active?(val?'#10b981':'#ef4444'):'var(--bd)'}`,
+                    background: active?(val?'rgba(16,185,129,0.1)':'rgba(239,68,68,0.08)'):'transparent',
+                    fontSize:12,fontWeight:700,fontFamily:'DM Sans,sans-serif',userSelect:'none' as const,
+                    color: active?(val?'#10b981':'#ef4444'):'var(--m)',transition:'all .12s',
+                  }}>
+                    <input type="radio" checked={active} onChange={()=>setF(p=>({...p,email_trigger_enabled:val}))} style={{display:'none'}}/>
+                    {val ? '✅ Yes' : '🚫 No'}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* WhatsApp Trigger */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,paddingTop:12,borderTop:'1px solid var(--bd)'}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>💬 WhatsApp Trigger Required</div>
+              <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>Send automated WhatsApp messages when events occur for this program</div>
+            </div>
+            <div style={{display:'flex',gap:8,flexShrink:0}}>
+              {([true,false] as const).map(val => {
+                const active = f.whatsapp_trigger_enabled === val;
+                return (
+                  <label key={String(val)} onClick={() => setF(p=>({...p,whatsapp_trigger_enabled:val}))} style={{
+                    display:'flex',alignItems:'center',gap:6,padding:'6px 16px',borderRadius:8,cursor:'pointer',
+                    border:`1.5px solid ${active?(val?'#10b981':'#ef4444'):'var(--bd)'}`,
+                    background: active?(val?'rgba(16,185,129,0.1)':'rgba(239,68,68,0.08)'):'transparent',
+                    fontSize:12,fontWeight:700,fontFamily:'DM Sans,sans-serif',userSelect:'none' as const,
+                    color: active?(val?'#10b981':'#ef4444'):'var(--m)',transition:'all .12s',
+                  }}>
+                    <input type="radio" checked={active} onChange={()=>setF(p=>({...p,whatsapp_trigger_enabled:val}))} style={{display:'none'}}/>
+                    {val ? '✅ Yes' : '🚫 No'}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+        </div>
+      </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({ id: f.id, name: f.name, slug: f.slug, status: f.status, base_amount_inr: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null, base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, currency: 'INR', allowed_grades: f.allowed_grades })}>{f.id?'Save Changes':'Create Program'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({ id: f.id, name: f.name, slug: f.slug, status: f.status, base_amount_inr: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null, base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, currency: 'INR', allowed_grades: f.allowed_grades, email_trigger_enabled: f.email_trigger_enabled, whatsapp_trigger_enabled: f.whatsapp_trigger_enabled })}>{f.id?'Save Changes':'Create Program'}</button>
       </div>
     </ModalShell>
   );
