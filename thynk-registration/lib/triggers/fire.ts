@@ -27,6 +27,40 @@ export async function fireTriggers(
     return;
   }
 
+  // ── Check per-program trigger flags ──────────────────────────────────────
+  // Look up the school's linked project and check email_trigger_enabled / whatsapp_trigger_enabled.
+  // We do a single query here to read both flags at once, then gate each channel below.
+  let emailEnabled    = true;
+  let whatsappEnabled = true;
+
+  if (schoolId) {
+    const { data: school } = await supabase
+      .from('schools')
+      .select('project_id')
+      .eq('id', schoolId)
+      .single();
+
+    if (school?.project_id) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('email_trigger_enabled, whatsapp_trigger_enabled')
+        .eq('id', school.project_id)
+        .single();
+
+      if (project) {
+        emailEnabled    = project.email_trigger_enabled    !== false;
+        whatsappEnabled = project.whatsapp_trigger_enabled !== false;
+      }
+    }
+  }
+
+  if (!emailEnabled && !whatsappEnabled) {
+    console.log(`${tag} Both email and WhatsApp triggers disabled for this program — skipping all triggers.`);
+    return;
+  }
+  if (!emailEnabled)    console.log(`${tag} Email triggers disabled for this program.`);
+  if (!whatsappEnabled) console.log(`${tag} WhatsApp triggers disabled for this program.`);
+
   // ── Load triggers ─────────────────────────────────────────────────────────
   const { data: triggers, error: triggerErr } = await supabase
     .from('notification_triggers')
@@ -103,6 +137,16 @@ export async function fireTriggers(
     }
     if (!template.is_active) {
       console.warn(`${tag} template "${template.name}" is_active=false — skipping`);
+      continue;
+    }
+
+    // ── Per-program channel gate ──────────────────────────────────────────
+    if (trigger.channel === 'email' && !emailEnabled) {
+      console.log(`${tag} Skipping email trigger ${trigger.id} — email triggers disabled for this program.`);
+      continue;
+    }
+    if (trigger.channel === 'whatsapp' && !whatsappEnabled) {
+      console.log(`${tag} Skipping whatsapp trigger ${trigger.id} — WhatsApp triggers disabled for this program.`);
       continue;
     }
 
