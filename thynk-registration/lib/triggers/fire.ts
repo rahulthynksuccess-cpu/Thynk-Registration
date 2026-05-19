@@ -68,7 +68,8 @@ export async function fireTriggers(
       *,
       notification_templates (
         id, name, channel, subject, body, is_active,
-        whatsapp_template_name, whatsapp_template_lang
+        whatsapp_template_name, whatsapp_template_lang,
+        project_id
       )
     `)
     .or(`school_id.eq.${schoolId},school_id.is.null`)
@@ -99,7 +100,7 @@ export async function fireTriggers(
   triggers.forEach(t => {
     const tpl = t.notification_templates;
     if (tpl && t.channel === 'whatsapp') {
-      console.log(`${tag} DIAG whatsapp template id=${tpl.id} name="${tpl.name}" whatsapp_template_name="${tpl.whatsapp_template_name ?? '(NOT SET)'}" lang="${tpl.whatsapp_template_lang ?? '(NOT SET)'}"`);
+      console.log(`${tag} DIAG whatsapp trigger template id=${tpl.id} name="${tpl.name}" whatsapp_template_name="${tpl.whatsapp_template_name ?? '(NOT SET)'}" lang="${tpl.whatsapp_template_lang ?? '(NOT SET)'}" project_id="${tpl.project_id ?? 'global'}"`);
     }
   });
 
@@ -148,6 +149,43 @@ export async function fireTriggers(
     if (trigger.channel === 'whatsapp' && !whatsappEnabled) {
       console.log(`${tag} Skipping whatsapp trigger ${trigger.id} — WhatsApp triggers disabled for this program.`);
       continue;
+    }
+
+    // ── Program-specific template resolution ─────────────────────────────
+    // The trigger always has a linked template. But if a program-specific
+    // template exists for the same channel + event + school, prefer it over
+    // the global template linked to the trigger.
+    let resolvedTemplate = template;
+
+    if (schoolId) {
+      // Look up the school's program (project_id)
+      const { data: schoolRow } = await supabase
+        .from('schools')
+        .select('project_id')
+        .eq('id', schoolId)
+        .single();
+
+      const programId = schoolRow?.project_id ?? null;
+
+      if (programId) {
+        // Try to find an active program-specific template for same channel
+        const { data: programTemplate } = await supabase
+          .from('notification_templates')
+          .select('*')
+          .eq('project_id', programId)
+          .eq('channel', trigger.channel)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (programTemplate) {
+          console.log(`${tag} Using program-specific template "${programTemplate.name}" (id=${programTemplate.id}) over trigger default "${template.name}"`);
+          resolvedTemplate = programTemplate;
+        } else {
+          console.log(`${tag} No program-specific template found for programId=${programId} channel=${trigger.channel} — using trigger default "${template.name}"`);
+        }
+      }
     }
 
     // Pick the correct vars based on recipient_type:
@@ -229,12 +267,12 @@ export async function fireTriggers(
     let finalProvider = '';
     try {
       if (trigger.channel === 'email') {
-        const provider = await sendEmail(template, vars, schoolId);
+        const provider = await sendEmail(resolvedTemplate, vars, schoolId);
         finalProvider = provider;
         logEntry.status = 'sent';
         console.log(`${tag} ✅ email sent via ${provider} to ${recipient}`);
       } else if (trigger.channel === 'whatsapp') {
-        const provider = await sendWhatsApp(template, vars, schoolId);
+        const provider = await sendWhatsApp(resolvedTemplate, vars, schoolId);
         finalProvider = provider;
         logEntry.status = 'sent';
         console.log(`${tag} ✅ whatsapp sent via ${provider} to ${recipient}`);
