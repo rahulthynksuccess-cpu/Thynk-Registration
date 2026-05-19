@@ -555,7 +555,7 @@ export default function AdminDashboard() {
     if (activePage === 'consultants') { loadConsultants(); loadSchools(); }
     if (activePage === 'integrations') loadIntegrations();
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
-    if (activePage === 'templates')    loadTemplates();
+    if (activePage === 'templates')  { loadTemplates(); loadPrograms(); }
     if (activePage === 'locations')    loadLocations();
     if (activePage === 'recent') {
       api('/api/admin/activity-logs?limit=200').then((d: any) => setActivityLogs(d.logs ?? [])).catch(() => {});
@@ -1467,17 +1467,23 @@ export default function AdminDashboard() {
           {/* ── TEMPLATES ────────────────────────────────────────────── */}
           <div className={`page${activePage==='templates'?' active':''}`}>
             <div className="topbar">
-              <div className="topbar-left"><h1>Message <span>Templates</span></h1><p>Email & WhatsApp message drafts</p></div>
+              <div className="topbar-left"><h1>Message <span>Templates</span></h1><p>Email & WhatsApp message drafts — program-specific or global</p></div>
               <div className="topbar-right"><button className="btn btn-primary" onClick={()=>setTemplateForm({})}>+ New Template</button></div>
             </div>
             <div className="tbl-wrap"><table>
-              <thead><tr><th>Name</th><th>Channel</th><th>Subject</th><th>Preview</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Name</th><th>Channel</th><th>Program Scope</th><th>Subject</th><th>Preview</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
-                {templates.length===0 ? <tr><td colSpan={6} className="table-empty">No templates yet.</td></tr>
+                {templates.length===0 ? <tr><td colSpan={7} className="table-empty">No templates yet.</td></tr>
                 : templates.map(t=>(
                   <tr key={t.id}>
                     <td style={{fontWeight:700}}>{t.name}</td>
                     <td><span className="gw-tag">{t.channel}</span></td>
+                    <td>
+                      {t.project_id
+                        ? <span style={{fontSize:11,padding:'2px 8px',borderRadius:6,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',fontWeight:700}}>🎯 {t.projects?.name ?? t.project_id}</span>
+                        : <span style={{fontSize:11,color:'var(--m)',fontStyle:'italic'}}>🌐 All Programs</span>
+                      }
+                    </td>
                     <td style={{fontSize:12}}>{t.subject??'—'}</td>
                     <td style={{fontSize:11,color:'var(--m)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.body?.slice(0,80)}…</td>
                     <td><span className={`badge ${t.is_active?'badge-paid':'badge-cancelled'}`}>{t.is_active?'Active':'Inactive'}</span></td>
@@ -1619,7 +1625,7 @@ export default function AdminDashboard() {
 />}
       {integrationForm!==null&&<IntegrationFormModal initial={integrationForm} schools={schools} onClose={()=>setIntegrationForm(null)} onSave={async(data)=>{await saveForm('/api/admin/integrations',data,()=>{setIntegrationForm(null);loadIntegrations();},data.id?'Integration updated!':'Integration saved!');}} />}
       {triggerForm!==null&&<TriggerFormModal initial={triggerForm} schools={schools} templates={templates} onClose={()=>setTriggerForm(null)} onSave={async(data)=>{await saveForm('/api/admin/triggers',data,()=>{setTriggerForm(null);loadTriggers();},data.id?'Trigger updated!':'Trigger created!');}} />}
-      {templateForm!==null&&<TemplateFormModal initial={templateForm} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
+      {templateForm!==null&&<TemplateFormModal initial={templateForm} programs={programs} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
       {consultantForm!==null&&<ConsultantFormModal
         initial={consultantForm}
         BACKEND={BACKEND}
@@ -2708,15 +2714,44 @@ function TriggerFormModal({ initial, schools, templates, onClose, onSave }:{ ini
 }
 
 // ── Template Form ───────────────────────────────────────────────────
-function TemplateFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()=>void; onSave:(d:Row)=>void }) {
-  const [f,setF] = useState({ id:initial.id??'', name:initial.name??'', channel:initial.channel??'email', subject:initial.subject??'', body:initial.body??'', is_active:initial.is_active!==false });
-  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => setF(p=>({...p,[k]:e.target.type==='checkbox'?(e.target as HTMLInputElement).checked:e.target.value}));
+function TemplateFormModal({ initial, programs, onClose, onSave }:{ initial:Row; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
+  const [f,setF] = useState({
+    id:         initial.id         ?? '',
+    name:       initial.name       ?? '',
+    channel:    initial.channel    ?? 'email',
+    subject:    initial.subject    ?? '',
+    body:       initial.body       ?? '',
+    is_active:  initial.is_active  !== false,
+    project_id: initial.project_id ?? '',   // '' = global (all programs)
+  });
+  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) =>
+    setF(p=>({...p,[k]:e.target.type==='checkbox'?(e.target as HTMLInputElement).checked:e.target.value}));
   return (
     <ModalShell title={f.id?'Edit Template':'New Template'} onClose={onClose}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
         <Field label="Template Name *"><input style={IS} value={f.name} onChange={set('name')} placeholder="Payment Confirmation"/></Field>
         <Field label="Channel *"><select style={SS} value={f.channel} onChange={set('channel')}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select></Field>
       </div>
+
+      {/* Program scope */}
+      <div style={{marginBottom:14,padding:'12px 14px',background:'rgba(139,92,246,0.06)',border:'1.5px solid rgba(139,92,246,0.2)',borderRadius:10}}>
+        <div style={{fontSize:11,fontWeight:700,color:'#8b5cf6',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:8}}>🎯 Program Scope</div>
+        <Field label="Apply to Program">
+          <select style={{...SS, borderColor: f.project_id ? 'rgba(139,92,246,0.5)' : undefined}} value={f.project_id} onChange={set('project_id')}>
+            <option value="">🌐 All Programs (Global)</option>
+            {programs.filter(p=>p.status==='active').map(p=>(
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </Field>
+        <div style={{fontSize:11,color:'var(--m)',marginTop:-8,lineHeight:1.5}}>
+          {f.project_id
+            ? <>🎯 This template will <strong>only</strong> be used for triggers belonging to the selected program. Triggers linked to other programs will use their own templates.</>
+            : <>🌐 This template will be used as a <strong>fallback for all programs</strong> that don't have a program-specific template defined.</>
+          }
+        </div>
+      </div>
+
       {f.channel==='email'&&<Field label="Subject *"><input style={IS} value={f.subject} onChange={set('subject')} placeholder="Your registration is confirmed — {{school_name}}"/></Field>}
       <Field label="Message Body *"><textarea style={{...IS,height:160,resize:'vertical'}} value={f.body} onChange={set('body')} placeholder={f.channel==='email'?`Hi {{student_name}},\n\nYour registration for {{school_name}} is confirmed!\n\nAmount: {{amount}}\nTransaction ID: {{txn_id}}\n\nThank you!`:`Hi {{student_name}}! 🎉\nYour registration for {{school_name}} is confirmed.\nAmount: {{amount}} | Txn: {{txn_id}}`}/></Field>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><input type="checkbox" id="tm_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto'}}/><label htmlFor="tm_active" style={{fontSize:13,fontWeight:600}}>Active</label></div>
