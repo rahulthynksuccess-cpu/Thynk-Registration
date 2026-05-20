@@ -349,6 +349,11 @@ export async function DELETE(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const { id } = await req.json();
-  await service.from('schools').update({ is_active: false }).eq('id', id);
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+
+  // Hard delete — remove the school record entirely
+  const { error } = await service.from('schools').delete().eq('id', id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
   return NextResponse.json({ success: true });
 }
