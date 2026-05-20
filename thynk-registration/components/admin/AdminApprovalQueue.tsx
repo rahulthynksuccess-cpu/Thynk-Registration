@@ -211,9 +211,9 @@ export default function AdminApprovalQueue({
 
   async function handleReject(schoolId: string, schoolName: string) {
     if (!confirm(`Reject registration for "${schoolName}"? This will reset their status.`)) return;
+    const headers = { ...(authHeaders() as any), 'Content-Type': 'application/json' };
     const res = await fetch(`${BACKEND}/api/admin/schools/approve`, {
-      method: 'PATCH',
-      headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+      method: 'PATCH', headers,
       body: JSON.stringify({ id: schoolId, action: 'reject' }),
     });
     if (res.ok) { showToast('School registration rejected', ''); onRefresh(); }
@@ -222,48 +222,62 @@ export default function AdminApprovalQueue({
 
   async function handleDelete(schoolId: string, schoolName: string) {
     if (!confirm(`Permanently delete "${schoolName}"? This cannot be undone.`)) return;
+    const headers = { ...(authHeaders() as any), 'Content-Type': 'application/json' };
     const res = await fetch(`${BACKEND}/api/admin/schools`, {
-      method: 'DELETE',
-      headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+      method: 'DELETE', headers,
       body: JSON.stringify({ id: schoolId }),
     });
     if (res.ok) { showToast('School deleted', '🗑'); onRefresh(); }
-    else { const d = await res.json(); showToast(d.error || 'Delete failed', '❌'); }
+    else { const d = await res.json().catch(() => ({})); showToast(d.error || 'Delete failed', '❌'); }
   }
 
   // ── Bulk actions ───────────────────────────────────────────────
   async function bulkReject() {
-    if (!confirm(`Reject ${selected.size} school(s)?`)) return;
+    const ids = Array.from(selected);
+    if (!confirm(`Reject ${ids.length} school(s)?`)) return;
     setBulkLoading(true);
-    let ok = 0;
-    for (const id of selected) {
-      const res = await fetch(`${BACKEND}/api/admin/schools/approve`, {
-        method: 'PATCH',
-        headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'reject' }),
-      });
-      if (res.ok) ok++;
+    // Snapshot headers once before the loop
+    const headers = { ...(authHeaders() as any), 'Content-Type': 'application/json' };
+    let ok = 0; let fail = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`${BACKEND}/api/admin/schools/approve`, {
+          method: 'PATCH', headers,
+          body: JSON.stringify({ id, action: 'reject' }),
+        });
+        res.ok ? ok++ : fail++;
+      } catch { fail++; }
     }
     setBulkLoading(false);
-    showToast(`${ok} school(s) rejected`, '');
+    showToast(`${ok} rejected${fail ? `, ${fail} failed` : ''}`, ok > 0 ? '' : '❌');
     setSelected(new Set());
     onRefresh();
   }
 
   async function bulkDelete() {
-    if (!confirm(`Permanently delete ${selected.size} school(s)? This cannot be undone.`)) return;
+    const ids = Array.from(selected);
+    if (!confirm(`Permanently delete ${ids.length} school(s)? This cannot be undone.`)) return;
     setBulkLoading(true);
-    let ok = 0;
-    for (const id of selected) {
-      const res = await fetch(`${BACKEND}/api/admin/schools`, {
-        method: 'DELETE',
-        headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      if (res.ok) ok++;
+    // Snapshot headers once before the loop
+    const headers = { ...(authHeaders() as any), 'Content-Type': 'application/json' };
+    let ok = 0; let fail = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`${BACKEND}/api/admin/schools`, {
+          method: 'DELETE', headers,
+          body: JSON.stringify({ id }),
+        });
+        if (res.ok) {
+          ok++;
+        } else {
+          const d = await res.json().catch(() => ({}));
+          console.error('Delete failed for', id, d);
+          fail++;
+        }
+      } catch (e) { console.error('Delete error', id, e); fail++; }
     }
     setBulkLoading(false);
-    showToast(`${ok} school(s) deleted`, '🗑');
+    showToast(`${ok} deleted${fail ? `, ${fail} failed` : ''}`, ok > 0 ? '🗑' : '❌');
     setSelected(new Set());
     onRefresh();
   }
