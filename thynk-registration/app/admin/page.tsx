@@ -787,7 +787,6 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
     <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)} ({cnt})</option>
   ) : null;
 })}
-                    ))}
                   </select>
                   <div style={{position:'relative'}}>
                     <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:11,color:'var(--m)'}}>🔍</span>
