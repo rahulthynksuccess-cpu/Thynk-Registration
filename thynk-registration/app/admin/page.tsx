@@ -400,8 +400,8 @@ function StudentDetailModal({
 type BroadcastResult = { name:string; type:string; recipient:string; status:'sent'|'failed'|'skipped'; error?:string };
 type SmtpOption = { id:string; name:string; fromName:string; fromEmail:string; smtpUser:string; program_id:string|null };
 
-function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, authHeaders, showToast }:{
-  programs:Row[]; schools:Row[]; allRows:Row[]; templates:Row[];
+function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders, showToast }:{
+  programs:Row[]; schools:Row[]; templates:Row[];
   BACKEND:string; authHeaders:()=>HeadersInit; showToast:(t:string,i?:string)=>void;
 }) {
   const [step,            setStep]            = useState<1|2|3|4|5>(1);
@@ -414,13 +414,10 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   const [studentSearch,   setStudentSearch]   = useState('');
   const [studentStatusFilter, setStudentStatusFilter] = useState<string>('');
 
-  // Students — derived client-side from allRows (already loaded in parent)
+  // Students
   const [allStudents,      setAllStudents]      = useState<any[]>([]);
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [loadingStudents,  setLoadingStudents]  = useState(false);
-
-  // School contacts — per-contact selection: key = `${schoolId}::${contactIndex}`
-  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
 
   // Email / SMTP
   const [smtpOptions,  setSmtpOptions]  = useState<SmtpOption[]>([]);
@@ -447,8 +444,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
 
   // Filtered school list
   const filteredSchools = useMemo(()=>{
-    const base = schools.filter(s=>(programId ? s.project_id===programId : true) && s.is_active!==false)
-      .sort((a,b)=>(a.name??'').localeCompare(b.name??''));
+    const base = schools.filter(s=>(programId ? s.project_id===programId : true) && s.is_active!==false);
     const q = schoolSearch.toLowerCase();
     return q ? base.filter(s=>s.name?.toLowerCase().includes(q)||s.city?.toLowerCase().includes(q)||s.state?.toLowerCase().includes(q)) : base;
   },[schools,programId,schoolSearch]);
@@ -463,7 +459,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
     const q = studentSearch.toLowerCase();
     let base = allStudents;
     if (studentStatusFilter) base = base.filter((s:any) => s.payment_status === studentStatusFilter);
-    return q ? base.filter(s=>
+    return q ? base.filter((s:any)=>
       s.student_name?.toLowerCase().includes(q)||
       s.contact_email?.toLowerCase().includes(q)||
       s.contact_phone?.includes(q)||
@@ -480,19 +476,22 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   function toggleStudent(id:string){ setSelectedStudents(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; }); }
   function toggleAllStudents(){ filteredStudents.length>0&&selectedStudents.size===filteredStudents.length ? setSelectedStudents(new Set()) : setSelectedStudents(new Set(filteredStudents.map((s:any)=>s.id))); }
 
-  function loadStudents(schoolIds:string[]){
+  async function loadStudents(schoolIds:string[]){
     if(!schoolIds.length){ setAllStudents([]); setSelectedStudents(new Set()); return; }
-    // Filter from already-loaded allRows — scoped to selected schools only, no extra API call
-    const schoolIdSet = new Set(schoolIds);
-    const valid = allRows.filter((r:any) => r.student_name?.trim() && schoolIdSet.has(r.school_id));
-    setAllStudents(valid);
-    setSelectedStudents(new Set(valid.map((r:any)=>r.id)));
+    setLoadingStudents(true);
+    try {
+      const h = { ...(authHeaders() as any), 'Content-Type':'application/json' };
+      const res = await fetch(`${BACKEND}/api/admin/registrations?school_ids=${schoolIds.join(',')}`,{headers:h});
+      const d   = await res.json();
+      const regs = (d.registrations ?? d.data ?? []) as any[];
+      setAllStudents(regs);
+      setSelectedStudents(new Set(regs.map((r:any)=>r.id)));
+    } catch { setAllStudents([]); }
+    setLoadingStudents(false);
   }
 
-  function goToStep3(){
-    // Always pre-load students for selected schools so they appear instantly
-    // when the user clicks the "Students / Parents" toggle card
-    loadStudents(Array.from(selectedSchools));
+  async function goToStep3(){
+    if(recipients.has('students')) await loadStudents(Array.from(selectedSchools));
     setStep(3);
   }
 
@@ -503,7 +502,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   function reset(){
     setProgramId(''); setSelectedSchools(new Set()); setRecipients(new Set(['schools']));
     setChannel(''); setTemplateId(''); setResult(null); setStep(1);
-    setSchoolSearch(''); setStudentSearch(''); setStudentStatusFilter(''); setAllStudents([]); setSelectedStudents(new Set()); setSelectedContacts(new Set());
+    setSchoolSearch(''); setStudentSearch(''); setStudentStatusFilter(''); setAllStudents([]); setSelectedStudents(new Set());
     if(smtpOptions[0]) setSmtpConfigId(smtpOptions[0].id);
   }
 
@@ -604,24 +603,14 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
             <span style={{fontWeight:700,fontSize:13,color:'var(--acc)'}}>
               {selectedSchools.size===filteredSchools.length&&filteredSchools.length>0?'Deselect All':`Select All (${filteredSchools.length})`}
             </span>
-            {selectedSchools.size>0&&(
-              <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}}>
-                <span style={{fontSize:12,color:'var(--acc)',fontWeight:700}}>{selectedSchools.size} selected</span>
-                <span
-                  onClick={e=>{e.stopPropagation();setSelectedSchools(new Set());}}
-                  style={{fontSize:11,padding:'2px 8px',borderRadius:6,background:'rgba(239,68,68,0.12)',color:'#ef4444',fontWeight:700,cursor:'pointer',border:'1px solid rgba(239,68,68,0.3)'}}>
-                  ✕ Clear
-                </span>
-              </div>
-            )}
+            {selectedSchools.size>0&&<span style={{marginLeft:'auto',fontSize:12,color:'var(--acc)',fontWeight:700}}>{selectedSchools.size} selected</span>}
           </div>
           <div style={{maxHeight:340,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
             {filteredSchools.length===0
               ?<div style={{textAlign:'center',padding:24,color:'var(--m)',fontSize:13}}>No schools found.</div>
               :filteredSchools.map(s=>{
                 const prog=programs.find(p=>p.id===s.project_id);
-                const contacts=s.contact_persons??[];
-                const contact=contacts[0];
+                const contact=s.contact_persons?.[0];
                 const isSel=selectedSchools.has(s.id);
                 return(
                   <div key={s.id} onClick={()=>toggleSchool(s.id)} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1.5px solid ${isSel?'var(--acc)':'var(--bd)'}`,background:isSel?'var(--acc3)':'transparent',transition:'all .1s'}}>
@@ -630,15 +619,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
                       <div style={{fontWeight:700,fontSize:13,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
                       <div style={{fontSize:11,color:'var(--m)'}}>{[s.city,s.state].filter(Boolean).join(', ')}{prog?` · ${prog.name}`:''}</div>
                     </div>
-                    {contacts.length>0&&(
-                      <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const,flexShrink:0}}>
-                        <div style={{fontWeight:600}}>{contact.name}</div>
-                        <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'flex-end',marginTop:2}}>
-                          {contacts.length>1&&<span style={{fontSize:10,padding:'1px 6px',borderRadius:10,background:isSel?'var(--acc)':'rgba(79,70,229,0.12)',color:isSel?'#fff':'var(--acc)',fontWeight:700}}>{contacts.length} contacts</span>}
-                          <span style={{fontSize:10,color:'var(--m2)'}}>{contact.mobile}</span>
-                        </div>
-                      </div>
-                    )}
+                    {contact&&<div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const,flexShrink:0}}>{contact.name}<br/>{contact.mobile}</div>}
                   </div>
                 );
               })
@@ -646,7 +627,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
           </div>
           <div style={{display:'flex',justifyContent:'space-between',marginTop:16}}>
             <button className="btn btn-outline" onClick={()=>setStep(1)}>← Back</button>
-            <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={goToStep3}>
+            <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={()=>setStep(3)}>
               Next: Choose Recipients ({selectedSchools.size} schools) →
             </button>
           </div>
@@ -669,6 +650,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
               return(
                 <div key={r.id} onClick={()=>{
                     toggleRecipient(r.id);
+                    if(r.id==='students'&&!recipients.has('students')) loadStudents(Array.from(selectedSchools));
                   }} style={{flex:1,minWidth:200,padding:'16px 18px',borderRadius:12,cursor:'pointer',
                   border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,
                   background:active?'var(--acc3)':'var(--bg)',transition:'all .12s'}}>
@@ -683,90 +665,35 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
             })}
           </div>
 
-          {/* ── School contacts selector (checkboxes per contact) ── */}
-          {recipients.has('schools')&&(()=>{
-            // Build full contact list with keys
-            const allContactKeys: string[] = [];
-            Array.from(selectedSchools).forEach(sid=>{
-              const s=schools.find(sc=>sc.id===sid);
-              (s?.contact_persons??[]).forEach((_:any,ci:number)=>{ allContactKeys.push(`${sid}::${ci}`); });
-            });
-            const totalContacts = allContactKeys.length;
-            const selCount = allContactKeys.filter(k=>selectedContacts.has(k)||selectedContacts.size===0).length;
-            // "all selected" when selectedContacts is empty (means select-all default)
-            const allSel = selectedContacts.size===0 || allContactKeys.every(k=>selectedContacts.has(k));
-            function toggleContact(key:string){
-              setSelectedContacts(prev=>{
-                // If currently "all" (empty set = all), clicking one to deselect means: select all except this one
-                if(prev.size===0){ const n=new Set(allContactKeys.filter(k=>k!==key)); return n; }
-                const n=new Set(prev); n.has(key)?n.delete(key):n.add(key);
-                // If all are now selected, reset to empty (= all)
-                if(allContactKeys.every(k=>n.has(k))) return new Set();
-                return n;
-              });
-            }
-            function selectAllContacts(){ setSelectedContacts(new Set()); }
-            function clearAllContacts(){ setSelectedContacts(new Set(['__none__'])); }
-            const isNoneSelected = selectedContacts.size===1 && selectedContacts.has('__none__');
-            return(
-              <div style={{border:'1.5px solid var(--bd)',borderRadius:12,overflow:'hidden',marginBottom:16}}>
-                <div style={{padding:'10px 16px',background:'var(--bg)',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                  <span style={{fontWeight:700,fontSize:13}}>🏫 School Contacts</span>
-                  <span style={{fontSize:11,color:'var(--m)',marginLeft:4}}>
-                    {totalContacts} contact{totalContacts!==1?'s':''} across {selectedSchools.size} school{selectedSchools.size!==1?'s':''}
-                  </span>
-                  <div style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center'}}>
-                    <span style={{fontSize:11,fontWeight:700,color:'var(--acc)'}}>
-                      {isNoneSelected?0:selectedContacts.size===0?totalContacts:selectedContacts.size} selected
-                    </span>
-                    <button onClick={selectAllContacts}
-                      style={{padding:'3px 9px',borderRadius:6,border:'1.5px solid #10b981',background:'rgba(16,185,129,0.08)',color:'#10b981',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                      ✅ All
-                    </button>
-                    <button onClick={clearAllContacts}
-                      style={{padding:'3px 9px',borderRadius:6,border:'1.5px solid #ef4444',background:'rgba(239,68,68,0.08)',color:'#ef4444',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                      🚫 None
-                    </button>
-                  </div>
-                </div>
-                {totalContacts===0
-                  ? <div style={{padding:'20px 16px',textAlign:'center',color:'var(--m)',fontSize:13}}>No contacts found for selected schools.</div>
-                  : <div style={{maxHeight:260,overflowY:'auto'}}>
-                    {Array.from(selectedSchools).map(sid=>{
-                      const s=schools.find(sc=>sc.id===sid);
-                      if(!s) return null;
-                      const contacts = s.contact_persons??[];
-                      if(contacts.length===0) return(
-                        <div key={sid} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:'1px solid var(--bd)',opacity:0.5}}>
-                          <span style={{fontSize:14}}>🏫</span>
-                          <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{s.name}</div><div style={{fontSize:11,color:'var(--m)'}}>No contacts added</div></div>
-                        </div>
-                      );
-                      return contacts.map((c:any,ci:number)=>{
-                        const key=`${sid}::${ci}`;
-                        const isSel = !isNoneSelected && (selectedContacts.size===0||selectedContacts.has(key));
-                        return(
-                          <div key={key} onClick={()=>toggleContact(key)} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:'1px solid var(--bd)',cursor:'pointer',background:isSel?'rgba(79,70,229,0.04)':'transparent',transition:'background .1s'}}>
-                            <input type="checkbox" readOnly checked={isSel} style={{width:14,height:14,cursor:'pointer',flexShrink:0,accentColor:'var(--acc)'}}/>
-                            <span style={{fontSize:16,flexShrink:0}}>{ci===0?'🏫':'👤'}</span>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name||'—'}</div>
-                              <div style={{fontSize:11,color:'var(--m)'}}>{s.name}{c.designation?` · ${c.designation}`:''}</div>
-                            </div>
-                            <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const,flexShrink:0}}>
-                              {c.email&&<div>✉️ {c.email}</div>}
-                              {c.mobile&&<div>📱 {c.mobile}</div>}
-                            </div>
-                            {!isSel&&<span style={{fontSize:10,padding:'2px 6px',borderRadius:20,background:'rgba(239,68,68,0.1)',color:'#ef4444',fontWeight:700,flexShrink:0}}>Excluded</span>}
-                          </div>
-                        );
-                      });
-                    })}
-                  </div>
-                }
+          {/* ── School contacts preview ── */}
+          {recipients.has('schools')&&(
+            <div style={{border:'1.5px solid var(--bd)',borderRadius:12,overflow:'hidden',marginBottom:16}}>
+              <div style={{padding:'10px 16px',background:'var(--bg)',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontWeight:700,fontSize:13}}>🏫 School Contacts</span>
+                <span style={{fontSize:11,color:'var(--m)',marginLeft:4}}>{selectedSchools.size} school{selectedSchools.size!==1?'s':''} · {selectedSchools.size} contact{selectedSchools.size!==1?'s':''}</span>
               </div>
-            );
-          })()}
+              <div style={{maxHeight:200,overflowY:'auto'}}>
+                {Array.from(selectedSchools).map(sid=>{
+                  const s=schools.find(sc=>sc.id===sid);
+                  if(!s) return null;
+                  const c=s.contact_persons?.[0];
+                  return(
+                    <div key={sid} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:'1px solid var(--bd)'}}>
+                      <span style={{fontSize:14}}>🏫</span>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:600,fontSize:13}}>{s.name}</div>
+                        <div style={{fontSize:11,color:'var(--m)'}}>{c?`${c.name} · ${c.designation||''}`:' No contact'}</div>
+                      </div>
+                      <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const}}>
+                        {c?.email&&<div>✉️ {c.email}</div>}
+                        {c?.mobile&&<div>📱 {c.mobile}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ── Student list ── */}
           {recipients.has('students')&&(
@@ -781,9 +708,10 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
                     onChange={e=>{setStudentStatusFilter(e.target.value);}}
                     style={{padding:'5px 10px',borderRadius:7,border:`1.5px solid ${studentStatusFilter?'var(--acc)':'var(--bd)'}`,fontSize:12,background:'var(--card)',color:studentStatusFilter?'var(--acc)':'var(--m)',outline:'none',fontWeight:studentStatusFilter?700:400,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>
                     <option value="">All Statuses</option>
-                    {[...new Set(allStudents.map((s:any)=>s.payment_status).filter(Boolean))].map((st:any)=>(
-                      <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)} ({allStudents.filter((s:any)=>s.payment_status===st).length})</option>
-                    ))}
+                    {(['paid','initiated','pending','failed','cancelled'] as const).map(st=>{
+                      const cnt = allStudents.filter((s:any)=>s.payment_status===st).length;
+                      return cnt > 0 ? <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)} ({cnt})</option> : null;
+                    })}
                   </select>
                   <div style={{position:'relative'}}>
                     <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:11,color:'var(--m)'}}>🔍</span>
@@ -798,7 +726,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
                     style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid #ef4444',background:'rgba(239,68,68,0.08)',color:'#ef4444',fontSize:11,fontWeight:700,cursor:'pointer'}}>
                     🚫 Remove All
                   </button>
-                  <span style={{fontSize:11,fontWeight:700,color:'var(--acc)'}}>{selectedStudents.size}/{allStudents.length}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:'var(--acc)'}}>{filteredStudents.filter((s:any)=>selectedStudents.has(s.id)).length}/{filteredStudents.length}{studentStatusFilter?' (filtered)':''}</span>
                 </div>
               </div>
               {loadingStudents
@@ -839,14 +767,8 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
 
           <div style={{padding:'10px 14px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bd)',fontSize:12,color:'var(--m)',marginBottom:16}}>
             📋 <strong>{selectedSchools.size} school{selectedSchools.size!==1?'s':''}</strong>
-            {recipients.has('schools')&&(()=>{
-              const allCKeys: string[] = [];
-              Array.from(selectedSchools).forEach(sid=>{ const s=schools.find(sc=>sc.id===sid); (s?.contact_persons??[]).forEach((_:any,ci:number)=>allCKeys.push(`${sid}::${ci}`)); });
-              const isNone = selectedContacts.size===1&&selectedContacts.has('__none__');
-              const cnt = isNone?0:selectedContacts.size===0?allCKeys.length:allCKeys.filter(k=>selectedContacts.has(k)).length;
-              return <> · <strong>{cnt} school contact{cnt!==1?'s':''}</strong></>;
-            })()}
-            {recipients.has('students')&&!loadingStudents&&<> · <strong>{selectedStudents.size}</strong> students selected</>}
+            {recipients.has('schools')&&<> · <strong>{selectedSchools.size} school contact{selectedSchools.size!==1?'s':''}</strong></>}
+            {recipients.has('students')&&!loadingStudents&&<> · <strong>{selectedStudents.size}</strong> students selected{studentStatusFilter&&` (showing ${filteredStudents.length} filtered)`}</>}
           </div>
 
           <div style={{display:'flex',justifyContent:'space-between'}}>
@@ -1679,7 +1601,7 @@ export default function AdminDashboard() {
           {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
             {activePage==='students' && !canSeePage('students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"></div></div>
+            <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
             <StudentsTable rows={enrichedVisibleRows} programs={programs} consultants={consultants} onRowClick={setModal} />
           </div>
 
@@ -2131,7 +2053,6 @@ export default function AdminDashboard() {
               <CommunicationsPage
                 programs={programs}
                 schools={schools}
-                allRows={visibleRows}
                 templates={templates}
                 BACKEND={BACKEND}
                 authHeaders={authHeaders}
@@ -4116,15 +4037,6 @@ function StudentsTable({ rows, programs, consultants, onRowClick }: { rows: Row[
 
   const activeFilterCount = [statuses, gateways, programs_f, countries_f, states_f, cities_f, schools_f, classes_f, genders_f].filter(a => a.length > 0).length;
 
-  function exportFilteredCSV() {
-    const h=['Date','Student','Class','Gender','Program','Country','School','City','Parent','Phone','Email','Gateway','Status','Base','Discount Code','Discount Amt','Final','Txn ID'];
-    const exportRows=[h,...filtered.map(r=>[r.created_at?.slice(0,10),r.student_name,r.class_grade,r.gender,r.program_name,r.country,r.parent_school,r.city,r.parent_name,r.contact_phone,r.contact_email,r.gateway,r.payment_status,(r.base_amount??0)/100,r.discount_code,(r.discount_amount??0)/100,(r.final_amount??0)/100,r.gateway_txn_id])];
-    const csv=exportRows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
-    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
-    const suffix = activeFilterCount > 0 ? `_filtered_${filtered.length}` : `_all_${rows.length}`;
-    a.download=`Thynk_Students${suffix}_${new Date().toISOString().slice(0,10)}.csv`;a.click();
-  }
-
   return (
     <>
       {/* Page tabs */}
@@ -4157,12 +4069,7 @@ function StudentsTable({ rows, programs, consultants, onRowClick }: { rows: Row[
               ✕ Clear all ({activeFilterCount})
             </button>
           )}
-          <span style={{ fontSize: 12, color: 'var(--m)', whiteSpace: 'nowrap' }}>{filtered.length} of {rows.length}</span>
-          <button
-            onClick={exportFilteredCSV}
-            style={{ marginLeft: 'auto', padding: '7px 16px', borderRadius: 8, background: activeFilterCount > 0 ? 'var(--acc)' : 'var(--card)', border: `1.5px solid ${activeFilterCount > 0 ? 'var(--acc)' : 'var(--bd)'}`, color: activeFilterCount > 0 ? '#fff' : 'var(--m)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans,sans-serif', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-            ⬇ Export {activeFilterCount > 0 ? `Filtered (${filtered.length})` : `All (${rows.length})`}
-          </button>
+          <span style={{ fontSize: 12, color: 'var(--m)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{filtered.length} of {rows.length}</span>
         </div>
         <div className="tbl-wrap"><table>
           <thead><tr>{['#','Date','Status','Student','Gender','Class','Program','Country','School','City','Parent','Phone','Gateway','Amount','Discount','Pay Link'].map(h=><th key={h}>{h}</th>)}</tr></thead>
