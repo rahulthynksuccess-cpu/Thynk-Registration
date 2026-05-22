@@ -11,7 +11,7 @@ import { ReportingPage } from '@/components/admin/ReportingPage';
 import { DocumentUploadPanel } from '@/components/admin/DocumentUploadPanel';
 import { NotificationControlPanel, NotificationBell, NotificationDropdown } from '@/components/admin/NotificationControlPanel';
 import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
@@ -85,6 +85,7 @@ const NAV = [
   { id:'trends',        icon:'📈', label:'Trends'         },
   { section:'Actions' },
   { id:'followup',      icon:'📞', label:'Follow-Up',  badge:true },
+  { id:'comms',         icon:'📢', label:'Communications' },
   { id:'heatmap',       icon:'🗺️',  label:'City Heatmap'  },
   { id:'recent',        icon:'🕐', label:'Recent Activity'},
   { section:'Management' },
@@ -394,6 +395,417 @@ function StudentDetailModal({
   );
 }
 
+// ── Communications / Broadcast Page ────────────────────────────────────────
+type BroadcastResult = { name:string; type:string; recipient:string; status:'sent'|'failed'|'skipped'; error?:string };
+
+function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders, showToast }:{
+  programs:  Row[]; schools: Row[]; templates: Row[];
+  BACKEND:   string;
+  authHeaders: ()=>HeadersInit;
+  showToast: (t:string,i?:string)=>void;
+}) {
+  // ── Step state ─────────────────────────────────────────────────
+  const [step, setStep] = useState<1|2|3|4|5>(1);
+
+  // ── Selections ─────────────────────────────────────────────────
+  const [programId,      setProgramId]      = useState('');
+  const [selectedSchools,setSelectedSchools] = useState<Set<string>>(new Set());
+  const [recipients,     setRecipients]     = useState<Set<'schools'|'students'>>(new Set(['schools']));
+  const [channel,        setChannel]        = useState<'email'|'whatsapp'|''>('');
+  const [templateId,     setTemplateId]     = useState('');
+
+  // ── School search/filter ───────────────────────────────────────
+  const [schoolSearch,   setSchoolSearch]   = useState('');
+
+  // ── Send state ─────────────────────────────────────────────────
+  const [sending,   setSending]   = useState(false);
+  const [result,    setResult]    = useState<{sent:number;failed:number;skipped:number;total:number;results:BroadcastResult[]}|null>(null);
+  const [resultFilter, setResultFilter] = useState<'all'|'sent'|'failed'|'skipped'>('all');
+
+  // Derived
+  const filteredSchools = useMemo(()=>{
+    const base = programId ? schools.filter(s=>s.project_id===programId && s.is_active!==false) : schools.filter(s=>s.is_active!==false);
+    const q = schoolSearch.toLowerCase();
+    return q ? base.filter(s=>s.name?.toLowerCase().includes(q)||s.city?.toLowerCase().includes(q)||s.state?.toLowerCase().includes(q)) : base;
+  }, [schools, programId, schoolSearch]);
+
+  const filteredTemplates = useMemo(()=>{
+    if (!channel) return [];
+    return templates.filter(t=>t.channel===channel && t.is_active!==false);
+  }, [templates, channel]);
+
+  const selectedTemplate = templates.find(t=>t.id===templateId);
+
+  function toggleSchool(id:string) {
+    setSelectedSchools(prev=>{ const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+  }
+  function toggleAllSchools() {
+    if(selectedSchools.size===filteredSchools.length) setSelectedSchools(new Set());
+    else setSelectedSchools(new Set(filteredSchools.map(s=>s.id)));
+  }
+  function toggleRecipient(r:'schools'|'students') {
+    setRecipients(prev=>{ const n=new Set(prev); n.has(r)?n.size>1&&n.delete(r):n.add(r); return n; });
+  }
+
+  function reset() {
+    setProgramId(''); setSelectedSchools(new Set()); setRecipients(new Set(['schools']));
+    setChannel(''); setTemplateId(''); setResult(null); setStep(1); setSchoolSearch('');
+  }
+
+  async function handleSend() {
+    if(!channel||!templateId||selectedSchools.size===0||recipients.size===0) return;
+    setSending(true);
+    const headers = { ...(authHeaders() as any), 'Content-Type':'application/json' };
+    try {
+      const res = await fetch(`${BACKEND}/api/admin/broadcast`, {
+        method:'POST', headers,
+        body: JSON.stringify({
+          channel, template_id:templateId,
+          school_ids: Array.from(selectedSchools),
+          recipients: Array.from(recipients),
+        }),
+      });
+      const data = await res.json();
+      if(!res.ok) { showToast(data.error||'Broadcast failed','❌'); return; }
+      setResult(data);
+      setStep(5);
+      showToast(`✅ Sent ${data.sent}, Failed ${data.failed}, Skipped ${data.skipped}`,'📢');
+    } catch(e:any) {
+      showToast(e.message||'Network error','❌');
+    } finally { setSending(false); }
+  }
+
+  // ── Styles ─────────────────────────────────────────────────────
+  const card: React.CSSProperties = { background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:14, padding:'20px 22px', marginBottom:20 };
+  const stepBtn = (active:boolean, done:boolean): React.CSSProperties => ({
+    width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+    fontWeight:800, fontSize:13, flexShrink:0,
+    background: done?'#10b981':active?'var(--acc)':'var(--bg)',
+    color: done||active?'#fff':'var(--m)',
+    border: done?'2px solid #10b981':active?'2px solid var(--acc)':'2px solid var(--bd)',
+  });
+  const chipSel = (active:boolean): React.CSSProperties => ({
+    padding:'7px 16px', borderRadius:8, cursor:'pointer', fontSize:13, fontWeight:700,
+    border:`1.5px solid ${active?'var(--acc)':'var(--bd)'}`,
+    background: active?'var(--acc3)':'transparent',
+    color: active?'var(--acc)':'var(--m)',
+    transition:'all .12s',
+  });
+
+  const steps = [
+    { n:1, label:'Program'   },
+    { n:2, label:'Schools'   },
+    { n:3, label:'Recipients'},
+    { n:4, label:'Channel & Template'},
+    { n:5, label:'Results'   },
+  ] as const;
+
+  const canProceed = [
+    true,                           // step 1 always ok (program optional)
+    selectedSchools.size>0,         // step 2
+    recipients.size>0,              // step 3
+    !!channel && !!templateId,      // step 4
+    true,                           // step 5
+  ];
+
+  const filteredResults = result?.results.filter(r=> resultFilter==='all'||r.status===resultFilter) ?? [];
+
+  return (
+    <div>
+      <div className="topbar">
+        <div className="topbar-left">
+          <h1>📢 <span>Communications</span></h1>
+          <p>Broadcast email or WhatsApp to schools &amp; students</p>
+        </div>
+        {result && <div className="topbar-right"><button className="btn btn-outline" onClick={reset}>+ New Broadcast</button></div>}
+      </div>
+
+      {/* ── Stepper ── */}
+      <div style={{display:'flex',alignItems:'center',gap:0,marginBottom:24,overflowX:'auto',paddingBottom:4}}>
+        {steps.map((s,i)=>(
+          <React.Fragment key={s.n}>
+            <div style={{display:'flex',alignItems:'center',gap:8,cursor:s.n<step?'pointer':'default',opacity:s.n>step?0.4:1}}
+              onClick={()=>{ if(s.n<step) setStep(s.n as any); }}>
+              <div style={stepBtn(step===s.n, step>s.n)}>{step>s.n?'✓':s.n}</div>
+              <span style={{fontSize:13,fontWeight:step===s.n?700:500,color:step===s.n?'var(--acc)':step>s.n?'#10b981':'var(--m)',whiteSpace:'nowrap'}}>{s.label}</span>
+            </div>
+            {i<steps.length-1 && <div style={{flex:1,height:2,minWidth:20,background:step>s.n?'#10b981':'var(--bd)',margin:'0 8px'}}/>}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* ═══ STEP 1: Program ═══════════════════════════════════════ */}
+      {step===1 && (
+        <div style={card}>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>🎯 Select Program</div>
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:16}}>Filter schools by program, or leave blank to see all schools.</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:10}}>
+            <div onClick={()=>setProgramId('')} style={{...chipSel(programId===''),padding:'10px 18px'}}>
+              🌐 All Programs
+            </div>
+            {programs.filter(p=>p.status==='active').map(p=>(
+              <div key={p.id} onClick={()=>setProgramId(p.id)} style={{...chipSel(programId===p.id),padding:'10px 18px'}}>
+                🎯 {p.name}
+              </div>
+            ))}
+          </div>
+          <div style={{display:'flex',justifyContent:'flex-end',marginTop:20}}>
+            <button className="btn btn-primary" onClick={()=>setStep(2)}>Next: Select Schools →</button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ STEP 2: Schools ════════════════════════════════════════ */}
+      {step===2 && (
+        <div style={card}>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>🏫 Select Schools</div>
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:14}}>
+            {programId ? `Showing schools under: ${programs.find(p=>p.id===programId)?.name}` : 'All active schools'}
+            {' '}· {filteredSchools.length} available
+          </div>
+          {/* Search */}
+          <div style={{position:'relative',marginBottom:12}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'var(--m)'}}>🔍</span>
+            <input value={schoolSearch} onChange={e=>setSchoolSearch(e.target.value)}
+              placeholder="Search by name, city, state…"
+              style={{width:'100%',padding:'8px 12px 8px 32px',borderRadius:8,border:'1.5px solid var(--bd)',fontSize:13,background:'var(--bg)',color:'var(--text)',outline:'none',boxSizing:'border-box' as any}} />
+          </div>
+          {/* Select all row */}
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'var(--acc3)',borderRadius:8,marginBottom:8,cursor:'pointer'}} onClick={toggleAllSchools}>
+            <input type="checkbox" readOnly
+              checked={filteredSchools.length>0&&selectedSchools.size===filteredSchools.length}
+              ref={el=>{if(el)el.indeterminate=selectedSchools.size>0&&selectedSchools.size<filteredSchools.length;}}
+              style={{width:15,height:15,cursor:'pointer'}}/>
+            <span style={{fontWeight:700,fontSize:13,color:'var(--acc)'}}>
+              {selectedSchools.size===filteredSchools.length&&filteredSchools.length>0?'Deselect All':`Select All (${filteredSchools.length})`}
+            </span>
+            {selectedSchools.size>0 && <span style={{marginLeft:'auto',fontSize:12,color:'var(--acc)',fontWeight:700}}>{selectedSchools.size} selected</span>}
+          </div>
+          {/* School list */}
+          <div style={{maxHeight:340,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+            {filteredSchools.length===0
+              ? <div style={{textAlign:'center',padding:24,color:'var(--m)',fontSize:13}}>No schools found.</div>
+              : filteredSchools.map(s=>{
+                const prog = programs.find(p=>p.id===s.project_id);
+                const contact = s.contact_persons?.[0];
+                const isSel = selectedSchools.has(s.id);
+                return (
+                  <div key={s.id} onClick={()=>toggleSchool(s.id)}
+                    style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderRadius:8,cursor:'pointer',
+                      border:`1.5px solid ${isSel?'var(--acc)':'var(--bd)'}`,
+                      background:isSel?'var(--acc3)':'transparent',transition:'all .1s'}}>
+                    <input type="checkbox" readOnly checked={isSel} style={{width:15,height:15,cursor:'pointer',flexShrink:0}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:13,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
+                      <div style={{fontSize:11,color:'var(--m)'}}>{[s.city,s.state].filter(Boolean).join(', ')}{prog?` · ${prog.name}`:''}</div>
+                    </div>
+                    {contact && <div style={{fontSize:11,color:'var(--m)',textAlign:'right',flexShrink:0}}>{contact.name}<br/>{contact.mobile}</div>}
+                  </div>
+                );
+              })
+            }
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:16}}>
+            <button className="btn btn-outline" onClick={()=>setStep(1)}>← Back</button>
+            <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={()=>setStep(3)}>
+              Next: Recipients ({selectedSchools.size} schools) →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ STEP 3: Recipients ═════════════════════════════════════ */}
+      {step===3 && (
+        <div style={card}>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>👥 Who to Send To?</div>
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:20}}>Choose one or both recipient groups. Multi-select allowed.</div>
+          <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
+            {([
+              { id:'schools'  as const, icon:'🏫', label:'School Contacts', desc:'Sends to the primary contact person of each selected school' },
+              { id:'students' as const, icon:'👨‍🎓', label:'Students / Parents', desc:'Sends to all registered students under the selected schools' },
+            ]).map(r=>{
+              const active = recipients.has(r.id);
+              return (
+                <div key={r.id} onClick={()=>toggleRecipient(r.id)} style={{
+                  flex:1, minWidth:200, padding:'18px 20px', borderRadius:12, cursor:'pointer',
+                  border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,
+                  background:active?'var(--acc3)':'var(--bg)', transition:'all .12s',
+                }}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+                    <span style={{fontSize:22}}>{r.icon}</span>
+                    <span style={{fontWeight:800,fontSize:15,color:active?'var(--acc)':'var(--text)'}}>{r.label}</span>
+                    {active && <span style={{marginLeft:'auto',fontSize:16}}>✅</span>}
+                  </div>
+                  <div style={{fontSize:12,color:'var(--m)',lineHeight:1.5}}>{r.desc}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{marginTop:16,padding:'10px 14px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bd)',fontSize:12,color:'var(--m)'}}>
+            📋 Summary: <strong>{selectedSchools.size} school{selectedSchools.size!==1?'s':''}</strong> selected
+            {' · '}Sending to: <strong>{Array.from(recipients).join(' + ')}</strong>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:16}}>
+            <button className="btn btn-outline" onClick={()=>setStep(2)}>← Back</button>
+            <button className="btn btn-primary" disabled={recipients.size===0} onClick={()=>setStep(4)}>Next: Choose Message →</button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ STEP 4: Channel & Template ═════════════════════════════ */}
+      {step===4 && (
+        <div style={card}>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>✉️ Channel &amp; Template</div>
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:16}}>Choose how to send and which message template to use.</div>
+
+          {/* Channel */}
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase' as const,letterSpacing:'.04em',marginBottom:10}}>Channel</div>
+            <div style={{display:'flex',gap:12}}>
+              {([
+                {id:'email' as const,    icon:'✉️', label:'Email'},
+                {id:'whatsapp' as const, icon:'💬', label:'WhatsApp'},
+              ]).map(c=>(
+                <div key={c.id} onClick={()=>{setChannel(c.id);setTemplateId('');}} style={{
+                  flex:1, padding:'14px 18px', borderRadius:10, cursor:'pointer',
+                  border:`2px solid ${channel===c.id?'var(--acc)':'var(--bd)'}`,
+                  background:channel===c.id?'var(--acc3)':'var(--bg)',
+                  display:'flex',alignItems:'center',gap:10,transition:'all .12s',
+                }}>
+                  <span style={{fontSize:22}}>{c.icon}</span>
+                  <span style={{fontWeight:800,fontSize:15,color:channel===c.id?'var(--acc)':'var(--text)'}}>{c.label}</span>
+                  {channel===c.id && <span style={{marginLeft:'auto',fontSize:16}}>✅</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Template */}
+          {channel && (
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase' as const,letterSpacing:'.04em',marginBottom:10}}>
+                Template <span style={{fontWeight:400,textTransform:'none' as const}}>— {filteredTemplates.length} active {channel} template{filteredTemplates.length!==1?'s':''}</span>
+              </div>
+              {filteredTemplates.length===0
+                ? <div style={{padding:'16px 14px',borderRadius:8,background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.2)',fontSize:13,color:'#ef4444'}}>
+                    No active {channel} templates found. Create one in Message Templates first.
+                  </div>
+                : <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
+                    {filteredTemplates.map(t=>{
+                      const active = templateId===t.id;
+                      return (
+                        <div key={t.id} onClick={()=>setTemplateId(t.id)} style={{
+                          padding:'14px 16px', borderRadius:10, cursor:'pointer',
+                          border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,
+                          background:active?'var(--acc3)':'var(--bg)', transition:'all .12s',
+                        }}>
+                          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}>
+                            <span style={{fontWeight:700,fontSize:14,color:active?'var(--acc)':'var(--text)'}}>{t.name}</span>
+                            {t.project_id
+                              ? <span style={{fontSize:11,padding:'2px 8px',borderRadius:100,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',fontWeight:700}}>🎯 {(t as any).projects?.name??'Program-specific'}</span>
+                              : <span style={{fontSize:11,padding:'2px 8px',borderRadius:100,background:'var(--bg)',color:'var(--m)',border:'1px solid var(--bd)'}}>🌐 Global</span>
+                            }
+                            {active && <span style={{marginLeft:'auto',fontSize:16}}>✅</span>}
+                          </div>
+                          {t.subject && <div style={{fontSize:12,color:'var(--m)'}}>Subject: {t.subject}</div>}
+                          <div style={{fontSize:11,color:'var(--m)',marginTop:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'100%'}}>{t.body?.slice(0,120)}…</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+              }
+            </div>
+          )}
+
+          {/* Summary before send */}
+          {channel && templateId && (
+            <div style={{padding:'14px 16px',borderRadius:10,background:'rgba(16,185,129,0.06)',border:'1.5px solid rgba(16,185,129,0.25)',marginBottom:16}}>
+              <div style={{fontWeight:700,fontSize:13,color:'#10b981',marginBottom:8}}>📋 Ready to Send</div>
+              <div style={{fontSize:12,color:'var(--text)',lineHeight:1.9}}>
+                <div>📡 Channel: <strong>{channel}</strong></div>
+                <div>🏫 Schools: <strong>{selectedSchools.size}</strong></div>
+                <div>👥 Recipients: <strong>{Array.from(recipients).join(' + ')}</strong></div>
+                <div>📄 Template: <strong>{selectedTemplate?.name}</strong></div>
+              </div>
+            </div>
+          )}
+
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
+            <button className="btn btn-outline" onClick={()=>setStep(3)}>← Back</button>
+            <button className="btn btn-primary"
+              disabled={!channel||!templateId||sending}
+              style={{background:sending?'var(--m)':undefined,minWidth:140}}
+              onClick={handleSend}>
+              {sending
+                ? <span style={{display:'flex',alignItems:'center',gap:8}}><span style={{animation:'spin 1s linear infinite',display:'inline-block'}}>⏳</span> Sending…</span>
+                : `📢 Send Broadcast`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ STEP 5: Results ════════════════════════════════════════ */}
+      {step===5 && result && (
+        <div style={card}>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:16}}>📊 Broadcast Results</div>
+          {/* Stats */}
+          <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+            {[
+              {label:'Sent',    val:result.sent,    color:'#10b981', bg:'rgba(16,185,129,0.08)',  icon:'✅'},
+              {label:'Failed',  val:result.failed,  color:'#ef4444', bg:'rgba(239,68,68,0.08)',   icon:'❌'},
+              {label:'Skipped', val:result.skipped, color:'#f59e0b', bg:'rgba(245,158,11,0.08)',  icon:'⚠️'},
+              {label:'Total',   val:result.total,   color:'var(--acc)',bg:'var(--acc3)',           icon:'📬'},
+            ].map(s=>(
+              <div key={s.label} style={{flex:1,minWidth:120,padding:'14px 16px',borderRadius:10,background:s.bg,border:`1px solid ${s.color}30`,textAlign:'center' as const}}>
+                <div style={{fontSize:24,fontWeight:800,color:s.color,fontFamily:'Sora,sans-serif'}}>{s.val}</div>
+                <div style={{fontSize:12,color:'var(--m)',marginTop:2}}>{s.icon} {s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Filter tabs */}
+          <div style={{display:'flex',gap:6,marginBottom:12}}>
+            {(['all','sent','failed','skipped'] as const).map(f=>(
+              <button key={f} onClick={()=>setResultFilter(f)} style={{
+                padding:'5px 14px',borderRadius:20,border:'1.5px solid var(--bd)',fontSize:12,fontWeight:700,cursor:'pointer',
+                background:resultFilter===f?'var(--acc)':'transparent',
+                color:resultFilter===f?'#fff':'var(--m)',
+              }}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>
+            ))}
+          </div>
+
+          {/* Results table */}
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Type</th><th>Recipient</th><th>Status</th><th>Note</th></tr>
+              </thead>
+              <tbody>
+                {filteredResults.length===0
+                  ? <tr><td colSpan={5} className="table-empty">No results for this filter.</td></tr>
+                  : filteredResults.map((r,i)=>(
+                    <tr key={i}>
+                      <td style={{fontWeight:600}}>{r.name}</td>
+                      <td><span className="gw-tag">{r.type}</span></td>
+                      <td style={{fontSize:12,color:'var(--m)'}}>{r.recipient}</td>
+                      <td>
+                        <span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>
+                          {r.status==='sent'?'✅ Sent':r.status==='failed'?'❌ Failed':'⚠️ Skipped'}
+                        </span>
+                      </td>
+                      <td style={{fontSize:11,color:'var(--m)'}}>{r.error??'—'}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [user, setUser]               = useState<any>(null);
@@ -556,6 +968,7 @@ export default function AdminDashboard() {
     if (activePage === 'integrations') loadIntegrations();
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')  { loadTemplates(); loadPrograms(); }
+    if (activePage === 'comms')      { loadPrograms(); loadSchools(); loadTemplates(); }
     if (activePage === 'locations')    loadLocations();
     if (activePage === 'recent') {
       api('/api/admin/activity-logs?limit=200').then((d: any) => setActivityLogs(d.logs ?? [])).catch(() => {});
@@ -1495,6 +1908,20 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table></div>
+          </div>
+
+          {/* ── COMMUNICATIONS ───────────────────────────────────────── */}
+          <div className={`page${activePage==='comms'?' active':''}`}>
+            {activePage==='comms' && (
+              <CommunicationsPage
+                programs={programs}
+                schools={schools}
+                templates={templates}
+                BACKEND={BACKEND}
+                authHeaders={authHeaders}
+                showToast={showToast}
+              />
+            )}
           </div>
 
           {/* ── LOCATION MASTER ──────────────────────────────────────── */}
