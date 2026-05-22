@@ -781,8 +781,12 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
                     onChange={e=>{setStudentStatusFilter(e.target.value);}}
                     style={{padding:'5px 10px',borderRadius:7,border:`1.5px solid ${studentStatusFilter?'var(--acc)':'var(--bd)'}`,fontSize:12,background:'var(--card)',color:studentStatusFilter?'var(--acc)':'var(--m)',outline:'none',fontWeight:studentStatusFilter?700:400,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>
                     <option value="">All Statuses</option>
-                    {[...new Set(allStudents.map((s:any)=>s.payment_status).filter(Boolean))].map((st:any)=>(
-                      <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)} ({allStudents.filter((s:any)=>s.payment_status===st).length})</option>
+                    {['paid','initiated','pending','failed','cancelled'].map((st)=>{
+  const cnt = allStudents.filter((s:any)=>s.payment_status===st).length;
+  return cnt > 0 ? (
+    <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)} ({cnt})</option>
+  ) : null;
+})}
                     ))}
                   </select>
                   <div style={{position:'relative'}}>
@@ -846,7 +850,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
               const cnt = isNone?0:selectedContacts.size===0?allCKeys.length:allCKeys.filter(k=>selectedContacts.has(k)).length;
               return <> · <strong>{cnt} school contact{cnt!==1?'s':''}</strong></>;
             })()}
-            {recipients.has('students')&&!loadingStudents&&<> · <strong>{selectedStudents.size}</strong> students selected</>}
+            {recipients.has('students')&&!loadingStudents&&<> · <strong>{filteredStudents.filter((s:any)=>selectedStudents.has(s.id)).length}</strong> students selected (of {selectedStudents.size} total)</>}
           </div>
 
           <div style={{display:'flex',justifyContent:'space-between'}}>
