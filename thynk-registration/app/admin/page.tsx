@@ -401,154 +401,178 @@ type BroadcastResult = { name:string; type:string; recipient:string; status:'sen
 type SmtpOption = { id:string; name:string; fromName:string; fromEmail:string; smtpUser:string; program_id:string|null };
 
 function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders, showToast }:{
-  programs:  Row[]; schools: Row[]; templates: Row[];
-  BACKEND:   string;
-  authHeaders: ()=>HeadersInit;
-  showToast: (t:string,i?:string)=>void;
+  programs:Row[]; schools:Row[]; templates:Row[];
+  BACKEND:string; authHeaders:()=>HeadersInit; showToast:(t:string,i?:string)=>void;
 }) {
-  // ── Step state ─────────────────────────────────────────────────
-  const [step, setStep] = useState<1|2|3|4|5>(1);
+  const [step,            setStep]            = useState<1|2|3|4|5>(1);
+  const [programId,       setProgramId]       = useState('');
+  const [selectedSchools, setSelectedSchools] = useState<Set<string>>(new Set());
+  const [recipients,      setRecipients]      = useState<Set<'schools'|'students'>>(new Set(['schools']));
+  const [channel,         setChannel]         = useState<'email'|'whatsapp'|''>(''  );
+  const [templateId,      setTemplateId]      = useState('');
+  const [schoolSearch,    setSchoolSearch]    = useState('');
+  const [studentSearch,   setStudentSearch]   = useState('');
 
-  // ── Selections ─────────────────────────────────────────────────
-  const [programId,      setProgramId]      = useState('');
-  const [selectedSchools,setSelectedSchools] = useState<Set<string>>(new Set());
-  const [recipients,     setRecipients]     = useState<Set<'schools'|'students'>>(new Set(['schools']));
-  const [channel,        setChannel]        = useState<'email'|'whatsapp'|''>('');
-  const [templateId,     setTemplateId]     = useState('');
+  // Students
+  const [allStudents,      setAllStudents]      = useState<any[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [loadingStudents,  setLoadingStudents]  = useState(false);
 
-  // ── School search/filter ───────────────────────────────────────
-  const [schoolSearch,   setSchoolSearch]   = useState('');
+  // Email / SMTP
+  const [smtpOptions,  setSmtpOptions]  = useState<SmtpOption[]>([]);
+  const [smtpConfigId, setSmtpConfigId] = useState('');
+  const [waProvider,   setWaProvider]   = useState<{provider:string;label:string}|null>(null);
 
-  // ── Send state ─────────────────────────────────────────────────
-  const [sending,   setSending]   = useState(false);
-  const [result,    setResult]    = useState<{sent:number;failed:number;skipped:number;total:number;results:BroadcastResult[]}|null>(null);
+  const [sending,      setSending]      = useState(false);
+  const [result,       setResult]       = useState<{sent:number;failed:number;skipped:number;total:number;results:BroadcastResult[]}|null>(null);
   const [resultFilter, setResultFilter] = useState<'all'|'sent'|'failed'|'skipped'>('all');
 
-  // Derived
+  // Load SMTP configs on mount
+  useEffect(()=>{
+    const h = authHeaders() as any;
+    fetch(`${BACKEND}/api/admin/broadcast/config`,{headers:h})
+      .then(r=>r.json())
+      .then(d=>{
+        const opts = d.smtpConfigs ?? [];
+        setSmtpOptions(opts);
+        setWaProvider(d.whatsappProvider ?? null);
+        if(opts[0]) setSmtpConfigId(opts[0].id);
+      }).catch(()=>{});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  // Filtered school list
   const filteredSchools = useMemo(()=>{
-    const base = programId ? schools.filter(s=>s.project_id===programId && s.is_active!==false) : schools.filter(s=>s.is_active!==false);
+    const base = schools.filter(s=>(programId ? s.project_id===programId : true) && s.is_active!==false);
     const q = schoolSearch.toLowerCase();
     return q ? base.filter(s=>s.name?.toLowerCase().includes(q)||s.city?.toLowerCase().includes(q)||s.state?.toLowerCase().includes(q)) : base;
-  }, [schools, programId, schoolSearch]);
+  },[schools,programId,schoolSearch]);
 
-  const filteredTemplates = useMemo(()=>{
-    if (!channel) return [];
-    return templates.filter(t=>t.channel===channel && t.is_active!==false);
-  }, [templates, channel]);
+  // Filtered template list
+  const filteredTemplates = useMemo(()=>
+    channel ? templates.filter(t=>t.channel===channel && t.is_active!==false) : []
+  ,[templates,channel]);
+
+  // Filtered student list
+  const filteredStudents = useMemo(()=>{
+    const q = studentSearch.toLowerCase();
+    return q ? allStudents.filter(s=>
+      s.student_name?.toLowerCase().includes(q)||
+      s.contact_email?.toLowerCase().includes(q)||
+      s.contact_phone?.includes(q)||
+      s.class_grade?.toLowerCase().includes(q)
+    ) : allStudents;
+  },[allStudents,studentSearch]);
 
   const selectedTemplate = templates.find(t=>t.id===templateId);
+  const selectedSmtp     = smtpOptions.find(s=>s.id===smtpConfigId);
 
-  function toggleSchool(id:string) {
-    setSelectedSchools(prev=>{ const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
-  }
-  function toggleAllSchools() {
-    if(selectedSchools.size===filteredSchools.length) setSelectedSchools(new Set());
-    else setSelectedSchools(new Set(filteredSchools.map(s=>s.id)));
-  }
-  function toggleRecipient(r:'schools'|'students') {
-    setRecipients(prev=>{ const n=new Set(prev); n.has(r)?n.size>1&&n.delete(r):n.add(r); return n; });
+  function toggleSchool(id:string){ setSelectedSchools(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; }); }
+  function toggleAllSchools(){ filteredSchools.length>0&&selectedSchools.size===filteredSchools.length ? setSelectedSchools(new Set()) : setSelectedSchools(new Set(filteredSchools.map(s=>s.id))); }
+  function toggleRecipient(r:'schools'|'students'){ setRecipients(p=>{ const n=new Set(p); (n.has(r)&&n.size>1)?n.delete(r):n.add(r); return n; }); }
+  function toggleStudent(id:string){ setSelectedStudents(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; }); }
+  function toggleAllStudents(){ filteredStudents.length>0&&selectedStudents.size===filteredStudents.length ? setSelectedStudents(new Set()) : setSelectedStudents(new Set(filteredStudents.map((s:any)=>s.id))); }
+
+  async function loadStudents(schoolIds:string[]){
+    if(!schoolIds.length){ setAllStudents([]); setSelectedStudents(new Set()); return; }
+    setLoadingStudents(true);
+    try {
+      const h = { ...(authHeaders() as any), 'Content-Type':'application/json' };
+      const res = await fetch(`${BACKEND}/api/admin/registrations?school_ids=${schoolIds.join(',')}`,{headers:h});
+      const d   = await res.json();
+      const regs = (d.registrations ?? d.data ?? []) as any[];
+      setAllStudents(regs);
+      setSelectedStudents(new Set(regs.map((r:any)=>r.id)));
+    } catch { setAllStudents([]); }
+    setLoadingStudents(false);
   }
 
-  function reset() {
+  async function goToStep3(){
+    if(recipients.has('students')) await loadStudents(Array.from(selectedSchools));
+    setStep(3);
+  }
+
+  async function goToStep4(){
+    setStep(4);
+  }
+
+  function reset(){
     setProgramId(''); setSelectedSchools(new Set()); setRecipients(new Set(['schools']));
-    setChannel(''); setTemplateId(''); setResult(null); setStep(1); setSchoolSearch('');
+    setChannel(''); setTemplateId(''); setResult(null); setStep(1);
+    setSchoolSearch(''); setStudentSearch(''); setAllStudents([]); setSelectedStudents(new Set());
+    if(smtpOptions[0]) setSmtpConfigId(smtpOptions[0].id);
   }
 
-  async function handleSend() {
+  async function handleSend(){
     if(!channel||!templateId||selectedSchools.size===0||recipients.size===0) return;
     setSending(true);
-    const headers = { ...(authHeaders() as any), 'Content-Type':'application/json' };
+    const h = { ...(authHeaders() as any), 'Content-Type':'application/json' };
     try {
-      const res = await fetch(`${BACKEND}/api/admin/broadcast`, {
-        method:'POST', headers,
-        body: JSON.stringify({
-          channel, template_id:templateId,
-          school_ids: Array.from(selectedSchools),
-          recipients: Array.from(recipients),
-        }),
-      });
+      const body:any = {
+        channel, template_id:templateId,
+        school_ids: Array.from(selectedSchools),
+        recipients: Array.from(recipients),
+      };
+      if(channel==='email' && smtpConfigId) body.smtp_config_id = smtpConfigId;
+      if(recipients.has('students') && selectedStudents.size>0) body.student_ids = Array.from(selectedStudents);
+      const res  = await fetch(`${BACKEND}/api/admin/broadcast`,{method:'POST',headers:h,body:JSON.stringify(body)});
       const data = await res.json();
-      if(!res.ok) { showToast(data.error||'Broadcast failed','❌'); return; }
-      setResult(data);
-      setStep(5);
-      showToast(`✅ Sent ${data.sent}, Failed ${data.failed}, Skipped ${data.skipped}`,'📢');
-    } catch(e:any) {
-      showToast(e.message||'Network error','❌');
-    } finally { setSending(false); }
+      if(!res.ok){ showToast(data.error||'Broadcast failed','❌'); return; }
+      setResult(data); setStep(5);
+      showToast(`Sent ${data.sent} · Failed ${data.failed} · Skipped ${data.skipped}`,'📢');
+    } catch(e:any){ showToast(e.message||'Network error','❌'); }
+    finally{ setSending(false); }
   }
 
-  // ── Styles ─────────────────────────────────────────────────────
-  const card: React.CSSProperties = { background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:14, padding:'20px 22px', marginBottom:20 };
-  const stepBtn = (active:boolean, done:boolean): React.CSSProperties => ({
-    width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
-    fontWeight:800, fontSize:13, flexShrink:0,
-    background: done?'#10b981':active?'var(--acc)':'var(--bg)',
-    color: done||active?'#fff':'var(--m)',
-    border: done?'2px solid #10b981':active?'2px solid var(--acc)':'2px solid var(--bd)',
+  // ── Shared styles ───────────────────────────────────────────────
+  const card:React.CSSProperties = {background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:14,padding:'20px 22px',marginBottom:20};
+  const dot = (active:boolean,done:boolean):React.CSSProperties => ({
+    width:30,height:30,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+    fontWeight:800,fontSize:12,flexShrink:0,
+    background:done?'#10b981':active?'var(--acc)':'var(--bg)',
+    color:done||active?'#fff':'var(--m)',
+    border:done?'2px solid #10b981':active?'2px solid var(--acc)':'2px solid var(--bd)',
   });
-  const chipSel = (active:boolean): React.CSSProperties => ({
-    padding:'7px 16px', borderRadius:8, cursor:'pointer', fontSize:13, fontWeight:700,
+  const chip = (active:boolean):React.CSSProperties => ({
+    padding:'9px 18px',borderRadius:9,cursor:'pointer',fontSize:13,fontWeight:700,
+    userSelect:'none' as const,transition:'all .12s',
     border:`1.5px solid ${active?'var(--acc)':'var(--bd)'}`,
-    background: active?'var(--acc3)':'transparent',
-    color: active?'var(--acc)':'var(--m)',
-    transition:'all .12s',
+    background:active?'var(--acc3)':'transparent',color:active?'var(--acc)':'var(--m)',
   });
 
-  const steps = [
-    { n:1, label:'Program'   },
-    { n:2, label:'Schools'   },
-    { n:3, label:'Recipients'},
-    { n:4, label:'Channel & Template'},
-    { n:5, label:'Results'   },
-  ] as const;
-
-  const canProceed = [
-    true,                           // step 1 always ok (program optional)
-    selectedSchools.size>0,         // step 2
-    recipients.size>0,              // step 3
-    !!channel && !!templateId,      // step 4
-    true,                           // step 5
-  ];
-
-  const filteredResults = result?.results.filter(r=> resultFilter==='all'||r.status===resultFilter) ?? [];
+  const STEPS = [{n:1,label:'Program'},{n:2,label:'Schools'},{n:3,label:'Recipients & Students'},{n:4,label:'Channel & Template'},{n:5,label:'Results'}] as const;
+  const filteredResults = result?.results.filter(r=>resultFilter==='all'||r.status===resultFilter)??[];
 
   return (
     <div>
       <div className="topbar">
-        <div className="topbar-left">
-          <h1>📢 <span>Communications</span></h1>
-          <p>Broadcast email or WhatsApp to schools &amp; students</p>
-        </div>
-        {result && <div className="topbar-right"><button className="btn btn-outline" onClick={reset}>+ New Broadcast</button></div>}
+        <div className="topbar-left"><h1>📢 <span>Communications</span></h1><p>Broadcast email or WhatsApp to schools &amp; students</p></div>
+        {result&&<div className="topbar-right"><button className="btn btn-outline" onClick={reset}>+ New Broadcast</button></div>}
       </div>
 
-      {/* ── Stepper ── */}
+      {/* Stepper */}
       <div style={{display:'flex',alignItems:'center',gap:0,marginBottom:24,overflowX:'auto',paddingBottom:4}}>
-        {steps.map((s,i)=>(
+        {STEPS.map((s,i)=>(
           <React.Fragment key={s.n}>
-            <div style={{display:'flex',alignItems:'center',gap:8,cursor:s.n<step?'pointer':'default',opacity:s.n>step?0.4:1}}
+            <div style={{display:'flex',alignItems:'center',gap:7,cursor:s.n<step?'pointer':'default',opacity:s.n>step?0.4:1}}
               onClick={()=>{ if(s.n<step) setStep(s.n as any); }}>
-              <div style={stepBtn(step===s.n, step>s.n)}>{step>s.n?'✓':s.n}</div>
-              <span style={{fontSize:13,fontWeight:step===s.n?700:500,color:step===s.n?'var(--acc)':step>s.n?'#10b981':'var(--m)',whiteSpace:'nowrap'}}>{s.label}</span>
+              <div style={dot(step===s.n,step>s.n)}>{step>s.n?'✓':s.n}</div>
+              <span style={{fontSize:12,fontWeight:step===s.n?700:500,whiteSpace:'nowrap',color:step===s.n?'var(--acc)':step>s.n?'#10b981':'var(--m)'}}>{s.label}</span>
             </div>
-            {i<steps.length-1 && <div style={{flex:1,height:2,minWidth:20,background:step>s.n?'#10b981':'var(--bd)',margin:'0 8px'}}/>}
+            {i<STEPS.length-1&&<div style={{flex:1,height:2,minWidth:14,background:step>s.n?'#10b981':'var(--bd)',margin:'0 6px'}}/>}
           </React.Fragment>
         ))}
       </div>
 
-      {/* ═══ STEP 1: Program ═══════════════════════════════════════ */}
-      {step===1 && (
+      {/* ═══ STEP 1: Program ══════════════════════════════════════ */}
+      {step===1&&(
         <div style={card}>
           <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>🎯 Select Program</div>
-          <div style={{fontSize:12,color:'var(--m)',marginBottom:16}}>Filter schools by program, or leave blank to see all schools.</div>
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:16}}>Filter schools by program, or leave blank for all.</div>
           <div style={{display:'flex',flexWrap:'wrap',gap:10}}>
-            <div onClick={()=>setProgramId('')} style={{...chipSel(programId===''),padding:'10px 18px'}}>
-              🌐 All Programs
-            </div>
+            <div onClick={()=>setProgramId('')} style={chip(programId==='')}>🌐 All Programs</div>
             {programs.filter(p=>p.status==='active').map(p=>(
-              <div key={p.id} onClick={()=>setProgramId(p.id)} style={{...chipSel(programId===p.id),padding:'10px 18px'}}>
-                🎯 {p.name}
-              </div>
+              <div key={p.id} onClick={()=>setProgramId(p.id)} style={chip(programId===p.id)}>🎯 {p.name}</div>
             ))}
           </div>
           <div style={{display:'flex',justifyContent:'flex-end',marginTop:20}}>
@@ -557,51 +581,42 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
         </div>
       )}
 
-      {/* ═══ STEP 2: Schools ════════════════════════════════════════ */}
-      {step===2 && (
+      {/* ═══ STEP 2: Schools ══════════════════════════════════════ */}
+      {step===2&&(
         <div style={card}>
           <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>🏫 Select Schools</div>
-          <div style={{fontSize:12,color:'var(--m)',marginBottom:14}}>
-            {programId ? `Showing schools under: ${programs.find(p=>p.id===programId)?.name}` : 'All active schools'}
-            {' '}· {filteredSchools.length} available
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:12}}>
+            {programId?`Program: ${programs.find(p=>p.id===programId)?.name}`:'All programs'} · {filteredSchools.length} available
           </div>
-          {/* Search */}
-          <div style={{position:'relative',marginBottom:12}}>
-            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:14,color:'var(--m)'}}>🔍</span>
-            <input value={schoolSearch} onChange={e=>setSchoolSearch(e.target.value)}
-              placeholder="Search by name, city, state…"
-              style={{width:'100%',padding:'8px 12px 8px 32px',borderRadius:8,border:'1.5px solid var(--bd)',fontSize:13,background:'var(--bg)',color:'var(--text)',outline:'none',boxSizing:'border-box' as any}} />
+          <div style={{position:'relative',marginBottom:10}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--m)'}}>🔍</span>
+            <input value={schoolSearch} onChange={e=>setSchoolSearch(e.target.value)} placeholder="Search by name, city, state…"
+              style={{width:'100%',padding:'8px 12px 8px 32px',borderRadius:8,border:'1.5px solid var(--bd)',fontSize:13,background:'var(--bg)',color:'var(--text)',outline:'none',boxSizing:'border-box' as any}}/>
           </div>
-          {/* Select all row */}
-          <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'var(--acc3)',borderRadius:8,marginBottom:8,cursor:'pointer'}} onClick={toggleAllSchools}>
-            <input type="checkbox" readOnly
-              checked={filteredSchools.length>0&&selectedSchools.size===filteredSchools.length}
+          <div onClick={toggleAllSchools} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'var(--acc3)',borderRadius:8,marginBottom:8,cursor:'pointer'}}>
+            <input type="checkbox" readOnly checked={filteredSchools.length>0&&selectedSchools.size===filteredSchools.length}
               ref={el=>{if(el)el.indeterminate=selectedSchools.size>0&&selectedSchools.size<filteredSchools.length;}}
               style={{width:15,height:15,cursor:'pointer'}}/>
             <span style={{fontWeight:700,fontSize:13,color:'var(--acc)'}}>
               {selectedSchools.size===filteredSchools.length&&filteredSchools.length>0?'Deselect All':`Select All (${filteredSchools.length})`}
             </span>
-            {selectedSchools.size>0 && <span style={{marginLeft:'auto',fontSize:12,color:'var(--acc)',fontWeight:700}}>{selectedSchools.size} selected</span>}
+            {selectedSchools.size>0&&<span style={{marginLeft:'auto',fontSize:12,color:'var(--acc)',fontWeight:700}}>{selectedSchools.size} selected</span>}
           </div>
-          {/* School list */}
           <div style={{maxHeight:340,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
             {filteredSchools.length===0
-              ? <div style={{textAlign:'center',padding:24,color:'var(--m)',fontSize:13}}>No schools found.</div>
-              : filteredSchools.map(s=>{
-                const prog = programs.find(p=>p.id===s.project_id);
-                const contact = s.contact_persons?.[0];
-                const isSel = selectedSchools.has(s.id);
-                return (
-                  <div key={s.id} onClick={()=>toggleSchool(s.id)}
-                    style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderRadius:8,cursor:'pointer',
-                      border:`1.5px solid ${isSel?'var(--acc)':'var(--bd)'}`,
-                      background:isSel?'var(--acc3)':'transparent',transition:'all .1s'}}>
+              ?<div style={{textAlign:'center',padding:24,color:'var(--m)',fontSize:13}}>No schools found.</div>
+              :filteredSchools.map(s=>{
+                const prog=programs.find(p=>p.id===s.project_id);
+                const contact=s.contact_persons?.[0];
+                const isSel=selectedSchools.has(s.id);
+                return(
+                  <div key={s.id} onClick={()=>toggleSchool(s.id)} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1.5px solid ${isSel?'var(--acc)':'var(--bd)'}`,background:isSel?'var(--acc3)':'transparent',transition:'all .1s'}}>
                     <input type="checkbox" readOnly checked={isSel} style={{width:15,height:15,cursor:'pointer',flexShrink:0}}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:700,fontSize:13,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
                       <div style={{fontSize:11,color:'var(--m)'}}>{[s.city,s.state].filter(Boolean).join(', ')}{prog?` · ${prog.name}`:''}</div>
                     </div>
-                    {contact && <div style={{fontSize:11,color:'var(--m)',textAlign:'right',flexShrink:0}}>{contact.name}<br/>{contact.mobile}</div>}
+                    {contact&&<div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const,flexShrink:0}}>{contact.name}<br/>{contact.mobile}</div>}
                   </div>
                 );
               })
@@ -610,107 +625,124 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
           <div style={{display:'flex',justifyContent:'space-between',marginTop:16}}>
             <button className="btn btn-outline" onClick={()=>setStep(1)}>← Back</button>
             <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={()=>setStep(3)}>
-              Next: Recipients ({selectedSchools.size} schools) →
+              Next: Choose Recipients ({selectedSchools.size} schools) →
             </button>
           </div>
         </div>
       )}
 
-      {/* ═══ STEP 3: Recipients ═════════════════════════════════════ */}
-      {step===3 && (
+      {/* ═══ STEP 3: Recipients + School Contacts + Student List ══ */}
+      {step===3&&(
         <div style={card}>
           <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>👥 Who to Send To?</div>
-          <div style={{fontSize:12,color:'var(--m)',marginBottom:20}}>Choose one or both recipient groups. Multi-select allowed.</div>
-          <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:16}}>Select recipient groups. Manage school contacts and students below.</div>
+
+          {/* Toggle cards */}
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:20}}>
             {([
-              { id:'schools'  as const, icon:'🏫', label:'School Contacts', desc:'Sends to the primary contact person of each selected school' },
-              { id:'students' as const, icon:'👨‍🎓', label:'Students / Parents', desc:'Sends to all registered students under the selected schools' },
+              {id:'schools'  as const,icon:'🏫',label:'School Contacts',  desc:'Primary contact person of each selected school'},
+              {id:'students' as const,icon:'👨\u200d🎓',label:'Students / Parents',desc:'All registered students under selected schools'},
             ]).map(r=>{
-              const active = recipients.has(r.id);
-              return (
-                <div key={r.id} onClick={()=>toggleRecipient(r.id)} style={{
-                  flex:1, minWidth:200, padding:'18px 20px', borderRadius:12, cursor:'pointer',
+              const active=recipients.has(r.id);
+              return(
+                <div key={r.id} onClick={()=>{
+                    toggleRecipient(r.id);
+                    if(r.id==='students'&&!recipients.has('students')) loadStudents(Array.from(selectedSchools));
+                  }} style={{flex:1,minWidth:200,padding:'16px 18px',borderRadius:12,cursor:'pointer',
                   border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,
-                  background:active?'var(--acc3)':'var(--bg)', transition:'all .12s',
-                }}>
-                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
-                    <span style={{fontSize:22}}>{r.icon}</span>
-                    <span style={{fontWeight:800,fontSize:15,color:active?'var(--acc)':'var(--text)'}}>{r.label}</span>
-                    {active && <span style={{marginLeft:'auto',fontSize:16}}>✅</span>}
+                  background:active?'var(--acc3)':'var(--bg)',transition:'all .12s'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:5}}>
+                    <span style={{fontSize:20}}>{r.icon}</span>
+                    <span style={{fontWeight:800,fontSize:14,color:active?'var(--acc)':'var(--text)'}}>{r.label}</span>
+                    <span style={{marginLeft:'auto',width:20,height:20,borderRadius:'50%',border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,background:active?'var(--acc)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'#fff',flexShrink:0}}>{active?'✓':''}</span>
                   </div>
-                  <div style={{fontSize:12,color:'var(--m)',lineHeight:1.5}}>{r.desc}</div>
+                  <div style={{fontSize:11,color:'var(--m)'}}>{r.desc}</div>
                 </div>
               );
             })}
           </div>
-          <div style={{marginTop:16,padding:'10px 14px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bd)',fontSize:12,color:'var(--m)'}}>
-            📋 Summary: <strong>{selectedSchools.size} school{selectedSchools.size!==1?'s':''}</strong> selected
-            {' · '}Sending to: <strong>{Array.from(recipients).join(' + ')}</strong>
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',marginTop:16}}>
-            <button className="btn btn-outline" onClick={()=>setStep(2)}>← Back</button>
-            <button className="btn btn-primary" disabled={recipients.size===0} onClick={()=>setStep(4)}>Next: Choose Message →</button>
-          </div>
-        </div>
-      )}
 
-      {/* ═══ STEP 4: Channel & Template ═════════════════════════════ */}
-      {step===4 && (
-        <div style={card}>
-          <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>✉️ Channel &amp; Template</div>
-          <div style={{fontSize:12,color:'var(--m)',marginBottom:16}}>Choose how to send and which message template to use.</div>
-
-          {/* Channel */}
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase' as const,letterSpacing:'.04em',marginBottom:10}}>Channel</div>
-            <div style={{display:'flex',gap:12}}>
-              {([
-                {id:'email' as const,    icon:'✉️', label:'Email'},
-                {id:'whatsapp' as const, icon:'💬', label:'WhatsApp'},
-              ]).map(c=>(
-                <div key={c.id} onClick={()=>{setChannel(c.id);setTemplateId('');}} style={{
-                  flex:1, padding:'14px 18px', borderRadius:10, cursor:'pointer',
-                  border:`2px solid ${channel===c.id?'var(--acc)':'var(--bd)'}`,
-                  background:channel===c.id?'var(--acc3)':'var(--bg)',
-                  display:'flex',alignItems:'center',gap:10,transition:'all .12s',
-                }}>
-                  <span style={{fontSize:22}}>{c.icon}</span>
-                  <span style={{fontWeight:800,fontSize:15,color:channel===c.id?'var(--acc)':'var(--text)'}}>{c.label}</span>
-                  {channel===c.id && <span style={{marginLeft:'auto',fontSize:16}}>✅</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Template */}
-          {channel && (
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:12,fontWeight:700,color:'var(--m)',textTransform:'uppercase' as const,letterSpacing:'.04em',marginBottom:10}}>
-                Template <span style={{fontWeight:400,textTransform:'none' as const}}>— {filteredTemplates.length} active {channel} template{filteredTemplates.length!==1?'s':''}</span>
+          {/* ── School contacts preview ── */}
+          {recipients.has('schools')&&(
+            <div style={{border:'1.5px solid var(--bd)',borderRadius:12,overflow:'hidden',marginBottom:16}}>
+              <div style={{padding:'10px 16px',background:'var(--bg)',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontWeight:700,fontSize:13}}>🏫 School Contacts</span>
+                <span style={{fontSize:11,color:'var(--m)',marginLeft:4}}>{selectedSchools.size} school{selectedSchools.size!==1?'s':''} · {selectedSchools.size} contact{selectedSchools.size!==1?'s':''}</span>
               </div>
-              {filteredTemplates.length===0
-                ? <div style={{padding:'16px 14px',borderRadius:8,background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.2)',fontSize:13,color:'#ef4444'}}>
-                    No active {channel} templates found. Create one in Message Templates first.
+              <div style={{maxHeight:200,overflowY:'auto'}}>
+                {Array.from(selectedSchools).map(sid=>{
+                  const s=schools.find(sc=>sc.id===sid);
+                  if(!s) return null;
+                  const c=s.contact_persons?.[0];
+                  return(
+                    <div key={sid} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:'1px solid var(--bd)'}}>
+                      <span style={{fontSize:14}}>🏫</span>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:600,fontSize:13}}>{s.name}</div>
+                        <div style={{fontSize:11,color:'var(--m)'}}>{c?`${c.name} · ${c.designation||''}`:' No contact'}</div>
+                      </div>
+                      <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const}}>
+                        {c?.email&&<div>✉️ {c.email}</div>}
+                        {c?.mobile&&<div>📱 {c.mobile}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Student list ── */}
+          {recipients.has('students')&&(
+            <div style={{border:'1.5px solid var(--bd)',borderRadius:12,overflow:'hidden',marginBottom:16}}>
+              <div style={{padding:'10px 16px',background:'var(--bg)',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <span style={{fontWeight:700,fontSize:13}}>👨‍🎓 Student List</span>
+                <span style={{fontSize:11,color:'var(--m)'}}>All selected by default</span>
+                <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:11,color:'var(--m)'}}>🔍</span>
+                    <input value={studentSearch} onChange={e=>setStudentSearch(e.target.value)} placeholder="Search…"
+                      style={{padding:'5px 8px 5px 24px',borderRadius:7,border:'1.5px solid var(--bd)',fontSize:12,background:'var(--card)',color:'var(--text)',outline:'none',width:140}}/>
                   </div>
-                : <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
-                    {filteredTemplates.map(t=>{
-                      const active = templateId===t.id;
-                      return (
-                        <div key={t.id} onClick={()=>setTemplateId(t.id)} style={{
-                          padding:'14px 16px', borderRadius:10, cursor:'pointer',
-                          border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,
-                          background:active?'var(--acc3)':'var(--bg)', transition:'all .12s',
-                        }}>
-                          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}>
-                            <span style={{fontWeight:700,fontSize:14,color:active?'var(--acc)':'var(--text)'}}>{t.name}</span>
-                            {t.project_id
-                              ? <span style={{fontSize:11,padding:'2px 8px',borderRadius:100,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',fontWeight:700}}>🎯 {(t as any).projects?.name??'Program-specific'}</span>
-                              : <span style={{fontSize:11,padding:'2px 8px',borderRadius:100,background:'var(--bg)',color:'var(--m)',border:'1px solid var(--bd)'}}>🌐 Global</span>
-                            }
-                            {active && <span style={{marginLeft:'auto',fontSize:16}}>✅</span>}
+                  <button onClick={()=>setSelectedStudents(new Set(filteredStudents.map((s:any)=>s.id)))}
+                    style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid #10b981',background:'rgba(16,185,129,0.08)',color:'#10b981',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                    ✅ Select All
+                  </button>
+                  <button onClick={()=>setSelectedStudents(new Set())}
+                    style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid #ef4444',background:'rgba(239,68,68,0.08)',color:'#ef4444',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                    🚫 Remove All
+                  </button>
+                  <span style={{fontSize:11,fontWeight:700,color:'var(--acc)'}}>{selectedStudents.size}/{allStudents.length}</span>
+                </div>
+              </div>
+              {loadingStudents
+                ?<div style={{padding:24,textAlign:'center',color:'var(--m)',fontSize:13}}>⏳ Loading students…</div>
+                :filteredStudents.length===0
+                  ?<div style={{padding:24,textAlign:'center',color:'var(--m)',fontSize:13}}>No students found for selected schools.</div>
+                  :<div style={{maxHeight:300,overflowY:'auto'}}>
+                    <div onClick={toggleAllStudents} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 16px',background:'var(--acc3)',cursor:'pointer',borderBottom:'1px solid var(--bd)'}}>
+                      <input type="checkbox" readOnly checked={filteredStudents.length>0&&selectedStudents.size===filteredStudents.length}
+                        ref={el=>{if(el)el.indeterminate=selectedStudents.size>0&&selectedStudents.size<filteredStudents.length;}}
+                        style={{width:14,height:14,cursor:'pointer'}}/>
+                      <span style={{fontSize:12,fontWeight:700,color:'var(--acc)'}}>
+                        {selectedStudents.size===filteredStudents.length?'Deselect All':'Select All'}
+                      </span>
+                    </div>
+                    {filteredStudents.map((s:any)=>{
+                      const isSel=selectedStudents.has(s.id);
+                      const sch=schools.find((sc:any)=>sc.id===s.school_id);
+                      return(
+                        <div key={s.id} onClick={()=>toggleStudent(s.id)} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',cursor:'pointer',borderBottom:'1px solid var(--bd)',background:isSel?'rgba(79,70,229,0.03)':'transparent',transition:'background .1s'}}>
+                          <input type="checkbox" readOnly checked={isSel} style={{width:14,height:14,cursor:'pointer',flexShrink:0}}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:13}}>{s.student_name||'—'}</div>
+                            <div style={{fontSize:11,color:'var(--m)'}}>{s.class_grade?`Grade ${s.class_grade} · `:''}{sch?.name||''}</div>
                           </div>
-                          {t.subject && <div style={{fontSize:12,color:'var(--m)'}}>Subject: {t.subject}</div>}
-                          <div style={{fontSize:11,color:'var(--m)',marginTop:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'100%'}}>{t.body?.slice(0,120)}…</div>
+                          <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const,flexShrink:0}}>
+                            {s.contact_email&&<div>✉️ {s.contact_email}</div>}
+                            {s.contact_phone&&<div>📱 {s.contact_phone}</div>}
+                          </div>
+                          {!isSel&&<span style={{fontSize:10,padding:'2px 6px',borderRadius:20,background:'rgba(239,68,68,0.1)',color:'#ef4444',fontWeight:700,flexShrink:0}}>Excluded</span>}
                         </div>
                       );
                     })}
@@ -719,14 +751,127 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
             </div>
           )}
 
-          {/* Summary before send */}
-          {channel && templateId && (
+          <div style={{padding:'10px 14px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bd)',fontSize:12,color:'var(--m)',marginBottom:16}}>
+            📋 <strong>{selectedSchools.size} school{selectedSchools.size!==1?'s':''}</strong>
+            {recipients.has('schools')&&<> · <strong>{selectedSchools.size} school contact{selectedSchools.size!==1?'s':''}</strong></>}
+            {recipients.has('students')&&!loadingStudents&&<> · <strong>{selectedStudents.size}</strong> students selected</>}
+          </div>
+
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <button className="btn btn-outline" onClick={()=>setStep(2)}>← Back</button>
+            <button className="btn btn-primary" disabled={recipients.size===0||(recipients.has('students')&&loadingStudents)} onClick={goToStep4}>
+              Next: Choose Channel &amp; Template →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ STEP 4: Channel + SMTP Sender + Template ═════════════ */}
+      {step===4&&(
+        <div style={card}>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>✉️ Channel &amp; Template</div>
+          <div style={{fontSize:12,color:'var(--m)',marginBottom:18}}>Choose how to send, which account to use, and the message template.</div>
+
+          {/* Channel */}
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase' as const,letterSpacing:'.05em',marginBottom:10}}>Channel</div>
+            <div style={{display:'flex',gap:12}}>
+              {([{id:'email' as const,icon:'✉️',label:'Email'},{id:'whatsapp' as const,icon:'💬',label:'WhatsApp'}]).map(c=>(
+                <div key={c.id} onClick={()=>{setChannel(c.id);setTemplateId('');}} style={{flex:1,padding:'14px 18px',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',gap:10,transition:'all .12s',border:`2px solid ${channel===c.id?'var(--acc)':'var(--bd)'}`,background:channel===c.id?'var(--acc3)':'var(--bg)'}}>
+                  <span style={{fontSize:22}}>{c.icon}</span>
+                  <span style={{fontWeight:800,fontSize:15,color:channel===c.id?'var(--acc)':'var(--text)'}}>{c.label}</span>
+                  {channel===c.id&&<span style={{marginLeft:'auto'}}>✅</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Email: SMTP account selector ── */}
+          {channel==='email'&&(
+            <div style={{marginBottom:20,padding:'14px 16px',borderRadius:12,background:'rgba(79,70,229,0.05)',border:'1.5px solid rgba(79,70,229,0.2)'}}>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--acc)',textTransform:'uppercase' as const,letterSpacing:'.05em',marginBottom:12}}>📤 Send From (Email Account)</div>
+              {smtpOptions.length===0
+                ?<div style={{fontSize:12,color:'#ef4444',padding:'10px 12px',borderRadius:8,background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.2)'}}>
+                    ⚠️ No SMTP accounts configured. Go to <strong>Integrations</strong> to set up email first.
+                  </div>
+                :<div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
+                  {smtpOptions.map(opt=>{
+                    const active=smtpConfigId===opt.id;
+                    const prog=opt.program_id?programs.find(p=>p.id===opt.program_id):null;
+                    return(
+                      <div key={opt.id} onClick={()=>setSmtpConfigId(opt.id)} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',borderRadius:9,cursor:'pointer',transition:'all .12s',border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,background:active?'var(--acc3)':'var(--bg)'}}>
+                        <div style={dot(active,false)}>{active?'✓':'@'}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700,fontSize:13,color:active?'var(--acc)':'var(--text)'}}>{opt.name}</div>
+                          <div style={{fontSize:11,color:'var(--m)',marginTop:2,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                            <span>{opt.fromName} &lt;{opt.fromEmail||opt.smtpUser}&gt;</span>
+                            {prog?<span style={{padding:'1px 7px',borderRadius:20,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',fontWeight:700}}>🎯 {prog.name}</span>
+                                :<span style={{padding:'1px 7px',borderRadius:20,background:'var(--bg)',color:'var(--m)',border:'1px solid var(--bd)'}}>🌐 Global</span>}
+                          </div>
+                        </div>
+                        {active&&<span style={{color:'var(--acc)',fontSize:14}}>✅</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              }
+            </div>
+          )}
+
+          {/* ── WhatsApp provider info ── */}
+          {channel==='whatsapp'&&(
+            <div style={{marginBottom:20,padding:'12px 14px',borderRadius:10,background:'rgba(37,211,102,0.06)',border:'1.5px solid rgba(37,211,102,0.25)'}}>
+              <div style={{fontSize:12,color:'var(--text)'}}>
+                💬 <strong>WhatsApp Provider:</strong>{' '}
+                {waProvider?waProvider.label:<span style={{color:'#ef4444'}}>Not configured — set up in Integrations</span>}
+              </div>
+            </div>
+          )}
+
+          {/* ── Template picker ── */}
+          {channel&&(
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase' as const,letterSpacing:'.05em',marginBottom:10}}>
+                Template · <span style={{fontWeight:400,textTransform:'none' as const}}>{filteredTemplates.length} active {channel} template{filteredTemplates.length!==1?'s':''}</span>
+              </div>
+              {filteredTemplates.length===0
+                ?<div style={{padding:14,borderRadius:8,background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.2)',fontSize:13,color:'#ef4444'}}>
+                    No active {channel} templates. Create one in Message Templates.
+                  </div>
+                :<div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
+                  {filteredTemplates.map(t=>{
+                    const active=templateId===t.id;
+                    return(
+                      <div key={t.id} onClick={()=>setTemplateId(t.id)} style={{padding:'13px 15px',borderRadius:10,cursor:'pointer',transition:'all .12s',border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,background:active?'var(--acc3)':'var(--bg)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:4}}>
+                          <span style={{fontWeight:700,fontSize:14,color:active?'var(--acc)':'var(--text)'}}>{t.name}</span>
+                          {t.project_id
+                            ?<span style={{fontSize:11,padding:'2px 8px',borderRadius:100,background:'rgba(139,92,246,0.1)',color:'#8b5cf6',fontWeight:700}}>🎯 {(t as any).projects?.name??'Program'}</span>
+                            :<span style={{fontSize:11,padding:'2px 8px',borderRadius:100,background:'var(--bg)',color:'var(--m)',border:'1px solid var(--bd)'}}>🌐 Global</span>
+                          }
+                          {active&&<span style={{marginLeft:'auto'}}>✅</span>}
+                        </div>
+                        {t.subject&&<div style={{fontSize:12,color:'var(--m)'}}>Subject: {t.subject}</div>}
+                        <div style={{fontSize:11,color:'var(--m)',marginTop:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.body?.slice(0,120)}…</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              }
+            </div>
+          )}
+
+          {/* Pre-send summary */}
+          {channel&&templateId&&(
             <div style={{padding:'14px 16px',borderRadius:10,background:'rgba(16,185,129,0.06)',border:'1.5px solid rgba(16,185,129,0.25)',marginBottom:16}}>
               <div style={{fontWeight:700,fontSize:13,color:'#10b981',marginBottom:8}}>📋 Ready to Send</div>
-              <div style={{fontSize:12,color:'var(--text)',lineHeight:1.9}}>
+              <div style={{fontSize:12,lineHeight:2}}>
                 <div>📡 Channel: <strong>{channel}</strong></div>
+                {channel==='email'&&selectedSmtp&&<div>📤 From: <strong>{selectedSmtp.fromName} &lt;{selectedSmtp.fromEmail||selectedSmtp.smtpUser}&gt;</strong></div>}
+                {channel==='whatsapp'&&waProvider&&<div>💬 Via: <strong>{waProvider.label}</strong></div>}
                 <div>🏫 Schools: <strong>{selectedSchools.size}</strong></div>
-                <div>👥 Recipients: <strong>{Array.from(recipients).join(' + ')}</strong></div>
+                <div>👥 To: <strong>{Array.from(recipients).map(r=>r==='schools'?'School Contacts':'Students').join(' + ')}</strong></div>
+                {recipients.has('students')&&<div>👨‍🎓 Students: <strong>{selectedStudents.size}</strong></div>}
                 <div>📄 Template: <strong>{selectedTemplate?.name}</strong></div>
               </div>
             </div>
@@ -734,79 +879,55 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
 
           <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
             <button className="btn btn-outline" onClick={()=>setStep(3)}>← Back</button>
-            <button className="btn btn-primary"
-              disabled={!channel||!templateId||sending}
-              style={{background:sending?'var(--m)':undefined,minWidth:140}}
-              onClick={handleSend}>
-              {sending
-                ? <span style={{display:'flex',alignItems:'center',gap:8}}><span style={{animation:'spin 1s linear infinite',display:'inline-block'}}>⏳</span> Sending…</span>
-                : `📢 Send Broadcast`}
+            <button className="btn btn-primary" disabled={!channel||!templateId||sending} style={{minWidth:150}} onClick={handleSend}>
+              {sending?'⏳ Sending…':'📢 Send Broadcast'}
             </button>
           </div>
         </div>
       )}
 
-      {/* ═══ STEP 5: Results ════════════════════════════════════════ */}
-      {step===5 && result && (
+      {/* ═══ STEP 5: Results ══════════════════════════════════════ */}
+      {step===5&&result&&(
         <div style={card}>
           <div style={{fontWeight:800,fontSize:16,marginBottom:16}}>📊 Broadcast Results</div>
-          {/* Stats */}
           <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}}>
-            {[
-              {label:'Sent',    val:result.sent,    color:'#10b981', bg:'rgba(16,185,129,0.08)',  icon:'✅'},
-              {label:'Failed',  val:result.failed,  color:'#ef4444', bg:'rgba(239,68,68,0.08)',   icon:'❌'},
-              {label:'Skipped', val:result.skipped, color:'#f59e0b', bg:'rgba(245,158,11,0.08)',  icon:'⚠️'},
-              {label:'Total',   val:result.total,   color:'var(--acc)',bg:'var(--acc3)',           icon:'📬'},
-            ].map(s=>(
-              <div key={s.label} style={{flex:1,minWidth:120,padding:'14px 16px',borderRadius:10,background:s.bg,border:`1px solid ${s.color}30`,textAlign:'center' as const}}>
+            {[{label:'Sent',val:result.sent,color:'#10b981',bg:'rgba(16,185,129,0.08)',icon:'✅'},{label:'Failed',val:result.failed,color:'#ef4444',bg:'rgba(239,68,68,0.08)',icon:'❌'},{label:'Skipped',val:result.skipped,color:'#f59e0b',bg:'rgba(245,158,11,0.08)',icon:'⚠️'},{label:'Total',val:result.total,color:'var(--acc)',bg:'var(--acc3)',icon:'📬'}].map(s=>(
+              <div key={s.label} style={{flex:1,minWidth:110,padding:'14px 16px',borderRadius:10,background:s.bg,textAlign:'center' as const}}>
                 <div style={{fontSize:24,fontWeight:800,color:s.color,fontFamily:'Sora,sans-serif'}}>{s.val}</div>
                 <div style={{fontSize:12,color:'var(--m)',marginTop:2}}>{s.icon} {s.label}</div>
               </div>
             ))}
           </div>
-
-          {/* Filter tabs */}
           <div style={{display:'flex',gap:6,marginBottom:12}}>
             {(['all','sent','failed','skipped'] as const).map(f=>(
-              <button key={f} onClick={()=>setResultFilter(f)} style={{
-                padding:'5px 14px',borderRadius:20,border:'1.5px solid var(--bd)',fontSize:12,fontWeight:700,cursor:'pointer',
-                background:resultFilter===f?'var(--acc)':'transparent',
-                color:resultFilter===f?'#fff':'var(--m)',
-              }}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>
+              <button key={f} onClick={()=>setResultFilter(f)} style={{padding:'5px 14px',borderRadius:20,border:'1.5px solid var(--bd)',fontSize:12,fontWeight:700,cursor:'pointer',background:resultFilter===f?'var(--acc)':'transparent',color:resultFilter===f?'#fff':'var(--m)'}}>
+                {f.charAt(0).toUpperCase()+f.slice(1)}
+              </button>
             ))}
           </div>
-
-          {/* Results table */}
-          <div className="tbl-wrap">
-            <table>
-              <thead>
-                <tr><th>Name</th><th>Type</th><th>Recipient</th><th>Status</th><th>Note</th></tr>
-              </thead>
-              <tbody>
-                {filteredResults.length===0
-                  ? <tr><td colSpan={5} className="table-empty">No results for this filter.</td></tr>
-                  : filteredResults.map((r,i)=>(
-                    <tr key={i}>
-                      <td style={{fontWeight:600}}>{r.name}</td>
-                      <td><span className="gw-tag">{r.type}</span></td>
-                      <td style={{fontSize:12,color:'var(--m)'}}>{r.recipient}</td>
-                      <td>
-                        <span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>
-                          {r.status==='sent'?'✅ Sent':r.status==='failed'?'❌ Failed':'⚠️ Skipped'}
-                        </span>
-                      </td>
-                      <td style={{fontSize:11,color:'var(--m)'}}>{r.error??'—'}</td>
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
-          </div>
+          <div className="tbl-wrap"><table>
+            <thead><tr><th>Name</th><th>Type</th><th>Recipient</th><th>Status</th><th>Note</th></tr></thead>
+            <tbody>
+              {filteredResults.length===0
+                ?<tr><td colSpan={5} className="table-empty">No results for this filter.</td></tr>
+                :filteredResults.map((r,i)=>(
+                  <tr key={i}>
+                    <td style={{fontWeight:600}}>{r.name}</td>
+                    <td><span className="gw-tag">{r.type}</span></td>
+                    <td style={{fontSize:12,color:'var(--m)'}}>{r.recipient}</td>
+                    <td><span className={`badge ${r.status==='sent'?'badge-paid':r.status==='failed'?'badge-cancelled':'badge-pending'}`}>{r.status==='sent'?'✅ Sent':r.status==='failed'?'❌ Failed':'⚠️ Skipped'}</span></td>
+                    <td style={{fontSize:11,color:'var(--m)'}}>{r.error??'—'}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table></div>
         </div>
       )}
     </div>
   );
 }
+
 
 export default function AdminDashboard() {
   const router = useRouter();
