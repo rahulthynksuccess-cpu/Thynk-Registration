@@ -444,7 +444,8 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
 
   // Filtered school list
   const filteredSchools = useMemo(()=>{
-    const base = schools.filter(s=>(programId ? s.project_id===programId : true) && s.is_active!==false);
+    const base = schools.filter(s=>(programId ? s.project_id===programId : true) && s.is_active!==false)
+      .sort((a,b)=>(a.name??'').localeCompare(b.name??''));
     const q = schoolSearch.toLowerCase();
     return q ? base.filter(s=>s.name?.toLowerCase().includes(q)||s.city?.toLowerCase().includes(q)||s.state?.toLowerCase().includes(q)) : base;
   },[schools,programId,schoolSearch]);
@@ -481,17 +482,21 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
     setLoadingStudents(true);
     try {
       const h = { ...(authHeaders() as any), 'Content-Type':'application/json' };
-      const res = await fetch(`${BACKEND}/api/admin/registrations?school_ids=${schoolIds.join(',')}`,{headers:h});
+      const res = await fetch(`${BACKEND}/api/admin/registrations?school_ids=${schoolIds.join(',')}&limit=2000`,{headers:h});
       const d   = await res.json();
-      const regs = (d.registrations ?? d.data ?? []) as any[];
-      setAllStudents(regs);
-      setSelectedStudents(new Set(regs.map((r:any)=>r.id)));
+      // API returns { rows: [...] } — same shape as the main registrations endpoint
+      const regs = (d.rows ?? d.registrations ?? d.data ?? []) as any[];
+      const valid = regs.filter((r:any) => r.student_name?.trim());
+      setAllStudents(valid);
+      setSelectedStudents(new Set(valid.map((r:any)=>r.id)));
     } catch { setAllStudents([]); }
     setLoadingStudents(false);
   }
 
   async function goToStep3(){
-    if(recipients.has('students')) await loadStudents(Array.from(selectedSchools));
+    // Always pre-load students for selected schools so they appear instantly
+    // when the user clicks the "Students / Parents" toggle card
+    await loadStudents(Array.from(selectedSchools));
     setStep(3);
   }
 
@@ -610,7 +615,8 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
               ?<div style={{textAlign:'center',padding:24,color:'var(--m)',fontSize:13}}>No schools found.</div>
               :filteredSchools.map(s=>{
                 const prog=programs.find(p=>p.id===s.project_id);
-                const contact=s.contact_persons?.[0];
+                const contacts=s.contact_persons??[];
+                const contact=contacts[0];
                 const isSel=selectedSchools.has(s.id);
                 return(
                   <div key={s.id} onClick={()=>toggleSchool(s.id)} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1.5px solid ${isSel?'var(--acc)':'var(--bd)'}`,background:isSel?'var(--acc3)':'transparent',transition:'all .1s'}}>
@@ -619,7 +625,15 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
                       <div style={{fontWeight:700,fontSize:13,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
                       <div style={{fontSize:11,color:'var(--m)'}}>{[s.city,s.state].filter(Boolean).join(', ')}{prog?` · ${prog.name}`:''}</div>
                     </div>
-                    {contact&&<div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const,flexShrink:0}}>{contact.name}<br/>{contact.mobile}</div>}
+                    {contacts.length>0&&(
+                      <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const,flexShrink:0}}>
+                        <div style={{fontWeight:600}}>{contact.name}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'flex-end',marginTop:2}}>
+                          {contacts.length>1&&<span style={{fontSize:10,padding:'1px 6px',borderRadius:10,background:isSel?'var(--acc)':'rgba(79,70,229,0.12)',color:isSel?'#fff':'var(--acc)',fontWeight:700}}>{contacts.length} contacts</span>}
+                          <span style={{fontSize:10,color:'var(--m2)'}}>{contact.mobile}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -627,7 +641,7 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
           </div>
           <div style={{display:'flex',justifyContent:'space-between',marginTop:16}}>
             <button className="btn btn-outline" onClick={()=>setStep(1)}>← Back</button>
-            <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={()=>setStep(3)}>
+            <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={goToStep3}>
               Next: Choose Recipients ({selectedSchools.size} schools) →
             </button>
           </div>
@@ -650,7 +664,6 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
               return(
                 <div key={r.id} onClick={()=>{
                     toggleRecipient(r.id);
-                    if(r.id==='students'&&!recipients.has('students')) loadStudents(Array.from(selectedSchools));
                   }} style={{flex:1,minWidth:200,padding:'16px 18px',borderRadius:12,cursor:'pointer',
                   border:`2px solid ${active?'var(--acc)':'var(--bd)'}`,
                   background:active?'var(--acc3)':'var(--bg)',transition:'all .12s'}}>
@@ -780,7 +793,7 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
 
           <div style={{padding:'10px 14px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bd)',fontSize:12,color:'var(--m)',marginBottom:16}}>
             📋 <strong>{selectedSchools.size} school{selectedSchools.size!==1?'s':''}</strong>
-            {recipients.has('schools')&&<> · <strong>{selectedSchools.size} school contact{selectedSchools.size!==1?'s':''}</strong></>}
+            {recipients.has('schools')&&<> · <strong>{Array.from(selectedSchools).reduce((total,sid)=>{ const s=schools.find(sc=>sc.id===sid); return total+(s?.contact_persons?.length||0); },0)} school contact{Array.from(selectedSchools).reduce((total,sid)=>{ const s=schools.find(sc=>sc.id===sid); return total+(s?.contact_persons?.length||0); },0)!==1?'s':''}</strong></>}
             {recipients.has('students')&&!loadingStudents&&<> · <strong>{selectedStudents.size}</strong> students selected</>}
           </div>
 
