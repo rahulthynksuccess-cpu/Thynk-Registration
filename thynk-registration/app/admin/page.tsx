@@ -412,6 +412,7 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
   const [templateId,      setTemplateId]      = useState('');
   const [schoolSearch,    setSchoolSearch]    = useState('');
   const [studentSearch,   setStudentSearch]   = useState('');
+  const [studentStatusFilter, setStudentStatusFilter] = useState<string>('');
 
   // Students
   const [allStudents,      setAllStudents]      = useState<any[]>([]);
@@ -456,13 +457,15 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
   // Filtered student list
   const filteredStudents = useMemo(()=>{
     const q = studentSearch.toLowerCase();
-    return q ? allStudents.filter(s=>
+    let base = allStudents;
+    if (studentStatusFilter) base = base.filter((s:any) => s.payment_status === studentStatusFilter);
+    return q ? base.filter(s=>
       s.student_name?.toLowerCase().includes(q)||
       s.contact_email?.toLowerCase().includes(q)||
       s.contact_phone?.includes(q)||
       s.class_grade?.toLowerCase().includes(q)
-    ) : allStudents;
-  },[allStudents,studentSearch]);
+    ) : base;
+  },[allStudents,studentSearch,studentStatusFilter]);
 
   const selectedTemplate = templates.find(t=>t.id===templateId);
   const selectedSmtp     = smtpOptions.find(s=>s.id===smtpConfigId);
@@ -499,7 +502,7 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
   function reset(){
     setProgramId(''); setSelectedSchools(new Set()); setRecipients(new Set(['schools']));
     setChannel(''); setTemplateId(''); setResult(null); setStep(1);
-    setSchoolSearch(''); setStudentSearch(''); setAllStudents([]); setSelectedStudents(new Set());
+    setSchoolSearch(''); setStudentSearch(''); setStudentStatusFilter(''); setAllStudents([]); setSelectedStudents(new Set());
     if(smtpOptions[0]) setSmtpConfigId(smtpOptions[0].id);
   }
 
@@ -667,25 +670,39 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
             <div style={{border:'1.5px solid var(--bd)',borderRadius:12,overflow:'hidden',marginBottom:16}}>
               <div style={{padding:'10px 16px',background:'var(--bg)',borderBottom:'1px solid var(--bd)',display:'flex',alignItems:'center',gap:8}}>
                 <span style={{fontWeight:700,fontSize:13}}>🏫 School Contacts</span>
-                <span style={{fontSize:11,color:'var(--m)',marginLeft:4}}>{selectedSchools.size} school{selectedSchools.size!==1?'s':''} · {selectedSchools.size} contact{selectedSchools.size!==1?'s':''}</span>
+                <span style={{fontSize:11,color:'var(--m)',marginLeft:4}}>
+                  {selectedSchools.size} school{selectedSchools.size!==1?'s':''} · {Array.from(selectedSchools).reduce((total,sid)=>{ const s=schools.find(sc=>sc.id===sid); return total+(s?.contact_persons?.length||0); },0)} contact{Array.from(selectedSchools).reduce((total,sid)=>{ const s=schools.find(sc=>sc.id===sid); return total+(s?.contact_persons?.length||0); },0)!==1?'s':''}
+                </span>
               </div>
               <div style={{maxHeight:200,overflowY:'auto'}}>
                 {Array.from(selectedSchools).map(sid=>{
                   const s=schools.find(sc=>sc.id===sid);
                   if(!s) return null;
-                  const c=s.contact_persons?.[0];
+                  const contacts = s.contact_persons ?? [];
                   return(
-                    <div key={sid} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:'1px solid var(--bd)'}}>
-                      <span style={{fontSize:14}}>🏫</span>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:600,fontSize:13}}>{s.name}</div>
-                        <div style={{fontSize:11,color:'var(--m)'}}>{c?`${c.name} · ${c.designation||''}`:' No contact'}</div>
-                      </div>
-                      <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const}}>
-                        {c?.email&&<div>✉️ {c.email}</div>}
-                        {c?.mobile&&<div>📱 {c.mobile}</div>}
-                      </div>
-                    </div>
+                    <React.Fragment key={sid}>
+                      {contacts.length === 0 ? (
+                        <div style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:'1px solid var(--bd)'}}>
+                          <span style={{fontSize:14}}>🏫</span>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:600,fontSize:13}}>{s.name}</div>
+                            <div style={{fontSize:11,color:'var(--m)'}}>No contacts added</div>
+                          </div>
+                        </div>
+                      ) : contacts.map((c: any, ci: number) => (
+                        <div key={`${sid}-${ci}`} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:'1px solid var(--bd)',background:ci>0?'rgba(79,70,229,0.02)':'transparent'}}>
+                          <span style={{fontSize:14}}>{ci===0?'🏫':'👤'}</span>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:600,fontSize:13}}>{ci===0?s.name:<span style={{color:'var(--m)',fontStyle:'italic',fontSize:12}}>{s.name}</span>}</div>
+                            <div style={{fontSize:11,color:'var(--m)'}}>{c.name}{c.designation?` · ${c.designation}`:''}</div>
+                          </div>
+                          <div style={{fontSize:11,color:'var(--m)',textAlign:'right' as const}}>
+                            {c.email&&<div>✉️ {c.email}</div>}
+                            {c.mobile&&<div>📱 {c.mobile}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -699,6 +716,16 @@ function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders
                 <span style={{fontWeight:700,fontSize:13}}>👨‍🎓 Student List</span>
                 <span style={{fontSize:11,color:'var(--m)'}}>All selected by default</span>
                 <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  {/* Payment status filter */}
+                  <select
+                    value={studentStatusFilter}
+                    onChange={e=>{setStudentStatusFilter(e.target.value);}}
+                    style={{padding:'5px 10px',borderRadius:7,border:`1.5px solid ${studentStatusFilter?'var(--acc)':'var(--bd)'}`,fontSize:12,background:'var(--card)',color:studentStatusFilter?'var(--acc)':'var(--m)',outline:'none',fontWeight:studentStatusFilter?700:400,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>
+                    <option value="">All Statuses</option>
+                    {[...new Set(allStudents.map((s:any)=>s.payment_status).filter(Boolean))].map((st:any)=>(
+                      <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)} ({allStudents.filter((s:any)=>s.payment_status===st).length})</option>
+                    ))}
+                  </select>
                   <div style={{position:'relative'}}>
                     <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:11,color:'var(--m)'}}>🔍</span>
                     <input value={studentSearch} onChange={e=>setStudentSearch(e.target.value)} placeholder="Search…"
@@ -1587,7 +1614,7 @@ export default function AdminDashboard() {
           {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
             {activePage==='students' && !canSeePage('students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"><button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button></div></div>
+            <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"></div></div>
             <StudentsTable rows={enrichedVisibleRows} programs={programs} consultants={consultants} onRowClick={setModal} />
           </div>
 
@@ -4023,6 +4050,15 @@ function StudentsTable({ rows, programs, consultants, onRowClick }: { rows: Row[
 
   const activeFilterCount = [statuses, gateways, programs_f, countries_f, states_f, cities_f, schools_f, classes_f, genders_f].filter(a => a.length > 0).length;
 
+  function exportFilteredCSV() {
+    const h=['Date','Student','Class','Gender','Program','Country','School','City','Parent','Phone','Email','Gateway','Status','Base','Discount Code','Discount Amt','Final','Txn ID'];
+    const exportRows=[h,...filtered.map(r=>[r.created_at?.slice(0,10),r.student_name,r.class_grade,r.gender,r.program_name,r.country,r.parent_school,r.city,r.parent_name,r.contact_phone,r.contact_email,r.gateway,r.payment_status,(r.base_amount??0)/100,r.discount_code,(r.discount_amount??0)/100,(r.final_amount??0)/100,r.gateway_txn_id])];
+    const csv=exportRows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
+    const suffix = activeFilterCount > 0 ? `_filtered_${filtered.length}` : `_all_${rows.length}`;
+    a.download=`Thynk_Students${suffix}_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  }
+
   return (
     <>
       {/* Page tabs */}
@@ -4055,7 +4091,12 @@ function StudentsTable({ rows, programs, consultants, onRowClick }: { rows: Row[
               ✕ Clear all ({activeFilterCount})
             </button>
           )}
-          <span style={{ fontSize: 12, color: 'var(--m)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{filtered.length} of {rows.length}</span>
+          <span style={{ fontSize: 12, color: 'var(--m)', whiteSpace: 'nowrap' }}>{filtered.length} of {rows.length}</span>
+          <button
+            onClick={exportFilteredCSV}
+            style={{ marginLeft: 'auto', padding: '7px 16px', borderRadius: 8, background: activeFilterCount > 0 ? 'var(--acc)' : 'var(--card)', border: `1.5px solid ${activeFilterCount > 0 ? 'var(--acc)' : 'var(--bd)'}`, color: activeFilterCount > 0 ? '#fff' : 'var(--m)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans,sans-serif', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+            ⬇ Export {activeFilterCount > 0 ? `Filtered (${filtered.length})` : `All (${rows.length})`}
+          </button>
         </div>
         <div className="tbl-wrap"><table>
           <thead><tr>{['#','Date','Status','Student','Gender','Class','Program','Country','School','City','Parent','Phone','Gateway','Amount','Discount','Pay Link'].map(h=><th key={h}>{h}</th>)}</tr></thead>
