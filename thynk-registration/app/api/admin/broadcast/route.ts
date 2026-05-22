@@ -1,12 +1,8 @@
 /**
  * POST /api/admin/broadcast
- *
- * Bulk send email or WhatsApp to school contacts and/or their students.
- *
- * Body: { channel, template_id, school_ids, recipients: ('schools'|'students')[] }
+ * Body: { channel, template_id, school_ids, recipients, student_ids?, smtp_config_id? }
  * Returns: { sent, failed, skipped, total, results }
  */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 import { renderTemplate } from '@/lib/triggers/fire';
@@ -26,7 +22,6 @@ async function sendWA(service: any, phone: string, body: string, schoolId: strin
   const wa = platformRow?.config?.whatsapp_settings;
   const normalized = phone.replace(/\D/g, '');
   const to = normalized.startsWith('91') ? normalized : `91${normalized}`;
-
   if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
     const res = await fetch(wa.tcUrl.replace(/\/$/, '') + '/api/send-message', {
       method: 'POST',
@@ -56,37 +51,29 @@ async function sendWA(service: any, phone: string, body: string, schoolId: strin
     if (!res.ok) throw new Error(`Twilio: ${res.status}`);
     return 'twilio';
   }
-  const { data: configs } = await service
-    .from('integration_configs').select('provider, config')
-    .or(`school_id.eq.${schoolId},school_id.is.null`)
-    .in('provider', ['whatsapp_cloud', 'twilio']).eq('is_active', true)
-    .order('school_id', { nullsFirst: false }).limit(1);
-  const cfg = configs?.[0];
-  if (!cfg) throw new Error('No WhatsApp provider configured');
-  if (cfg.provider === 'whatsapp_cloud') {
-    const res = await fetch(`https://graph.facebook.com/v18.0/${cfg.config.phone_number_id}/messages`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${cfg.config.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
-    });
-    if (!res.ok) throw new Error(`WA Cloud: ${res.status}`);
-    return 'whatsapp_cloud';
-  }
   throw new Error('No WhatsApp provider configured');
 }
 
-async function sendEmail(service: any, to: string, subject: string, body: string, schoolId: string): Promise<string> {
+async function sendEmail(
+  service: any, to: string, subject: string, body: string,
+  schoolId: string, smtpConfigId?: string
+): Promise<string> {
   const { data: platformRow } = await service
     .from('integration_configs').select('config')
     .eq('provider', 'platform_settings').is('school_id', null).maybeSingle();
   const smtpConfigs: any[] = platformRow?.config?.email_smtp_configs ?? [];
   let smtpCfg: any = null;
-  if (smtpConfigs.length > 0) {
+
+  if (smtpConfigId && smtpConfigId !== 'default') {
+    // User explicitly chose a config by id or smtpUser
+    smtpCfg = smtpConfigs.find((c: any) => c.id === smtpConfigId || c.smtpUser === smtpConfigId);
+  }
+  if (!smtpCfg && smtpConfigs.length > 0) {
     const { data: school } = await service.from('schools').select('project_id').eq('id', schoolId).single();
     const pid = school?.project_id ?? null;
-    smtpCfg = pid ? smtpConfigs.find((c: any) => c.enabled && c.program_id === pid) : null;
-    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled && (!c.program_id || c.program_id === ''));
-    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled);
+    if (pid) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false && c.program_id === pid);
+    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false && (!c.program_id || c.program_id === ''));
+    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false);
   }
   if (!smtpCfg) smtpCfg = platformRow?.config?.email_settings;
   if (!smtpCfg?.smtpHost) throw new Error('No email provider configured');
@@ -109,27 +96,27 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { channel, template_id, school_ids, recipients } = await req.json();
-  if (!channel || !template_id || !school_ids?.length || !recipients?.length) {
-    return NextResponse.json({ error: 'channel, template_id, school_ids and recipients are required' }, { status: 400 });
-  }
+  const { channel, template_id, school_ids, recipients, student_ids, smtp_config_id } = await req.json();
+  if (!channel || !template_id || !school_ids?.length || !recipients?.length)
+    return NextResponse.json({ error: 'channel, template_id, school_ids and recipients required' }, { status: 400 });
 
   const service = createServiceClient();
-
   const { data: template } = await service.from('notification_templates').select('*').eq('id', template_id).single();
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
 
   const { data: schools } = await service
-    .from('schools').select('*, projects(name, slug)')
+    .from('schools').select('*, projects(name,slug)')
     .in('id', school_ids).eq('is_active', true);
   if (!schools?.length) return NextResponse.json({ error: 'No active schools found' }, { status: 404 });
 
+  // Load students — filter by student_ids if provided (user deselected some)
   let studentMap: Record<string, any[]> = {};
   if (recipients.includes('students')) {
-    const { data: regs } = await service
-      .from('registrations')
-      .select('id, student_name, contact_phone, contact_email, school_id, class_grade, gender, parent_name, discount_code, base_amount, final_amount')
+    let q = service.from('registrations')
+      .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,discount_code,base_amount,final_amount')
       .in('school_id', school_ids);
+    if (student_ids?.length) q = q.in('id', student_ids);
+    const { data: regs } = await q;
     if (regs) {
       for (const r of regs) {
         if (!studentMap[r.school_id]) studentMap[r.school_id] = [];
@@ -138,93 +125,57 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  type ResultItem = { name: string; type: string; recipient: string; status: 'sent' | 'failed' | 'skipped'; error?: string };
-  const results: ResultItem[] = [];
+  type Item = { name:string; type:string; recipient:string; status:'sent'|'failed'|'skipped'; error?:string };
+  const results: Item[] = [];
   let sent = 0, failed = 0, skipped = 0;
 
   for (const school of schools) {
     const contact     = school.contact_persons?.[0];
     const programName = (school as any).projects?.name ?? '';
-
     const baseVars = {
-      school_name:         school.name ?? '',
-      program_name:        programName,
-      city:                school.city ?? '',
-      state:               school.state ?? '',
-      org_name:            'Thynk Success',
-      contact_person_name: contact?.name ?? '',
-      contact_designation: contact?.designation ?? '',
-      contact_phone:       contact?.mobile ?? '',
-      contact_email:       contact?.email ?? '',
+      school_name: school.name??'', program_name: programName,
+      city: school.city??'', state: school.state??'', org_name: 'Thynk Success',
+      contact_person_name: contact?.name??'', contact_designation: contact?.designation??'',
+      contact_phone: contact?.mobile??'', contact_email: contact?.email??'',
     };
 
-    // ── School contact ────────────────────────────────────────────
     if (recipients.includes('schools') && contact) {
       const vars    = { ...baseVars, student_name: contact.name, parent_name: contact.name };
       const body    = renderTemplate(template.body, vars);
       const subject = renderTemplate(template.subject ?? 'Message from Thynk', vars);
-      let status: 'sent' | 'failed' | 'skipped' = 'skipped';
-      let errorMsg: string | undefined;
-      let provider  = '';
-
+      let status: 'sent'|'failed'|'skipped' = 'skipped'; let err = ''; let prov = '';
       try {
         if (channel === 'email') {
-          if (!contact.email) { status = 'skipped'; errorMsg = 'No email'; }
-          else { provider = await sendEmail(service, contact.email, subject, body, school.id); status = 'sent'; }
+          if (!contact.email) { status='skipped'; err='No email'; }
+          else { prov = await sendEmail(service, contact.email, subject, body, school.id, smtp_config_id); status='sent'; }
         } else {
-          if (!contact.mobile) { status = 'skipped'; errorMsg = 'No phone'; }
-          else { provider = await sendWA(service, contact.mobile, body, school.id); status = 'sent'; }
+          if (!contact.mobile) { status='skipped'; err='No phone'; }
+          else { prov = await sendWA(service, contact.mobile, body, school.id); status='sent'; }
         }
-      } catch (e: any) { status = 'failed'; errorMsg = e.message; }
-
-      status === 'sent' ? sent++ : status === 'failed' ? failed++ : skipped++;
-      results.push({ name: school.name, type: 'school', recipient: channel === 'email' ? (contact.email ?? '—') : (contact.mobile ?? '—'), status, error: errorMsg });
-      await service.from('notification_logs').insert({
-        school_id: school.id, channel, provider: provider || 'broadcast',
-        recipient: channel === 'email' ? (contact.email ?? '') : (contact.mobile ?? ''),
-        status, sent_at: status === 'sent' ? new Date().toISOString() : undefined,
-      });
+      } catch(e:any) { status='failed'; err=e.message; }
+      status==='sent'?sent++:status==='failed'?failed++:skipped++;
+      results.push({ name:school.name, type:'school', recipient:channel==='email'?(contact.email??'—'):(contact.mobile??'—'), status, error:err||undefined });
+      await service.from('notification_logs').insert({ school_id:school.id, channel, provider:prov||'broadcast', recipient:channel==='email'?(contact.email??''):(contact.mobile??''), status, sent_at:status==='sent'?new Date().toISOString():undefined });
     }
 
-    // ── Students ──────────────────────────────────────────────────
     if (recipients.includes('students')) {
-      for (const s of (studentMap[school.id] ?? [])) {
-        const vars    = {
-          ...baseVars,
-          student_name:    s.student_name ?? '',
-          parent_name:     s.parent_name ?? '',
-          class_grade:     s.class_grade ?? '',
-          gender:          s.gender ?? '',
-          registration_id: s.id ?? '',
-          discount_code:   s.discount_code ?? '',
-          contact_email:   s.contact_email ?? '',
-          contact_phone:   s.contact_phone ?? '',
-          base_amount:     s.base_amount ? String(s.base_amount / 100) : '',
-          final_amount:    s.final_amount ? String(s.final_amount / 100) : '',
-        };
+      for (const s of (studentMap[school.id]??[])) {
+        const vars = { ...baseVars, student_name:s.student_name??'', parent_name:s.parent_name??'', class_grade:s.class_grade??'', gender:s.gender??'', registration_id:s.id??'', discount_code:s.discount_code??'', contact_email:s.contact_email??'', contact_phone:s.contact_phone??'', base_amount:s.base_amount?String(s.base_amount/100):'', final_amount:s.final_amount?String(s.final_amount/100):'' };
         const body    = renderTemplate(template.body, vars);
         const subject = renderTemplate(template.subject ?? 'Message from Thynk', vars);
-        let status: 'sent' | 'failed' | 'skipped' = 'skipped';
-        let errorMsg: string | undefined;
-        let provider  = '';
-
+        let status:'sent'|'failed'|'skipped'='skipped'; let err=''; let prov='';
         try {
           if (channel === 'email') {
-            if (!s.contact_email) { status = 'skipped'; errorMsg = 'No email'; }
-            else { provider = await sendEmail(service, s.contact_email, subject, body, school.id); status = 'sent'; }
+            if (!s.contact_email) { status='skipped'; err='No email'; }
+            else { prov = await sendEmail(service, s.contact_email, subject, body, school.id, smtp_config_id); status='sent'; }
           } else {
-            if (!s.contact_phone) { status = 'skipped'; errorMsg = 'No phone'; }
-            else { provider = await sendWA(service, s.contact_phone, body, school.id); status = 'sent'; }
+            if (!s.contact_phone) { status='skipped'; err='No phone'; }
+            else { prov = await sendWA(service, s.contact_phone, body, school.id); status='sent'; }
           }
-        } catch (e: any) { status = 'failed'; errorMsg = e.message; }
-
-        status === 'sent' ? sent++ : status === 'failed' ? failed++ : skipped++;
-        results.push({ name: s.student_name ?? '—', type: 'student', recipient: channel === 'email' ? (s.contact_email ?? '—') : (s.contact_phone ?? '—'), status, error: errorMsg });
-        await service.from('notification_logs').insert({
-          school_id: school.id, registration_id: s.id, channel, provider: provider || 'broadcast',
-          recipient: channel === 'email' ? (s.contact_email ?? '') : (s.contact_phone ?? ''),
-          status, sent_at: status === 'sent' ? new Date().toISOString() : undefined,
-        });
+        } catch(e:any) { status='failed'; err=e.message; }
+        status==='sent'?sent++:status==='failed'?failed++:skipped++;
+        results.push({ name:s.student_name??'—', type:'student', recipient:channel==='email'?(s.contact_email??'—'):(s.contact_phone??'—'), status, error:err||undefined });
+        await service.from('notification_logs').insert({ school_id:school.id, registration_id:s.id, channel, provider:prov||'broadcast', recipient:channel==='email'?(s.contact_email??''):(s.contact_phone??''), status, sent_at:status==='sent'?new Date().toISOString():undefined });
       }
     }
   }
