@@ -614,14 +614,24 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
             <input value={schoolSearch} onChange={e=>setSchoolSearch(e.target.value)} placeholder="Search by name, city, state…"
               style={{width:'100%',padding:'8px 12px 8px 32px',borderRadius:8,border:'1.5px solid var(--bd)',fontSize:13,background:'var(--bg)',color:'var(--text)',outline:'none',boxSizing:'border-box' as any}}/>
           </div>
-          <div onClick={toggleAllSchools} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'var(--acc3)',borderRadius:8,marginBottom:8,cursor:'pointer'}}>
-            <input type="checkbox" readOnly checked={filteredSchools.length>0&&selectedSchools.size===filteredSchools.length}
-              ref={el=>{if(el)el.indeterminate=selectedSchools.size>0&&selectedSchools.size<filteredSchools.length;}}
-              style={{width:15,height:15,cursor:'pointer'}}/>
-            <span style={{fontWeight:700,fontSize:13,color:'var(--acc)'}}>
-              {selectedSchools.size===filteredSchools.length&&filteredSchools.length>0?'Deselect All':`Select All (${filteredSchools.length})`}
-            </span>
-            {selectedSchools.size>0&&<span style={{marginLeft:'auto',fontSize:12,color:'var(--acc)',fontWeight:700}}>{selectedSchools.size} selected</span>}
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+            <div onClick={toggleAllSchools} style={{flex:1,display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'var(--acc3)',borderRadius:8,cursor:'pointer'}}>
+              <input type="checkbox" readOnly checked={filteredSchools.length>0&&selectedSchools.size===filteredSchools.length}
+                ref={el=>{if(el)el.indeterminate=selectedSchools.size>0&&selectedSchools.size<filteredSchools.length;}}
+                style={{width:15,height:15,cursor:'pointer'}}/>
+              <span style={{fontWeight:700,fontSize:13,color:'var(--acc)'}}>
+                {selectedSchools.size===filteredSchools.length&&filteredSchools.length>0?'Deselect All':`Select All (${filteredSchools.length})`}
+              </span>
+              {selectedSchools.size>0&&<span style={{marginLeft:'auto',fontSize:12,color:'var(--acc)',fontWeight:700}}>{selectedSchools.size} selected</span>}
+            </div>
+            {selectedSchools.size>0&&(
+              <button
+                onClick={()=>setSelectedSchools(new Set())}
+                style={{padding:'8px 14px',borderRadius:8,border:'1.5px solid rgba(239,68,68,.35)',background:'rgba(239,68,68,.07)',color:'#ef4444',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',fontFamily:'DM Sans,sans-serif',flexShrink:0}}
+              >
+                ✕ Clear ({selectedSchools.size})
+              </button>
+            )}
           </div>
           <div style={{maxHeight:340,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
             {filteredSchools.length===0
