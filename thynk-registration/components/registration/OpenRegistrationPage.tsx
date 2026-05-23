@@ -107,11 +107,9 @@ function detectIsIndia() {
 export default function OpenRegistrationPage({
   projectSlug,
   paymentError,
-  consultantCode,
 }: {
   projectSlug: string;
   paymentError?: boolean;
-  consultantCode?: string;
 }) {
   const [mode, setMode] = useState<Mode>('choose');
   const [programName, setProgramName] = useState('');
@@ -130,7 +128,6 @@ export default function OpenRegistrationPage({
     return (
       <SchoolRegistrationForm
         projectSlug={projectSlug}
-        consultantCode={consultantCode}
         onBack={() => setMode('choose')}
       />
     );

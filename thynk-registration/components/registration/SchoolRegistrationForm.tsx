@@ -21,10 +21,9 @@ interface Props {
   projectId?: string;
   onBack: () => void;
   branding?: { primaryColor?: string; accentColor?: string };
-  consultantCode?: string; // present when reached via curated /registration/<code>/<slug> link
 }
 
-export default function SchoolRegistrationForm({ projectSlug, projectId, onBack, branding, consultantCode }: Props) {
+export default function SchoolRegistrationForm({ projectSlug, projectId, onBack, branding }: Props) {
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [errorMsg, setErrorMsg]       = useState('');
   const [formErrors, setFormErrors]   = useState<Record<string, string>>({});
@@ -117,7 +116,6 @@ export default function SchoolRegistrationForm({ projectSlug, projectId, onBack,
           pin_code:     f.pin_code.trim(),
           project_id:   projectId,
           project_slug: projectSlug,
-          ...(consultantCode ? { consultant_code: consultantCode } : {}),
           contact_persons: [{
             name:        f.contactName.trim(),
             designation: f.designation.trim(),
