@@ -443,7 +443,9 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
 
   // Filtered school list
   const filteredSchools = useMemo(()=>{
-    const base = schools.filter(s=>(programId ? s.project_id===programId : true) && s.is_active!==false);
+    const base = schools
+      .filter(s=>(programId ? s.project_id===programId : true) && s.is_active!==false)
+      .sort((a,b)=>(a.name??'').localeCompare(b.name??''));
     const q = schoolSearch.toLowerCase();
     return q ? base.filter(s=>s.name?.toLowerCase().includes(q)||s.city?.toLowerCase().includes(q)||s.state?.toLowerCase().includes(q)) : base;
   },[schools,programId,schoolSearch]);
