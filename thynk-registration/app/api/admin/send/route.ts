@@ -74,7 +74,8 @@ export async function POST(req: NextRequest) {
     if (channel === 'whatsapp') {
       provider = await dispatchWhatsApp(service, school_id, to_phone, renderedBody);
     } else {
-      provider = await dispatchEmail(service, school_id, to_email, renderedSubject, renderedBody);
+      const smtpConfigId: string | undefined = body.smtp_config_id;
+      provider = await dispatchEmail(service, school_id, to_email, renderedSubject, renderedBody, smtpConfigId);
     }
 
     // Log the manual send
@@ -238,7 +239,8 @@ async function dispatchEmail(
   schoolId: string,
   to: string,
   subject: string,
-  body: string
+  body: string,
+  smtpConfigId?: string,
 ): Promise<string> {
   const { data: platformRow } = await service
     .from('integration_configs')
@@ -250,22 +252,38 @@ async function dispatchEmail(
   // ── Multi-SMTP routing by program ─────────────────────────────────────────
   const smtpConfigs: any[] = platformRow?.config?.email_smtp_configs ?? [];
   if (smtpConfigs.length > 0) {
-    let programId: string | null = null;
-    if (schoolId) {
-      const { data: school } = await service
-        .from('schools').select('project_id').eq('id', schoolId).single();
-      programId = school?.project_id ?? null;
+    let smtpCfg: any = null;
+
+    // Priority 0: user explicitly chose a config (by id or smtpUser)
+    if (smtpConfigId) {
+      smtpCfg = smtpConfigs.find((c: any) =>
+        c.id === smtpConfigId || c.smtpUser === smtpConfigId
+      );
     }
+
     // Priority 1: program-specific SMTP
-    let smtpCfg = programId
-      ? smtpConfigs.find((c: any) => c.enabled && c.program_id === programId)
-      : null;
-    // Priority 2: default SMTP
+    if (!smtpCfg) {
+      let programId: string | null = null;
+      if (schoolId) {
+        const { data: school } = await service
+          .from('schools').select('project_id').eq('id', schoolId).single();
+        programId = school?.project_id ?? null;
+      }
+      if (programId)
+        smtpCfg = smtpConfigs.find((c: any) =>
+          (c.enabled || c.enabled !== false) && c.program_id === programId
+        );
+    }
+
+    // Priority 2: default SMTP (no program attached)
     if (!smtpCfg)
-      smtpCfg = smtpConfigs.find((c: any) => c.enabled && (!c.program_id || c.program_id === ''));
+      smtpCfg = smtpConfigs.find((c: any) =>
+        (c.enabled || c.enabled !== false) && (!c.program_id || c.program_id === '')
+      );
+
     // Priority 3: any enabled
     if (!smtpCfg)
-      smtpCfg = smtpConfigs.find((c: any) => c.enabled);
+      smtpCfg = smtpConfigs.find((c: any) => c.enabled || c.enabled !== false);
 
     if (smtpCfg?.smtpHost && smtpCfg?.smtpUser) {
       await sendViaSMTP(smtpCfg, { to, subject, body });
