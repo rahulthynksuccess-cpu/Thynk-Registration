@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     contact_persons,
     project_id,
     project_slug,
+    consultant_code,
   } = body;
 
   // ── Validation ─────────────────────────────────────────────────
@@ -103,6 +104,29 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Insert school with status = 'registered' ───────────────────
+  // ── Resolve consultant_id ──────────────────────────────────────────
+  // If consultant_code in body → tag to that consultant
+  // Otherwise → tag to default consultant (is_default_consultant = true)
+  let resolvedConsultantId: string | null = null;
+
+  if (consultant_code?.trim()) {
+    const { data: cp } = await supabase
+      .from('consultant_profiles')
+      .select('user_id')
+      .eq('consultant_code', consultant_code.trim().toLowerCase())
+      .maybeSingle();
+    resolvedConsultantId = cp?.user_id ?? null;
+  }
+
+  if (!resolvedConsultantId) {
+    const { data: cp } = await supabase
+      .from('consultant_profiles')
+      .select('user_id')
+      .eq('is_default_consultant', true)
+      .maybeSingle();
+    resolvedConsultantId = cp?.user_id ?? null;
+  }
+
   const { data: school, error } = await supabase
     .from('schools')
     .insert({
@@ -118,6 +142,7 @@ export async function POST(req: NextRequest) {
       contact_persons:        contacts,
       project_id:             project.id,
       project_slug:           project.slug,
+      consultant_id:          resolvedConsultantId,
       status:                 'registered',
       is_active:              false,
       is_registration_active: false,

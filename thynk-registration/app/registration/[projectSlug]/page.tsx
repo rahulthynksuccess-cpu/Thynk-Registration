@@ -1,7 +1,9 @@
 // app/registration/[projectSlug]/page.tsx
-// Route: /registration/mentalmath2026
-// Route: /registration/mentalmath2026?school=SCHOOLCODE  ← school pre-selected via query param
-// Shows mode chooser → School Registration OR Student Registration (open picker)
+// UNCHANGED routes:
+//   /registration/brishark
+//   /registration/brishark?school=SCHOOLCODE
+// NEW route (consultant curated link):
+//   /registration/brishark?consultant=cons001
 
 import OpenRegistrationPage from '@/components/registration/OpenRegistrationPage';
 import LockedSchoolPage from '@/components/registration/LockedSchoolPage';
@@ -11,9 +13,8 @@ export default function ProjectRegistrationPage({
   searchParams,
 }: {
   params: { projectSlug: string };
-  searchParams: { school?: string; paymentError?: string };
+  searchParams: { school?: string; paymentError?: string; consultant?: string };
 }) {
-  // If ?school=<code> is present, render the locked school registration view directly
   if (searchParams.school) {
     return (
       <main className="reg-page">
@@ -31,6 +32,7 @@ export default function ProjectRegistrationPage({
       <OpenRegistrationPage
         projectSlug={params.projectSlug}
         paymentError={searchParams.paymentError === '1'}
+        consultantCode={searchParams.consultant}
       />
     </main>
   );

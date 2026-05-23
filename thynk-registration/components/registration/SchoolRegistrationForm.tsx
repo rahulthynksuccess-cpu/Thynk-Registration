@@ -21,9 +21,10 @@ interface Props {
   projectId?: string;
   onBack: () => void;
   branding?: { primaryColor?: string; accentColor?: string };
+  consultantCode?: string;
 }
 
-export default function SchoolRegistrationForm({ projectSlug, projectId, onBack, branding }: Props) {
+export default function SchoolRegistrationForm({ projectSlug, projectId, onBack, branding, consultantCode }: Props) {
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [errorMsg, setErrorMsg]       = useState('');
   const [formErrors, setFormErrors]   = useState<Record<string, string>>({});
@@ -114,8 +115,9 @@ export default function SchoolRegistrationForm({ projectSlug, projectId, onBack,
           state:        f.state,
           city:         finalCity?.trim(),
           pin_code:     f.pin_code.trim(),
-          project_id:   projectId,
-          project_slug: projectSlug,
+          project_id:      projectId,
+          project_slug:    projectSlug,
+          ...(consultantCode ? { consultant_code: consultantCode } : {}),
           contact_persons: [{
             name:        f.contactName.trim(),
             designation: f.designation.trim(),
