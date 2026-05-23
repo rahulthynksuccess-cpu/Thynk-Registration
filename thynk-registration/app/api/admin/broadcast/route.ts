@@ -142,9 +142,9 @@ async function sendEmail(service: any, to: string, subject: string, body: string
   if (!smtpCfg && smtpConfigs.length > 0) {
     const { data: school } = await service.from('schools').select('project_id').eq('id', schoolId).single();
     const pid = school?.project_id ?? null;
-    if (pid) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false && c.program_id === pid);
-    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false && (!c.program_id || c.program_id === ''));
-    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false);
+    if (pid) smtpCfg = smtpConfigs.find((c: any) => (c.enabled || c.enabled !== false) && c.program_id === pid);
+    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => (c.enabled || c.enabled !== false) && (!c.program_id || c.program_id === ''));
+    if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled || c.enabled !== false);
   }
   // 3. Legacy single smtp config
   if (!smtpCfg) smtpCfg = platformRow?.config?.email_settings;
@@ -187,23 +187,17 @@ export async function POST(req: NextRequest) {
   // Empty array = user explicitly removed all → skip
   let studentMap: Record<string, any[]> = {};
   if (recipients.includes('students')) {
-    if (Array.isArray(student_ids) && student_ids.length === 0) {
-      console.log('[broadcast] student_ids is empty — skipping students');
-    } else {
-      let q = service.from('registrations')
-        .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,discount_code,base_amount,final_amount')
-        .in('school_id', school_ids);
-      if (student_ids?.length) q = q.in('id', student_ids);
-      const { data: regs, error: regsErr } = await q;
-      if (regsErr) console.error('[broadcast] registrations query error:', regsErr.message);
-      if (regs) {
-        for (const r of regs) {
-          if (!studentMap[r.school_id]) studentMap[r.school_id] = [];
-          studentMap[r.school_id].push(r);
-        }
-        console.log(`[broadcast] Loaded ${regs.length} students across ${Object.keys(studentMap).length} schools`);
-      }
+    let q = service.from('registrations')
+      .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,discount_code,base_amount,final_amount')
+      .in('school_id', school_ids);
+    if (Array.isArray(student_ids) && student_ids.length > 0) q = q.in('id', student_ids);
+    const { data: regs, error: regsErr } = await q;
+    if (regsErr) console.error('[broadcast] registrations query error:', regsErr.message);
+    for (const r of (regs ?? [])) {
+      if (!studentMap[r.school_id]) studentMap[r.school_id] = [];
+      studentMap[r.school_id].push(r);
     }
+    console.log(`[broadcast] Loaded ${regs?.length ?? 0} students across ${Object.keys(studentMap).length} schools`);
   }
 
   type Item = { name:string; type:string; recipient:string; status:'sent'|'failed'|'skipped'; error?:string };
