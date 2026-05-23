@@ -110,17 +110,25 @@ export async function POST(req: NextRequest) {
   if (!schools?.length) return NextResponse.json({ error: 'No active schools found' }, { status: 404 });
 
   // Load students — filter by student_ids if provided (user deselected some)
+  // If student_ids is an empty array it means the user deselected all — send to none
   let studentMap: Record<string, any[]> = {};
   if (recipients.includes('students')) {
-    let q = service.from('registrations')
-      .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,discount_code,base_amount,final_amount')
-      .in('school_id', school_ids);
-    if (student_ids?.length) q = q.in('id', student_ids);
-    const { data: regs } = await q;
-    if (regs) {
-      for (const r of regs) {
-        if (!studentMap[r.school_id]) studentMap[r.school_id] = [];
-        studentMap[r.school_id].push(r);
+    // Empty array = user explicitly removed all students — skip entirely
+    if (Array.isArray(student_ids) && student_ids.length === 0) {
+      console.log('[broadcast] student_ids is empty array — skipping all students');
+    } else {
+      let q = service.from('registrations')
+        .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,discount_code,base_amount,final_amount')
+        .in('school_id', school_ids);
+      if (student_ids?.length) q = q.in('id', student_ids);
+      const { data: regs, error: regsErr } = await q;
+      if (regsErr) console.error('[broadcast] registrations query error:', regsErr.message);
+      if (regs) {
+        for (const r of regs) {
+          if (!studentMap[r.school_id]) studentMap[r.school_id] = [];
+          studentMap[r.school_id].push(r);
+        }
+        console.log(`[broadcast] Loaded ${regs.length} students across ${Object.keys(studentMap).length} schools`);
       }
     }
   }
@@ -166,13 +174,16 @@ export async function POST(req: NextRequest) {
         let status:'sent'|'failed'|'skipped'='skipped'; let err=''; let prov='';
         try {
           if (channel === 'email') {
-            if (!s.contact_email) { status='skipped'; err='No email'; }
+            if (!s.contact_email) { status='skipped'; err='No email address'; }
             else { prov = await sendEmail(service, s.contact_email, subject, body, school.id, smtp_config_id); status='sent'; }
           } else {
-            if (!s.contact_phone) { status='skipped'; err='No phone'; }
+            if (!s.contact_phone) { status='skipped'; err='No phone number'; }
             else { prov = await sendWA(service, s.contact_phone, body, school.id); status='sent'; }
           }
-        } catch(e:any) { status='failed'; err=e.message; }
+        } catch(e:any) {
+          status='failed'; err=e.message;
+          console.error(`[broadcast] student ${s.student_name} (${s.id}) ${channel} failed:`, e.message);
+        }
         status==='sent'?sent++:status==='failed'?failed++:skipped++;
         results.push({ name:s.student_name??'—', type:'student', recipient:channel==='email'?(s.contact_email??'—'):(s.contact_phone??'—'), status, error:err||undefined });
         await service.from('notification_logs').insert({ school_id:school.id, registration_id:s.id, channel, provider:prov||'broadcast', recipient:channel==='email'?(s.contact_email??''):(s.contact_phone??''), status, sent_at:status==='sent'?new Date().toISOString():undefined });
