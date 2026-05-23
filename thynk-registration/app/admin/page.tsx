@@ -10,6 +10,7 @@ import { ManualPaymentPanel }   from '@/components/admin/ManualPaymentPanel';
 import { ReportingPage } from '@/components/admin/ReportingPage';
 import { DocumentUploadPanel } from '@/components/admin/DocumentUploadPanel';
 import { NotificationControlPanel, NotificationBell, NotificationDropdown } from '@/components/admin/NotificationControlPanel';
+import { LeadDatabase } from '@/components/admin/LeadDatabase';
 import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -86,6 +87,7 @@ const NAV = [
   { section:'Actions' },
   { id:'followup',      icon:'📞', label:'Follow-Up',  badge:true },
   { id:'comms',         icon:'📢', label:'Communications' },
+  { id:'leads',         icon:'🗂️', label:'Lead Database'  },
   { id:'heatmap',       icon:'🗺️',  label:'City Heatmap'  },
   { id:'recent',        icon:'🕐', label:'Recent Activity'},
   { section:'Management' },
@@ -1187,6 +1189,7 @@ export default function AdminDashboard() {
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')  { loadTemplates(); loadPrograms(); }
     if (activePage === 'comms')      { loadPrograms(); loadSchools(); loadTemplates(); }
+    if (activePage === 'leads')      { loadPrograms(); loadSchools(); loadTemplates(); }
     if (activePage === 'locations')    loadLocations();
     if (activePage === 'recent') {
       api('/api/admin/activity-logs?limit=200').then((d: any) => setActivityLogs(d.logs ?? [])).catch(() => {});
@@ -2138,6 +2141,18 @@ export default function AdminDashboard() {
                 templates={templates}
                 BACKEND={BACKEND}
                 authHeaders={authHeaders}
+                showToast={showToast}
+              />
+            )}
+          </div>
+
+          {/* ── LEAD DATABASE ────────────────────────────────────────── */}
+          <div className={`page${activePage==='leads'?' active':''}`}>
+            {activePage==='leads' && (
+              <LeadDatabase
+                programs={programs}
+                schools={visibleSchools}
+                templates={templates}
                 showToast={showToast}
               />
             )}
@@ -3191,6 +3206,8 @@ const ALL_PAGES = [
   { id:'students',      label:'Students',              section:'Analytics' },
   { id:'trends',        label:'Trends',                section:'Analytics' },
   { id:'followup',      label:'Follow-Up',             section:'Actions'   },
+  { id:'comms',         label:'Communications',         section:'Actions'   },
+  { id:'leads',         label:'Lead Database',          section:'Actions'   },
   { id:'heatmap',       label:'City Heatmap',          section:'Actions'   },
   { id:'recent',        label:'Recent Activity',       section:'Actions'   },
   { id:'programs',      label:'Programs',              section:'Management'},
