@@ -15,59 +15,130 @@ async function requireAdmin(req: NextRequest) {
   return data ? { user, role: data } : null;
 }
 
-async function sendWA(service: any, phone: string, body: string, schoolId: string): Promise<string> {
+// ── Helpers ────────────────────────────────────────────────────────────────
+function buildMetaBodyParams(templateBody: string, vars: Record<string,any>): Array<{type:'text';text:string}> {
+  const seen = new Set<string>(); const order: string[] = [];
+  templateBody.replace(/\{\{(\w+)\}\}/g, (_, key: string) => { if (!seen.has(key)) { seen.add(key); order.push(key); } return ''; });
+  return order.map(key => ({ type: 'text' as const, text: String(vars[key] ?? '') }));
+}
+
+async function sendViaWhatsAppCloud(config: any, phone: string, body: string) {
+  const phoneNumberId = config.phone_number_id ?? process.env.WA_PHONE_NUMBER_ID;
+  const token         = config.token            ?? process.env.WA_TOKEN;
+  if (!phoneNumberId || !token) throw new Error('WhatsApp Cloud API not configured');
+  const to = phone.startsWith('91') ? phone : `91${phone}`;
+  const res = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(`WhatsApp Cloud: ${JSON.stringify(e)}`); }
+}
+
+async function sendViaTwilio(config: any, phone: string, body: string) {
+  const accountSid = config.account_sid   ?? process.env.TWILIO_ACCOUNT_SID;
+  const authToken  = config.auth_token    ?? process.env.TWILIO_AUTH_TOKEN;
+  const from       = config.whatsapp_from ?? process.env.TWILIO_WHATSAPP_FROM;
+  if (!accountSid || !authToken || !from) throw new Error('Twilio not configured');
+  const to = phone.startsWith('91') ? phone : `91${phone}`;
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ From: `whatsapp:+${from}`, To: `whatsapp:+${to}`, Body: body }).toString(),
+  });
+  if (!res.ok) throw new Error(`Twilio error: ${res.status}`);
+}
+
+// ── WhatsApp — mirrors fire.ts sendWhatsApp exactly ───────────────────────
+async function sendWA(service: any, phone: string, templateBody: string, templateObj: any, vars: Record<string,any>, schoolId: string): Promise<string> {
+  const normalized  = phone.replace(/\D/g, '');
+  const to          = normalized.startsWith('91') ? normalized : `91${normalized}`;
+  const renderedBody = renderTemplate(templateBody, vars);
+  const templateName: string|undefined = templateObj?.whatsapp_template_name || undefined;
+  const rawLang      = (templateObj?.whatsapp_template_lang ?? 'en_US').trim();
+  const templateLang = rawLang === 'en' ? 'en_US' : rawLang;
+
   const { data: platformRow } = await service
     .from('integration_configs').select('config')
     .eq('provider', 'platform_settings').is('school_id', null).maybeSingle();
   const wa = platformRow?.config?.whatsapp_settings;
-  const normalized = phone.replace(/\D/g, '');
-  const to = normalized.startsWith('91') ? normalized : `91${normalized}`;
+
+  // ── ThynkComm ────────────────────────────────────────────────────────────
   if (wa?.provider === 'thynkcomm' && wa?.tcUrl && wa?.tcApiKey) {
+    const params = buildMetaBodyParams(templateBody, vars).map(p => p.text);
+    const payload = templateName
+      ? { to, template_name: templateName, language_code: templateLang, ...(params.length > 0 ? { template_params: params } : {}) }
+      : { to, message: renderedBody };
     const res = await fetch(wa.tcUrl.replace(/\/$/, '') + '/api/send-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': wa.tcApiKey, 'x-api-secret': wa.tcApiSecret ?? '' },
-      body: JSON.stringify({ to, message: body }),
+      body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`ThynkComm: ${res.status}`);
+    const resBody = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`ThynkComm error ${res.status}: ${resBody.error ?? resBody.message ?? JSON.stringify(resBody)}`);
     return 'thynkcomm';
   }
+
+  // ── Meta Cloud API direct ────────────────────────────────────────────────
   if (wa?.provider === 'meta' && wa?.metaPhoneId && wa?.metaToken) {
+    const messagePayload = templateName
+      ? { messaging_product: 'whatsapp', to, type: 'template', template: { name: templateName, language: { code: templateLang }, components: [{ type: 'body', parameters: buildMetaBodyParams(templateBody, vars) }] } }
+      : { messaging_product: 'whatsapp', to, type: 'text', text: { body: renderedBody } };
     const res = await fetch(`https://graph.facebook.com/v19.0/${wa.metaPhoneId}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${wa.metaToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
+      body: JSON.stringify(messagePayload),
     });
-    if (!res.ok) throw new Error(`Meta: ${res.status}`);
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(`Meta WhatsApp error: ${JSON.stringify(e)}`); }
     return 'meta_whatsapp';
   }
+
+  // ── Twilio (platform settings) ───────────────────────────────────────────
   if (wa?.provider === 'twilio' && wa?.accountSid && wa?.authToken && wa?.fromNumber) {
-    const creds = Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64');
-    const from  = wa.fromNumber.startsWith('whatsapp:') ? wa.fromNumber : `whatsapp:${wa.fromNumber}`;
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${wa.accountSid}/Messages.json`, {
+    const from = wa.fromNumber.startsWith('whatsapp:') ? wa.fromNumber : `whatsapp:${wa.fromNumber}`;
+    const res  = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${wa.accountSid}/Messages.json`, {
       method: 'POST',
-      headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ From: from, To: `whatsapp:+${to}`, Body: body }).toString(),
+      headers: { Authorization: `Basic ${Buffer.from(`${wa.accountSid}:${wa.authToken}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ From: from, To: `whatsapp:+${to}`, Body: renderedBody }).toString(),
     });
-    if (!res.ok) throw new Error(`Twilio: ${res.status}`);
+    if (!res.ok) throw new Error(`Twilio platform error: ${res.status}`);
     return 'twilio';
   }
-  throw new Error('No WhatsApp provider configured');
+
+  // ── Legacy integration_configs table fallback (same as fire.ts) ──────────
+  const { data: configs } = await service
+    .from('integration_configs').select('provider, config')
+    .or(`school_id.eq.${schoolId},school_id.is.null`)
+    .in('provider', ['whatsapp_cloud', 'twilio'])
+    .eq('is_active', true)
+    .order('school_id', { nullsFirst: false })
+    .order('priority', { ascending: true }).limit(1);
+
+  const cfg = configs?.[0];
+  if (cfg?.provider === 'whatsapp_cloud') { await sendViaWhatsAppCloud(cfg.config, normalized, renderedBody); return 'whatsapp_cloud'; }
+  if (cfg?.provider === 'twilio')         { await sendViaTwilio(cfg.config, normalized, renderedBody);        return 'twilio'; }
+
+  if (process.env.WA_PHONE_NUMBER_ID && process.env.WA_TOKEN) {
+    await sendViaWhatsAppCloud({}, normalized, renderedBody);
+    return 'whatsapp_cloud_env';
+  }
+
+  throw new Error('No WhatsApp provider configured. Add settings in Admin → Integrations.');
 }
 
-async function sendEmail(
-  service: any, to: string, subject: string, body: string,
-  schoolId: string, smtpConfigId?: string
-): Promise<string> {
+// ── Email ────────────────────────────────────────────────────────────────────
+async function sendEmail(service: any, to: string, subject: string, body: string, schoolId: string, smtpConfigId?: string): Promise<string> {
   const { data: platformRow } = await service
     .from('integration_configs').select('config')
     .eq('provider', 'platform_settings').is('school_id', null).maybeSingle();
   const smtpConfigs: any[] = platformRow?.config?.email_smtp_configs ?? [];
   let smtpCfg: any = null;
 
+  // 1. User explicitly chose a config
   if (smtpConfigId && smtpConfigId !== 'default') {
-    // User explicitly chose a config by id or smtpUser
     smtpCfg = smtpConfigs.find((c: any) => c.id === smtpConfigId || c.smtpUser === smtpConfigId);
   }
+  // 2. Match by school's program
   if (!smtpCfg && smtpConfigs.length > 0) {
     const { data: school } = await service.from('schools').select('project_id').eq('id', schoolId).single();
     const pid = school?.project_id ?? null;
@@ -75,6 +146,7 @@ async function sendEmail(
     if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false && (!c.program_id || c.program_id === ''));
     if (!smtpCfg) smtpCfg = smtpConfigs.find((c: any) => c.enabled !== false);
   }
+  // 3. Legacy single smtp config
   if (!smtpCfg) smtpCfg = platformRow?.config?.email_settings;
   if (!smtpCfg?.smtpHost) throw new Error('No email provider configured');
 
@@ -92,6 +164,7 @@ async function sendEmail(
   return `smtp:${smtpCfg.name || smtpCfg.smtpUser}`;
 }
 
+// ── Main handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin(req);
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -101,6 +174,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'channel, template_id, school_ids and recipients required' }, { status: 400 });
 
   const service = createServiceClient();
+
   const { data: template } = await service.from('notification_templates').select('*').eq('id', template_id).single();
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
 
@@ -109,13 +183,12 @@ export async function POST(req: NextRequest) {
     .in('id', school_ids).eq('is_active', true);
   if (!schools?.length) return NextResponse.json({ error: 'No active schools found' }, { status: 404 });
 
-  // Load students — filter by student_ids if provided (user deselected some)
-  // If student_ids is an empty array it means the user deselected all — send to none
+  // ── Load students ─────────────────────────────────────────────────────────
+  // Empty array = user explicitly removed all → skip
   let studentMap: Record<string, any[]> = {};
   if (recipients.includes('students')) {
-    // Empty array = user explicitly removed all students — skip entirely
     if (Array.isArray(student_ids) && student_ids.length === 0) {
-      console.log('[broadcast] student_ids is empty array — skipping all students');
+      console.log('[broadcast] student_ids is empty — skipping students');
     } else {
       let q = service.from('registrations')
         .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,discount_code,base_amount,final_amount')
@@ -140,13 +213,14 @@ export async function POST(req: NextRequest) {
   for (const school of schools) {
     const contact     = school.contact_persons?.[0];
     const programName = (school as any).projects?.name ?? '';
-    const baseVars = {
+    const baseVars: Record<string,any> = {
       school_name: school.name??'', program_name: programName,
       city: school.city??'', state: school.state??'', org_name: 'Thynk Success',
       contact_person_name: contact?.name??'', contact_designation: contact?.designation??'',
       contact_phone: contact?.mobile??'', contact_email: contact?.email??'',
     };
 
+    // ── School contacts ───────────────────────────────────────────
     if (recipients.includes('schools') && contact) {
       const vars    = { ...baseVars, student_name: contact.name, parent_name: contact.name };
       const body    = renderTemplate(template.body, vars);
@@ -154,31 +228,40 @@ export async function POST(req: NextRequest) {
       let status: 'sent'|'failed'|'skipped' = 'skipped'; let err = ''; let prov = '';
       try {
         if (channel === 'email') {
-          if (!contact.email) { status='skipped'; err='No email'; }
+          if (!contact.email)  { status='skipped'; err='No email'; }
           else { prov = await sendEmail(service, contact.email, subject, body, school.id, smtp_config_id); status='sent'; }
         } else {
           if (!contact.mobile) { status='skipped'; err='No phone'; }
-          else { prov = await sendWA(service, contact.mobile, body, school.id); status='sent'; }
+          else { prov = await sendWA(service, contact.mobile, template.body, template, vars, school.id); status='sent'; }
         }
-      } catch(e:any) { status='failed'; err=e.message; }
+      } catch(e:any) { status='failed'; err=e.message; console.error(`[broadcast] school contact ${school.name} ${channel} failed:`, e.message); }
       status==='sent'?sent++:status==='failed'?failed++:skipped++;
       results.push({ name:school.name, type:'school', recipient:channel==='email'?(contact.email??'—'):(contact.mobile??'—'), status, error:err||undefined });
       await service.from('notification_logs').insert({ school_id:school.id, channel, provider:prov||'broadcast', recipient:channel==='email'?(contact.email??''):(contact.mobile??''), status, sent_at:status==='sent'?new Date().toISOString():undefined });
     }
 
+    // ── Students ──────────────────────────────────────────────────
     if (recipients.includes('students')) {
       for (const s of (studentMap[school.id]??[])) {
-        const vars = { ...baseVars, student_name:s.student_name??'', parent_name:s.parent_name??'', class_grade:s.class_grade??'', gender:s.gender??'', registration_id:s.id??'', discount_code:s.discount_code??'', contact_email:s.contact_email??'', contact_phone:s.contact_phone??'', base_amount:s.base_amount?String(s.base_amount/100):'', final_amount:s.final_amount?String(s.final_amount/100):'' };
+        const vars: Record<string,any> = {
+          ...baseVars,
+          student_name: s.student_name??'', parent_name: s.parent_name??'',
+          class_grade: s.class_grade??'', gender: s.gender??'',
+          registration_id: s.id??'', discount_code: s.discount_code??'',
+          contact_email: s.contact_email??'', contact_phone: s.contact_phone??'',
+          base_amount: s.base_amount ? String(s.base_amount/100) : '',
+          final_amount: s.final_amount ? String(s.final_amount/100) : '',
+        };
         const body    = renderTemplate(template.body, vars);
         const subject = renderTemplate(template.subject ?? 'Message from Thynk', vars);
-        let status:'sent'|'failed'|'skipped'='skipped'; let err=''; let prov='';
+        let status: 'sent'|'failed'|'skipped' = 'skipped'; let err = ''; let prov = '';
         try {
           if (channel === 'email') {
             if (!s.contact_email) { status='skipped'; err='No email address'; }
             else { prov = await sendEmail(service, s.contact_email, subject, body, school.id, smtp_config_id); status='sent'; }
           } else {
             if (!s.contact_phone) { status='skipped'; err='No phone number'; }
-            else { prov = await sendWA(service, s.contact_phone, body, school.id); status='sent'; }
+            else { prov = await sendWA(service, s.contact_phone, template.body, template, vars, school.id); status='sent'; }
           }
         } catch(e:any) {
           status='failed'; err=e.message;
