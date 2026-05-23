@@ -407,7 +407,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   const [step,            setStep]            = useState<1|2|3|4|5>(1);
   const [programId,       setProgramId]       = useState('');
   const [selectedSchools, setSelectedSchools] = useState<Set<string>>(new Set());
-  const [recipients,      setRecipients]      = useState<Set<'schools'|'students'>>(new Set(['schools']));
+  const [recipients,      setRecipients]      = useState<Set<'schools'|'students'>>(new Set(['schools','students']));
   const [channel,         setChannel]         = useState<'email'|'whatsapp'|''>(''  );
   const [templateId,      setTemplateId]      = useState('');
   const [schoolSearch,    setSchoolSearch]    = useState('');
@@ -508,7 +508,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   }
 
   async function goToStep3(){
-    if(recipients.has('students')) await loadStudents(Array.from(selectedSchools));
+    await loadStudents(Array.from(selectedSchools));
     setStep(3);
   }
 
@@ -517,7 +517,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   }
 
   function reset(){
-    setProgramId(''); setSelectedSchools(new Set()); setRecipients(new Set(['schools']));
+    setProgramId(''); setSelectedSchools(new Set()); setRecipients(new Set(['schools','students']));
     setChannel(''); setTemplateId(''); setResult(null); setStep(1);
     setSchoolSearch(''); setStudentSearch(''); setStudentStatusFilter('');
     setAllStudents([]); setSelectedStudents(new Set());
@@ -655,7 +655,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
           </div>
           <div style={{display:'flex',justifyContent:'space-between',marginTop:16}}>
             <button className="btn btn-outline" onClick={()=>setStep(1)}>← Back</button>
-            <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={()=>setStep(3)}>
+            <button className="btn btn-primary" disabled={selectedSchools.size===0} onClick={goToStep3}>
               Next: Choose Recipients ({selectedSchools.size} schools) →
             </button>
           </div>
