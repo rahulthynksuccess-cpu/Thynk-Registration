@@ -412,6 +412,7 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   const [templateId,      setTemplateId]      = useState('');
   const [schoolSearch,    setSchoolSearch]    = useState('');
   const [studentSearch,   setStudentSearch]   = useState('');
+  const [studentStatusFilter, setStudentStatusFilter] = useState<string>('');
 
   // Students
   const [allStudents,      setAllStudents]      = useState<any[]>([]);
@@ -458,13 +459,15 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   // Filtered student list
   const filteredStudents = useMemo(()=>{
     const q = studentSearch.toLowerCase();
-    return q ? allStudents.filter(s=>
+    let base = allStudents;
+    if (studentStatusFilter) base = base.filter((s:any) => s.payment_status === studentStatusFilter);
+    return q ? base.filter(s=>
       s.student_name?.toLowerCase().includes(q)||
       s.contact_email?.toLowerCase().includes(q)||
       s.contact_phone?.includes(q)||
       s.class_grade?.toLowerCase().includes(q)
-    ) : allStudents;
-  },[allStudents,studentSearch]);
+    ) : base;
+  },[allStudents,studentSearch,studentStatusFilter]);
 
   const selectedTemplate = templates.find(t=>t.id===templateId);
   const selectedSmtp     = smtpOptions.find(s=>s.id===smtpConfigId);
@@ -516,7 +519,8 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
   function reset(){
     setProgramId(''); setSelectedSchools(new Set()); setRecipients(new Set(['schools']));
     setChannel(''); setTemplateId(''); setResult(null); setStep(1);
-    setSchoolSearch(''); setStudentSearch(''); setAllStudents([]); setSelectedStudents(new Set());
+    setSchoolSearch(''); setStudentSearch(''); setStudentStatusFilter('');
+    setAllStudents([]); setSelectedStudents(new Set());
     if(smtpOptions[0]) setSmtpConfigId(smtpOptions[0].id);
   }
 
@@ -716,6 +720,17 @@ function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, au
                 <span style={{fontWeight:700,fontSize:13}}>👨‍🎓 Student List</span>
                 <span style={{fontSize:11,color:'var(--m)'}}>All selected by default</span>
                 <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  {/* Payment status filter */}
+                  <select
+                    value={studentStatusFilter}
+                    onChange={e=>setStudentStatusFilter(e.target.value)}
+                    style={{padding:'5px 10px',borderRadius:7,border:`1.5px solid ${studentStatusFilter?'var(--acc)':'var(--bd)'}`,fontSize:12,background:'var(--card)',color:studentStatusFilter?'var(--acc)':'var(--m)',outline:'none',fontWeight:studentStatusFilter?700:400,cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>
+                    <option value="">All Statuses</option>
+                    {['paid','initiated','pending','failed','cancelled'].map(st=>{
+                      const cnt = allStudents.filter((s:any)=>s.payment_status===st).length;
+                      return cnt>0 ? <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)} ({cnt})</option> : null;
+                    })}
+                  </select>
                   <div style={{position:'relative'}}>
                     <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:11,color:'var(--m)'}}>🔍</span>
                     <input value={studentSearch} onChange={e=>setStudentSearch(e.target.value)} placeholder="Search…"
