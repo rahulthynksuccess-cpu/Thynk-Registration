@@ -400,8 +400,8 @@ function StudentDetailModal({
 type BroadcastResult = { name:string; type:string; recipient:string; status:'sent'|'failed'|'skipped'; error?:string };
 type SmtpOption = { id:string; name:string; fromName:string; fromEmail:string; smtpUser:string; program_id:string|null };
 
-function CommunicationsPage({ programs, schools, templates, BACKEND, authHeaders, showToast }:{
-  programs:Row[]; schools:Row[]; templates:Row[];
+function CommunicationsPage({ programs, schools, allRows, templates, BACKEND, authHeaders, showToast }:{
+  programs:Row[]; schools:Row[]; allRows:Row[]; templates:Row[];
   BACKEND:string; authHeaders:()=>HeadersInit; showToast:(t:string,i?:string)=>void;
 }) {
   const [step,            setStep]            = useState<1|2|3|4|5>(1);
@@ -2054,6 +2054,7 @@ export default function AdminDashboard() {
               <CommunicationsPage
                 programs={programs}
                 schools={schools}
+                allRows={visibleRows}
                 templates={templates}
                 BACKEND={BACKEND}
                 authHeaders={authHeaders}
