@@ -1,6 +1,11 @@
 // app/api/schools/register/route.ts
 // Public endpoint — no auth required
 // Schools self-register here; status = 'registered', inactive until approved by admin
+//
+// consultant_code (optional body field):
+//   - If present → look up consultant and tag school with their user_id
+//   - If absent  → fall back to the default consultant (is_default_consultant = true)
+//   - If no default exists → consultant_id remains null
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -31,6 +36,7 @@ export async function POST(req: NextRequest) {
     contact_persons,
     project_id,
     project_slug,
+    consultant_code, // optional — present when school registers via curated link
   } = body;
 
   // ── Validation ─────────────────────────────────────────────────
@@ -84,6 +90,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Resolve consultant_id ──────────────────────────────────────
+  // Priority: curated link code → default consultant → null
+  let resolvedConsultantId: string | null = null;
+
+  if (consultant_code?.trim()) {
+    const code = consultant_code.trim().toLowerCase();
+    const { data: profile } = await supabase
+      .from('consultant_profiles')
+      .select('user_id')
+      .eq('consultant_code', code)
+      .maybeSingle();
+    resolvedConsultantId = profile?.user_id ?? null;
+  }
+
+  if (!resolvedConsultantId) {
+    // Fall back to default consultant
+    const { data: defaultProfile } = await supabase
+      .from('consultant_profiles')
+      .select('user_id')
+      .eq('is_default_consultant', true)
+      .maybeSingle();
+    resolvedConsultantId = defaultProfile?.user_id ?? null;
+  }
+
   // ── Duplicate check (same school name + project) ───────────────
   const { data: existing } = await supabase
     .from('schools')
@@ -102,11 +132,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: statusMsg, already_registered: true }, { status: 409 });
   }
 
-  // ── Insert school with status = 'registered' ───────────────────
+  // ── Insert school ──────────────────────────────────────────────
   const { data: school, error } = await supabase
     .from('schools')
     .insert({
-      // Temporary placeholder — admin assigns real code on approval
       school_code:            `pending-${Date.now()}`,
       name:                   name.trim(),
       org_name:               (org_name || name).trim(),
@@ -118,6 +147,7 @@ export async function POST(req: NextRequest) {
       contact_persons:        contacts,
       project_id:             project.id,
       project_slug:           project.slug,
+      consultant_id:          resolvedConsultantId,
       status:                 'registered',
       is_active:              false,
       is_registration_active: false,
@@ -128,7 +158,7 @@ export async function POST(req: NextRequest) {
       },
       gateway_config: {},
     })
-    .select('id, name, status, city, country, created_at')
+    .select('id, name, status, city, country, created_at, consultant_id')
     .single();
 
   if (error) {
@@ -143,17 +173,18 @@ export async function POST(req: NextRequest) {
     entity_type: 'school',
     entity_id:   school.id,
     metadata: {
-      name:          school.name,
-      city:          school.city,
-      country:       school.country,
-      project_id:    project.id,
-      project_name:  project.name,
-      contact_email: primaryContact?.email ?? null,
+      name:             school.name,
+      city:             school.city,
+      country:          school.country,
+      project_id:       project.id,
+      project_name:     project.name,
+      consultant_id:    resolvedConsultantId,
+      via_curated_link: !!consultant_code?.trim(),
+      contact_email:    primaryContact?.email ?? null,
     },
-  }); // non-critical
+  });
 
   // ── Fire school.registered trigger ────────────────────────────
-  // Sends confirmation to school contact + optional admin alert
   await fireTriggers('school.registered', '', school.id);
 
   return NextResponse.json(

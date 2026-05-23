@@ -1,6 +1,6 @@
 // app/api/admin/consultants/route.ts
 // CRUD for consultant users — super_admin only
-// Consultants can: create schools (web + mobile), view their assigned schools + reports
+// Now also manages consultant_profiles (code, mobile, pan, is_default)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
@@ -20,14 +20,13 @@ async function requireSuperAdmin(req: NextRequest) {
 }
 
 // GET /api/admin/consultants
-// Returns all users with the 'consultant' role, along with their assigned school count
+// Returns all consultants with their profile fields and assigned school count
 export async function GET(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
 
-  // Get all consultant role rows
   const { data: roleRows, error } = await service
     .from('admin_roles')
     .select('id, user_id, created_at')
@@ -40,7 +39,7 @@ export async function GET(req: NextRequest) {
 
   const userIds = roleRows.map(r => r.user_id);
 
-  // Get auth user details (email) via admin API
+  // Auth user details
   const userDetails: Record<string, any> = {};
   for (const uid of userIds) {
     try {
@@ -49,7 +48,16 @@ export async function GET(req: NextRequest) {
     } catch {}
   }
 
-  // Count schools per consultant
+  // Profile rows (consultant_code, mobile, pan, is_default)
+  const { data: profiles } = await service
+    .from('consultant_profiles')
+    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant')
+    .in('user_id', userIds);
+
+  const profileMap: Record<string, any> = {};
+  for (const p of profiles ?? []) profileMap[p.user_id] = p;
+
+  // School counts
   const { data: schools } = await service
     .from('schools')
     .select('consultant_id')
@@ -61,31 +69,53 @@ export async function GET(req: NextRequest) {
   }
 
   const consultants = roleRows.map(r => ({
-    id:           r.user_id,
-    role_id:      r.id,
-    email:        userDetails[r.user_id]?.email ?? '—',
-    name:         userDetails[r.user_id]?.user_metadata?.name ?? '',
-    created_at:   r.created_at,
-    school_count: schoolCounts[r.user_id] ?? 0,
+    id:                    r.user_id,
+    role_id:               r.id,
+    email:                 userDetails[r.user_id]?.email ?? '—',
+    name:                  userDetails[r.user_id]?.user_metadata?.name ?? '',
+    created_at:            r.created_at,
+    school_count:          schoolCounts[r.user_id] ?? 0,
+    consultant_code:       profileMap[r.user_id]?.consultant_code ?? null,
+    mobile_number:         profileMap[r.user_id]?.mobile_number ?? null,
+    pan_number:            profileMap[r.user_id]?.pan_number ?? null,
+    is_default_consultant: profileMap[r.user_id]?.is_default_consultant ?? false,
   }));
 
   return NextResponse.json({ consultants });
 }
 
 // POST /api/admin/consultants
-// Creates a new Supabase auth user with the 'consultant' role
+// Creates a new Supabase auth user + consultant role + profile
 export async function POST(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
-  const { name, email, password } = await req.json();
+  const { name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant } = await req.json();
 
   if (!name?.trim() || !email?.trim() || !password?.trim()) {
     return NextResponse.json({ error: 'name, email and password are required' }, { status: 400 });
   }
+  if (!consultant_code?.trim()) {
+    return NextResponse.json({ error: 'consultant_code is required' }, { status: 400 });
+  }
 
-  // Create Supabase auth user
+  const code = consultant_code.trim().toLowerCase().replace(/\s+/g, '-');
+  if (!/^[a-z0-9-]+$/.test(code)) {
+    return NextResponse.json({ error: 'consultant_code must be lowercase letters, digits, or hyphens only' }, { status: 400 });
+  }
+
+  // Check code uniqueness before creating auth user
+  const { data: existingCode } = await service
+    .from('consultant_profiles')
+    .select('id')
+    .eq('consultant_code', code)
+    .maybeSingle();
+  if (existingCode) {
+    return NextResponse.json({ error: 'Consultant code already in use' }, { status: 400 });
+  }
+
+  // Create auth user
   const { data: newUser, error: authErr } = await service.auth.admin.createUser({
     email:         email.trim(),
     password:      password.trim(),
@@ -100,7 +130,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Assign 'consultant' role (no school_id — they operate across their own schools)
+  // Assign consultant role
   const { error: roleErr } = await service.from('admin_roles').insert({
     user_id:   newUser.user.id,
     role:      'consultant',
@@ -108,66 +138,113 @@ export async function POST(req: NextRequest) {
   });
 
   if (roleErr) {
-    // Rollback auth user
     await service.auth.admin.deleteUser(newUser.user.id);
     return NextResponse.json({ error: roleErr.message }, { status: 500 });
   }
 
+  // If this new consultant is being set as default, unset any existing default first
+  if (is_default_consultant) {
+    await service
+      .from('consultant_profiles')
+      .update({ is_default_consultant: false })
+      .eq('is_default_consultant', true);
+  }
+
+  // Insert profile
+  const { error: profileErr } = await service.from('consultant_profiles').insert({
+    user_id:               newUser.user.id,
+    consultant_code:       code,
+    mobile_number:         mobile_number?.trim() || null,
+    pan_number:            pan_number?.trim() || null,
+    is_default_consultant: !!is_default_consultant,
+  });
+
+  if (profileErr) {
+    // Rollback role and auth user
+    await service.from('admin_roles').delete().eq('user_id', newUser.user.id).eq('role', 'consultant');
+    await service.auth.admin.deleteUser(newUser.user.id);
+    return NextResponse.json({ error: profileErr.message }, { status: 500 });
+  }
+
   return NextResponse.json({
     consultant: {
-      id:    newUser.user.id,
-      email: newUser.user.email,
-      name:  name.trim(),
+      id:                    newUser.user.id,
+      email:                 newUser.user.email,
+      name:                  name.trim(),
+      consultant_code:       code,
+      mobile_number:         mobile_number?.trim() || null,
+      pan_number:            pan_number?.trim() || null,
+      is_default_consultant: !!is_default_consultant,
     }
   }, { status: 201 });
 }
 
-// DELETE /api/admin/consultants
-// Removes consultant role (does NOT delete the auth user)
-export async function DELETE(req: NextRequest) {
-  const user = await requireSuperAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-  const service = createServiceClient();
-  const { id } = await req.json(); // id = user_id of the consultant
-
-  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
-
-  // Remove consultant role
-  await service
-    .from('admin_roles')
-    .delete()
-    .eq('user_id', id)
-    .eq('role', 'consultant');
-
-  // Nullify consultant_id on their schools (schools remain, just un-assigned)
-  await service
-    .from('schools')
-    .update({ consultant_id: null })
-    .eq('consultant_id', id);
-
-  return NextResponse.json({ success: true });
-}
-
-// PATCH /api/admin/consultants — update name or password
+// PATCH /api/admin/consultants — update name, password, and/or profile fields
 export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
-  const { id, name, password } = await req.json();
+  const { id, name, password, consultant_code, mobile_number, pan_number, is_default_consultant } = await req.json();
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  const update: Record<string, any> = {};
-  if (name) update.user_metadata = { name: name.trim() };
-  if (password) update.password = password.trim();
+  // Update auth user metadata
+  const authUpdate: Record<string, any> = {};
+  if (name)     authUpdate.user_metadata = { name: name.trim() };
+  if (password) authUpdate.password      = password.trim();
 
-  if (!Object.keys(update).length) {
-    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+  if (Object.keys(authUpdate).length) {
+    const { error } = await service.auth.admin.updateUserById(id, authUpdate);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const { error } = await service.auth.admin.updateUserById(id, update);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  // Update profile fields if any provided
+  const profileUpdate: Record<string, any> = {};
+  if (consultant_code !== undefined) {
+    const code = consultant_code.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!/^[a-z0-9-]+$/.test(code)) {
+      return NextResponse.json({ error: 'consultant_code must be lowercase letters, digits, or hyphens only' }, { status: 400 });
+    }
+    profileUpdate.consultant_code = code;
+  }
+  if (mobile_number  !== undefined) profileUpdate.mobile_number  = mobile_number?.trim()  || null;
+  if (pan_number     !== undefined) profileUpdate.pan_number     = pan_number?.trim()     || null;
+  if (is_default_consultant !== undefined) {
+    profileUpdate.is_default_consultant = !!is_default_consultant;
+    // Unset any existing default first
+    if (is_default_consultant) {
+      await service
+        .from('consultant_profiles')
+        .update({ is_default_consultant: false })
+        .eq('is_default_consultant', true)
+        .neq('user_id', id);
+    }
+  }
+
+  if (Object.keys(profileUpdate).length) {
+    // Upsert so profile row is created if somehow missing
+    const { error: profileErr } = await service
+      .from('consultant_profiles')
+      .upsert({ user_id: id, ...profileUpdate }, { onConflict: 'user_id' });
+    if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ success: true });
+}
+
+// DELETE /api/admin/consultants
+// Removes consultant role and profile (does NOT delete auth user)
+export async function DELETE(req: NextRequest) {
+  const user = await requireSuperAdmin(req);
+  if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const service = createServiceClient();
+  const { id } = await req.json();
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+
+  await service.from('admin_roles').delete().eq('user_id', id).eq('role', 'consultant');
+  await service.from('consultant_profiles').delete().eq('user_id', id);
+  await service.from('schools').update({ consultant_id: null }).eq('consultant_id', id);
 
   return NextResponse.json({ success: true });
 }
