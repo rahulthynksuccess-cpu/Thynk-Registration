@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
   let studentMap: Record<string, any[]> = {};
   if (recipients.includes('students')) {
     let q = service.from('registrations')
-      .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,discount_code,base_amount,final_amount')
+      .select('id,student_name,contact_phone,contact_email,school_id,class_grade,gender,parent_name,base_amount,final_amount')
       .in('school_id', school_ids);
     if (Array.isArray(student_ids) && student_ids.length > 0) q = q.in('id', student_ids);
     const { data: regs, error: regsErr } = await q;
@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
           ...baseVars,
           student_name: s.student_name??'', parent_name: s.parent_name??'',
           class_grade: s.class_grade??'', gender: s.gender??'',
-          registration_id: s.id??'', discount_code: s.discount_code??'',
+          registration_id: s.id??'',
           contact_email: s.contact_email??'', contact_phone: s.contact_phone??'',
           base_amount: s.base_amount ? String(s.base_amount/100) : '',
           final_amount: s.final_amount ? String(s.final_amount/100) : '',
