@@ -10,6 +10,11 @@ import { authFetch } from '@/lib/supabase/client';
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Row = Record<string, any>;
 
+type SmtpOption = {
+  id: string; name: string; fromName: string;
+  fromEmail: string; smtpUser: string; program_id: string | null;
+};
+
 interface Lead {
   id: string;
   school_id: string;
@@ -207,6 +212,22 @@ function LeadDetailModal({
   const [toAddr, setToAddr]     = useState('');
   const [preview, setPreview]   = useState('');
   const [sending, setSending]   = useState(false);
+  const [smtpOptions, setSmtpOptions] = useState<SmtpOption[]>([]);
+  const [smtpConfigId, setSmtpConfigId] = useState('');
+  const [waProvider, setWaProvider] = useState<{provider:string;label:string}|null>(null);
+
+  // Load SMTP options
+  useEffect(() => {
+    authFetch(`${BACKEND}/api/admin/broadcast/config`)
+      .then(r => r.json())
+      .then(d => {
+        const opts: SmtpOption[] = d.smtpConfigs ?? [];
+        setSmtpOptions(opts);
+        if (opts.length > 0) setSmtpConfigId(opts[0].id);
+        if (d.whatsappProvider) setWaProvider(d.whatsappProvider);
+      }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const chanTpls = templates.filter(t => t.channel === sendCh && t.is_active !== false);
 
@@ -254,6 +275,7 @@ function LeadDetailModal({
           school_id: lead.school_id,
           to_phone: sendCh === 'whatsapp' ? toAddr : lead.mobile,
           to_email: sendCh === 'email'    ? toAddr : lead.email,
+          smtp_config_id: sendCh === 'email' ? smtpConfigId || undefined : undefined,
           vars: {
             student_name: lead.student_name ?? '', parent_name: lead.parent_name ?? '',
             grade: lead.grade ?? '', mobile: lead.mobile ?? '', email: lead.email ?? '',
@@ -357,6 +379,32 @@ function LeadDetailModal({
               <input style={IS} value={toAddr} onChange={e => setToAddr(e.target.value)}
                 placeholder={sendCh === 'whatsapp' ? '91XXXXXXXXXX' : 'email@example.com'} />
             </div>
+
+            {/* SMTP selector for email */}
+            {sendCh === 'email' && (
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--m)', marginBottom: 6 }}>📤 Send From (SMTP Account)</label>
+                {smtpOptions.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#ef4444', padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    ⚠️ No SMTP configured. Set up in Integrations.
+                  </div>
+                ) : (
+                  <select style={SS} value={smtpConfigId} onChange={e => setSmtpConfigId(e.target.value)}>
+                    {smtpOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>{opt.name} — {opt.fromEmail || opt.smtpUser}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {/* WhatsApp provider info */}
+            {sendCh === 'whatsapp' && (
+              <div style={{ fontSize: 11, padding: '7px 10px', borderRadius: 8, background: 'rgba(37,211,102,0.06)', border: '1px solid rgba(37,211,102,0.2)', color: 'var(--m)' }}>
+                💬 Via: <strong>{waProvider ? waProvider.label : 'Not configured'}</strong>
+              </div>
+            )}
+
             <div>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--m)', marginBottom: 5 }}>Template *</label>
               <select style={{ ...SS }} value={tplId} onChange={e => setTplId(e.target.value)}>
@@ -407,6 +455,23 @@ function BroadcastModal({
   const [tplId,        setTplId]        = useState('');
   const [sending,      setSending]      = useState(false);
   const [result,       setResult]       = useState<any>(null);
+  const [smtpOptions,  setSmtpOptions]  = useState<SmtpOption[]>([]);
+  const [smtpConfigId, setSmtpConfigId] = useState('');
+  const [waProvider,   setWaProvider]   = useState<{provider:string;label:string}|null>(null);
+
+  // Load SMTP options once
+  useEffect(() => {
+    authFetch(`${BACKEND}/api/admin/broadcast/config`)
+      .then(r => r.json())
+      .then(d => {
+        const opts: SmtpOption[] = d.smtpConfigs ?? [];
+        setSmtpOptions(opts);
+        if (opts.length > 0 && !smtpConfigId) setSmtpConfigId(opts[0].id);
+        if (d.whatsappProvider) setWaProvider(d.whatsappProvider);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     let base = leads;
@@ -471,6 +536,7 @@ function BroadcastModal({
             school_id: lead.school_id,
             to_phone: channel === 'whatsapp' ? to_phone : undefined,
             to_email: channel === 'email'    ? to_email : undefined,
+            smtp_config_id: channel === 'email' ? smtpConfigId || undefined : undefined,
             vars,
           }),
         });
@@ -643,6 +709,55 @@ function BroadcastModal({
                 </div>
               </div>
 
+              {/* ── SMTP account selector (email only) ── */}
+              {channel === 'email' && (
+                <div style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 12, background: 'rgba(79,70,229,0.05)', border: '1.5px solid rgba(79,70,229,0.2)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--acc)', textTransform: 'uppercase' as const, letterSpacing: '.05em', marginBottom: 12 }}>📤 Send From (Email Account)</div>
+                  {smtpOptions.length === 0 ? (
+                    <div style={{ fontSize: 12, color: '#ef4444', padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                      ⚠️ No SMTP accounts configured. Go to <strong>Integrations</strong> to set up email first.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                      {smtpOptions.map(opt => {
+                        const active = smtpConfigId === opt.id;
+                        return (
+                          <div key={opt.id} onClick={() => setSmtpConfigId(opt.id)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 9, cursor: 'pointer',
+                              border: `2px solid ${active ? 'var(--acc)' : 'var(--bd)'}`,
+                              background: active ? 'var(--acc3)' : 'var(--bg)',
+                            }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: active ? 'var(--acc)' : 'var(--bd)', color: active ? '#fff' : 'var(--m)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                              {active ? '✓' : '@'}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: active ? 'var(--acc)' : 'var(--text)' }}>{opt.name}</div>
+                              <div style={{ fontSize: 11, color: 'var(--m)', marginTop: 2 }}>
+                                {opt.fromName} &lt;{opt.fromEmail || opt.smtpUser}&gt;
+                                {opt.program_id
+                                  ? <span style={{ marginLeft: 8, padding: '1px 7px', borderRadius: 20, background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontWeight: 700 }}>🎯 Program</span>
+                                  : <span style={{ marginLeft: 8, padding: '1px 7px', borderRadius: 20, background: 'var(--bg)', color: 'var(--m)', border: '1px solid var(--bd)' }}>🌐 Global</span>}
+                              </div>
+                            </div>
+                            {active && <span style={{ color: 'var(--acc)', fontSize: 14 }}>✅</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* WhatsApp provider info */}
+              {channel === 'whatsapp' && (
+                <div style={{ marginBottom: 20, padding: '12px 14px', borderRadius: 10, background: 'rgba(37,211,102,0.06)', border: '1.5px solid rgba(37,211,102,0.25)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text)' }}>
+                    💬 <strong>WhatsApp Provider:</strong>{' '}
+                    {waProvider ? waProvider.label : <span style={{ color: '#ef4444' }}>Not configured — set up in Integrations</span>}
+                  </div>
+                </div>
+              )}
+
               {/* Template */}
               {channel && (
                 <div style={{ marginBottom: 20 }}>
@@ -676,6 +791,10 @@ function BroadcastModal({
                 <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(16,185,129,0.06)', border: '1.5px solid rgba(16,185,129,0.25)', marginBottom: 16, fontSize: 12, lineHeight: 2 }}>
                   <div style={{ fontWeight: 700, color: '#10b981', marginBottom: 4 }}>📋 Ready to Send</div>
                   <div>📡 Channel: <strong>{channel}</strong></div>
+                  {channel === 'email' && smtpOptions.find(s => s.id === smtpConfigId) && (
+                    <div>📤 From: <strong>{smtpOptions.find(s => s.id === smtpConfigId)!.fromName} &lt;{smtpOptions.find(s => s.id === smtpConfigId)!.fromEmail || smtpOptions.find(s => s.id === smtpConfigId)!.smtpUser}&gt;</strong></div>
+                  )}
+                  {channel === 'whatsapp' && waProvider && <div>💬 Via: <strong>{waProvider.label}</strong></div>}
                   <div>👥 Recipients: <strong>{selected.size} leads</strong></div>
                   <div>📄 Template: <strong>{selTpl?.name}</strong></div>
                   {channel === 'whatsapp' && <div style={{ fontSize: 11, color: 'var(--m)' }}>⚠️ {selectedLeads.filter(l => !l.mobile).length} leads have no phone number and will be skipped.</div>}
@@ -685,7 +804,7 @@ function BroadcastModal({
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <button className="btn btn-outline" onClick={() => setStep(2)}>← Back</button>
-                <button className="btn btn-primary" disabled={!channel || !tplId || sending} style={{ minWidth: 150 }} onClick={handleSend}>
+                <button className="btn btn-primary" disabled={!channel || !tplId || sending || (channel === 'email' && smtpOptions.length > 0 && !smtpConfigId)} style={{ minWidth: 150 }} onClick={handleSend}>
                   {sending ? '⏳ Sending…' : '📢 Send Now'}
                 </button>
               </div>
@@ -765,7 +884,9 @@ function ImportModal({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const filteredSchools = useMemo(() =>
-    schools.filter(s => programId ? s.project_id === programId : true)
+    schools
+      .filter(s => programId ? s.project_id === programId : true)
+      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
   , [schools, programId]);
 
   async function handleFile(f: File) {
@@ -1066,7 +1187,9 @@ export function LeadDatabase({
   const [showComms,    setShowComms]    = useState(false);
 
   const filteredSchools = useMemo(() =>
-    schools.filter(s => filterProg ? s.project_id === filterProg : true)
+    schools
+      .filter(s => filterProg ? s.project_id === filterProg : true)
+      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
   , [schools, filterProg]);
 
   const loadLeads = useCallback(async () => {
