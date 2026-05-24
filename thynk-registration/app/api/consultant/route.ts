@@ -25,6 +25,13 @@ export async function GET(req: NextRequest) {
     .from('consultant_profiles').select('consultant_code, is_default_consultant')
     .eq('user_id', user.id).maybeSingle();
 
+  // Fetch active programs (using service client — bypasses super_admin RLS)
+  const { data: programs } = await service
+    .from('projects')
+    .select('id, name, slug, status, base_amount_inr, base_amount_usd, base_amount')
+    .eq('status', 'active')
+    .order('name');
+
   const { data: mySchools, error: schoolErr } = await service
     .from('schools')
     .select(`id, school_code, name, org_name, city, state, country,
@@ -35,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   if (schoolErr) return NextResponse.json({ error: schoolErr.message }, { status: 500 });
   if (!mySchools?.length) {
-    return NextResponse.json({ schools: [], stats: null, rows: [], bySchool: {}, consultantCode: profile?.consultant_code ?? null });
+    return NextResponse.json({ schools: [], stats: null, rows: [], bySchool: {}, consultantCode: profile?.consultant_code ?? null, programs: programs ?? [] });
   }
 
   const schoolIds = schoolIdFilter ? [schoolIdFilter] : mySchools.map(s => s.id);
@@ -85,5 +92,6 @@ export async function GET(req: NextRequest) {
     stats: { total: deduped.length, paid: paid.length, pending: pending.length, totalRev, schoolCount: mySchools.length },
     bySchool, rows: deduped,
     consultantCode: profile?.consultant_code ?? null,
+    programs: programs ?? [],
   });
 }

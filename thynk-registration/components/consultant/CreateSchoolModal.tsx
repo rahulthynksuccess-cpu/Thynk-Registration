@@ -5,10 +5,9 @@ import { Field, IS, fmtR } from './ui';
 
 type Row = Record<string,any>;
 
-export function CreateSchoolModal({ onClose, onCreated, BACKEND }:
-  { onClose:()=>void; onCreated:()=>void; BACKEND:string }) {
-  const [programs, setPrograms] = useState<Row[]>([]);
-  const [saving,   setSaving]   = useState(false);
+export function CreateSchoolModal({ onClose, onCreated, BACKEND, programs }:
+  { onClose:()=>void; onCreated:()=>void; BACKEND:string; programs:Row[] }) {
+  const [saving, setSaving] = useState(false);
   const [error,    setError]    = useState('');
   const [f, setF] = useState({
     school_code:'', name:'', org_name:'', address:'', pin_code:'',
@@ -18,12 +17,6 @@ export function CreateSchoolModal({ onClose, onCreated, BACKEND }:
     is_active:true, is_registration_active:true,
   });
   const [contacts, setContacts] = useState([{ name:'', designation:'', email:'', mobile:'' }]);
-
-  useEffect(() => {
-    authFetch(`${BACKEND}/api/admin/projects`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setPrograms((d?.projects ?? []).filter((p:Row) => p.status==='active')));
-  }, [BACKEND]);
 
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => {
     const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;

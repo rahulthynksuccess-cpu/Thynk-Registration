@@ -58,6 +58,7 @@ export default function ConsultantDashboard() {
   const allRows        = data?.rows           ?? [];
   const bySchool       = data?.bySchool       ?? {};
   const consultantCode = data?.consultantCode ?? '';
+  const programs       = data?.programs       ?? [];
 
   const filteredRows = allRows.filter((r:Row) => {
     if (schoolFilter!=='all' && r.school_id!==schoolFilter) return false;
@@ -387,8 +388,8 @@ export default function ConsultantDashboard() {
         )}
       </div>
 
-      {showCreate&&<CreateSchoolModal BACKEND={BACKEND} onClose={()=>setShowCreate(false)} onCreated={()=>{showToast('✅ School created!');load();}}/>}
-      {showLinks&&consultantCode&&<CuratedLinksModal schools={schools} consultantCode={consultantCode} onClose={()=>setShowLinks(false)} showToast={showToast}/>}
+      {showCreate&&<CreateSchoolModal BACKEND={BACKEND} programs={programs} onClose={()=>setShowCreate(false)} onCreated={()=>{showToast('✅ School created!');load();}}/>}
+      {showLinks&&consultantCode&&<CuratedLinksModal schools={schools} programs={programs} consultantCode={consultantCode} onClose={()=>setShowLinks(false)} showToast={showToast}/>}
 
       {toast&&(
         <div style={{position:'fixed',bottom:24,right:24,background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:14,padding:'12px 20px',fontSize:14,fontWeight:600,color:'var(--text)',zIndex:9999,boxShadow:'0 8px 32px rgba(0,0,0,.12)'}}>
