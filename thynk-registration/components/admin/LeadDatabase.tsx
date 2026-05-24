@@ -74,89 +74,118 @@ function StatusBadge({ status }: { status: LeadStatus }) {
 
 // ── Excel parser (client-side, no lib needed) ─────────────────────────────────
 // We use FileReader + a tiny CSV/TSV + xlsx hack via ArrayBuffer
-async function parseExcel(file: File): Promise<Row[]> {
-  // If it's a CSV we parse directly
-  if (file.name.endsWith('.csv')) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split(/\r?\n/).filter(Boolean);
-        if (lines.length < 2) { resolve([]); return; }
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
-        const rows = lines.slice(1).map(line => {
-          const vals = line.split(',');
-          const obj: Row = {};
-          headers.forEach((h, i) => { obj[h] = vals[i]?.trim() ?? ''; });
-          return obj;
-        });
-        resolve(rows);
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  // For .xlsx we use the SheetJS CDN if available, otherwise prompt CSV
-  const XLSX = (window as any).XLSX;
-  if (!XLSX) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        // Try tab-separated
-        const lines = text.split(/\r?\n/).filter(Boolean);
-        if (lines.length < 2) { resolve([]); return; }
-        const sep = lines[0].includes('\t') ? '\t' : ',';
-        const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
-        const rows = lines.slice(1).map(line => {
-          const vals = line.split(sep);
-          const obj: Row = {};
-          headers.forEach((h, i) => { obj[h] = vals[i]?.trim() ?? ''; });
-          return obj;
-        });
-        resolve(rows);
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data   = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb     = XLSX.read(data, { type: 'array' });
-        const ws     = wb.Sheets[wb.SheetNames[0]];
-        const json   = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Row[];
-        // Normalise headers
-        const norm   = json.map(r => {
-          const out: Row = {};
-          Object.keys(r).forEach(k => { out[k.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')] = r[k]; });
-          return out;
-        });
-        resolve(norm);
-      } catch { resolve([]); }
-    };
-    reader.readAsArrayBuffer(file);
+// ── Load SheetJS dynamically (no CDN script tag needed) ──────────────────────
+let xlsxLib: any = null;
+async function loadXLSX(): Promise<any> {
+  if (xlsxLib) return xlsxLib;
+  if ((window as any).XLSX) { xlsxLib = (window as any).XLSX; return xlsxLib; }
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => { xlsxLib = (window as any).XLSX; resolve(xlsxLib); };
+    s.onerror = reject;
+    document.head.appendChild(s);
   });
 }
 
-// Map raw Excel row to lead field by guessing column names
-function mapRowToLead(row: Row): Partial<Lead> {
-  const get = (...keys: string[]) => {
-    for (const k of keys) {
-      const v = row[k] ?? row[k.replace(/_/g, '')] ?? row[k.replace(/_/g, ' ')];
-      if (v !== undefined && v !== '') return String(v).trim();
-    }
-    return undefined;
+// ── Parse any Excel/CSV into raw rows with ORIGINAL headers preserved ─────────
+async function parseExcel(file: File): Promise<{ rows: Row[]; headers: string[] }> {
+  // CSV: plain text parse
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string ?? '';
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { resolve({ rows: [], headers: [] }); return; }
+        const sep = lines[0].includes('\t') ? '\t' : ',';
+        const headers = lines[0].split(sep).map(h => h.trim().replace(/^["']|["']$/g, ''));
+        const rows = lines.slice(1).map(line => {
+          const vals = line.split(sep).map(v => v.trim().replace(/^["']|["']$/g, ''));
+          const obj: Row = {};
+          headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+          return obj;
+        }).filter(r => Object.values(r).some(v => v !== ''));
+        resolve({ rows, headers });
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // XLSX/XLS: use SheetJS — load dynamically so it always works
+  try {
+    const XLSX = await loadXLSX();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const wb   = XLSX.read(data, { type: 'array' });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          // Use header:1 to get raw arrays so we keep original header text
+          const raw  = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
+          if (raw.length < 2) { resolve({ rows: [], headers: [] }); return; }
+          const headers = raw[0].map((h: any) => String(h ?? '').trim());
+          const rows = raw.slice(1)
+            .filter((r: any[]) => r.some(v => String(v).trim() !== ''))
+            .map((r: any[]) => {
+              const obj: Row = {};
+              headers.forEach((h, i) => { obj[h] = String(r[i] ?? '').trim(); });
+              return obj;
+            });
+          resolve({ rows, headers });
+        } catch (err) {
+          console.error('XLSX parse error', err);
+          resolve({ rows: [], headers: [] });
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  } catch {
+    return { rows: [], headers: [] };
+  }
+}
+
+// ── Fuzzy auto-detect which Excel column maps to which lead field ─────────────
+type LeadField = 'student_name' | 'grade' | 'parent_name' | 'mobile' | 'email';
+const FIELD_PATTERNS: Record<LeadField, RegExp> = {
+  student_name: /student|child|name|pupil|kid/i,
+  grade:        /grade|class|std|standard|section/i,
+  parent_name:  /parent|father|mother|guardian|dad|mom|family/i,
+  mobile:       /mobile|phone|contact|number|cell|whatsapp|ph\.?no|phno|ph_no/i,
+  email:        /email|mail|e-mail/i,
+};
+
+function autoDetectMapping(headers: string[]): Record<LeadField, string> {
+  const mapping: Record<LeadField, string> = {
+    student_name: '', grade: '', parent_name: '', mobile: '', email: '',
   };
-  return {
-    student_name: get('student_name','name','student','child_name','childname'),
-    grade:        get('grade','class','class_grade','std','standard'),
-    parent_name:  get('parent_name','parent','father_name','mother_name','guardian'),
-    mobile:       get('mobile','phone','contact','number','mobile_number','phone_number','contact_number'),
-    email:        get('email','email_id','mail','parent_email','contact_email'),
-  };
+  const used = new Set<string>();
+  // Score each header against each field pattern, pick best match
+  (Object.keys(FIELD_PATTERNS) as LeadField[]).forEach(field => {
+    let bestScore = 0; let bestHeader = '';
+    headers.forEach(h => {
+      if (used.has(h)) return;
+      if (FIELD_PATTERNS[field].test(h)) {
+        // Prefer shorter / more specific matches
+        const score = 10 - Math.min(h.length, 9);
+        if (score > bestScore) { bestScore = score; bestHeader = h; }
+      }
+    });
+    if (bestHeader) { mapping[field] = bestHeader; used.add(bestHeader); }
+  });
+  return mapping;
+}
+
+// Apply a column mapping to raw rows
+function applyMapping(rows: Row[], mapping: Record<LeadField, string>): Partial<Lead>[] {
+  return rows.map(row => ({
+    student_name: mapping.student_name ? String(row[mapping.student_name] ?? '').trim() || undefined : undefined,
+    grade:        mapping.grade        ? String(row[mapping.grade]        ?? '').trim() || undefined : undefined,
+    parent_name:  mapping.parent_name  ? String(row[mapping.parent_name]  ?? '').trim() || undefined : undefined,
+    mobile:       mapping.mobile       ? String(row[mapping.mobile]       ?? '').replace(/[^\d+]/g, '') || undefined : undefined,
+    email:        mapping.email        ? String(row[mapping.email]        ?? '').trim().toLowerCase() || undefined : undefined,
+  }));
 }
 
 // ── Lead Detail / Edit Modal ──────────────────────────────────────────────────
@@ -706,6 +735,14 @@ function BroadcastModal({
 }
 
 // ── Import Modal ──────────────────────────────────────────────────────────────
+const LEAD_FIELD_LABELS: Record<LeadField, string> = {
+  student_name: 'Student Name',
+  grade:        'Grade / Class',
+  parent_name:  'Parent Name',
+  mobile:       'Mobile / Phone',
+  email:        'Email',
+};
+
 function ImportModal({
   schools, programs, onClose, onImported, showToast,
 }: {
@@ -718,10 +755,13 @@ function ImportModal({
   const [programId,  setProgramId]  = useState('');
   const [schoolId,   setSchoolId]   = useState('');
   const [file,       setFile]       = useState<File|null>(null);
-  const [preview,    setPreview]    = useState<Row[]>([]);
+  const [rawRows,    setRawRows]    = useState<Row[]>([]);
+  const [headers,    setHeaders]    = useState<string[]>([]);
+  const [mapping,    setMapping]    = useState<Record<LeadField, string>>({ student_name:'', grade:'', parent_name:'', mobile:'', email:'' });
   const [mapped,     setMapped]     = useState<Partial<Lead>[]>([]);
   const [step,       setStep]       = useState<1|2|3>(1);
   const [importing,  setImporting]  = useState(false);
+  const [parsing,    setParsing]    = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const filteredSchools = useMemo(() =>
@@ -730,11 +770,27 @@ function ImportModal({
 
   async function handleFile(f: File) {
     setFile(f);
-    const rows = await parseExcel(f);
-    const mapped = rows.map(mapRowToLead);
-    setPreview(rows.slice(0, 5));
-    setMapped(mapped);
-    setStep(2);
+    setParsing(true);
+    try {
+      const { rows, headers: hdrs } = await parseExcel(f);
+      if (!rows.length || !hdrs.length) {
+        showToast('Could not read file. Try saving as CSV (UTF-8) first.', '❌');
+        setParsing(false); return;
+      }
+      const autoMap = autoDetectMapping(hdrs);
+      setRawRows(rows);
+      setHeaders(hdrs);
+      setMapping(autoMap);
+      setMapped(applyMapping(rows, autoMap));
+      setStep(2);
+    } finally { setParsing(false); }
+  }
+
+  // Recompute mapped whenever mapping changes
+  function updateMapping(field: LeadField, col: string) {
+    const newMap = { ...mapping, [field]: col };
+    setMapping(newMap);
+    setMapped(applyMapping(rawRows, newMap));
   }
 
   async function handleImport() {
@@ -761,114 +817,194 @@ function ImportModal({
     } finally { setImporting(false); }
   }
 
+  // Count how many rows have data for a mapped field
+  const mappedCounts = useMemo(() => ({
+    student_name: mapped.filter(r => r.student_name).length,
+    grade:        mapped.filter(r => r.grade).length,
+    parent_name:  mapped.filter(r => r.parent_name).length,
+    mobile:       mapped.filter(r => r.mobile).length,
+    email:        mapped.filter(r => r.email).length,
+  }), [mapped]);
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={e => { if (e.target === e.currentTarget && !importing) onClose(); }}>
-      <div style={{ background: 'var(--card)', borderRadius: 20, width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.25)' }}>
+      <div style={{ background: 'var(--card)', borderRadius: 20, width: '100%', maxWidth: 640, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.25)' }}>
+
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1.5px solid var(--bd)' }}>
           <h3 style={{ margin: 0, fontFamily: 'Sora,sans-serif', fontSize: 18, fontWeight: 800 }}>📥 Import Leads from Excel</h3>
           <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--m)' }}>✕</button>
         </div>
 
         <div style={{ padding: '24px' }}>
-          {/* Step 1: Program + School + File */}
-          {step >= 1 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 24, height: 24, borderRadius: '50%', background: step > 1 ? '#10b981' : 'var(--acc)', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{step > 1 ? '✓' : '1'}</span>
-                Select Program & School
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--m)', marginBottom: 5 }}>Program (optional filter)</label>
-                  <select style={SS} value={programId} onChange={e => { setProgramId(e.target.value); setSchoolId(''); }}>
-                    <option value="">All Programs</option>
-                    {programs.filter(p => p.status === 'active').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--m)', marginBottom: 5 }}>School *</label>
-                  <select style={SS} value={schoolId} onChange={e => setSchoolId(e.target.value)}>
-                    <option value="">Select School</option>
-                    {filteredSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-              </div>
 
-              {/* File upload */}
+          {/* ── STEP 1: Program + School + File ──────────────────────── */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 24, height: 24, borderRadius: '50%', background: step > 1 ? '#10b981' : 'var(--acc)', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {step > 1 ? '✓' : '1'}
+              </span>
+              Select School & Upload File
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--m)', marginBottom: 8 }}>Excel / CSV File *</label>
-                <div
-                  onClick={() => fileRef.current?.click()}
-                  style={{ border: '2px dashed var(--bd)', borderRadius: 12, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: 'var(--bg)', transition: 'all .15s' }}
-                  onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.borderColor = 'var(--acc)'; }}
-                  onDragLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--bd)'; }}
-                  onDrop={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.borderColor = 'var(--bd)'; const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-                >
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
-                    {file ? file.name : 'Drop Excel / CSV here or click to browse'}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--m)' }}>
-                    Supports .xlsx, .xls, .csv · Expected columns: Name, Grade, Parent Name, Mobile, Email
-                  </div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--m)', marginBottom: 5 }}>Program (filter)</label>
+                <select style={SS} value={programId} onChange={e => { setProgramId(e.target.value); setSchoolId(''); }}>
+                  <option value="">All Programs</option>
+                  {programs.filter(p => p.status === 'active').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--m)', marginBottom: 5 }}>School *</label>
+                <select style={{ ...SS, borderColor: !schoolId && step > 1 ? '#ef4444' : undefined }} value={schoolId} onChange={e => setSchoolId(e.target.value)}>
+                  <option value="">Select School</option>
+                  {filteredSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Drop zone */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--m)', marginBottom: 8 }}>Excel / CSV File *</label>
+              <div
+                onClick={() => !parsing && fileRef.current?.click()}
+                style={{ border: `2px dashed ${file ? 'var(--acc)' : 'var(--bd)'}`, borderRadius: 12, padding: '24px 20px', textAlign: 'center', cursor: parsing ? 'wait' : 'pointer', background: file ? 'var(--acc3)' : 'var(--bg)', transition: 'all .15s' }}
+                onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.borderColor = 'var(--acc)'; }}
+                onDragLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = file ? 'var(--acc)' : 'var(--bd)'; }}
+                onDrop={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.borderColor = 'var(--bd)'; const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+              >
+                <div style={{ fontSize: 28, marginBottom: 6 }}>{parsing ? '⏳' : file ? '✅' : '📊'}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 3 }}>
+                  {parsing ? 'Reading file…' : file ? file.name : 'Drop Excel / CSV here or click to browse'}
                 </div>
-                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                <div style={{ fontSize: 11, color: 'var(--m)' }}>
+                  {file ? `${rawRows.length} rows · ${headers.length} columns detected` : 'Supports .xlsx, .xls, .csv'}
+                </div>
+                {file && <button onClick={e => { e.stopPropagation(); setFile(null); setRawRows([]); setHeaders([]); setMapped([]); setStep(1); }}
+                  style={{ marginTop: 8, fontSize: 11, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                  ✕ Remove file
+                </button>}
+              </div>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+            </div>
+          </div>
+
+          {/* ── STEP 2: Column Mapping ────────────────────────────────── */}
+          {step >= 2 && headers.length > 0 && (
+            <div style={{ marginBottom: 20, padding: '16px 18px', background: 'var(--bg)', borderRadius: 14, border: '1.5px solid var(--bd)' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--acc)', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
+                Map Columns
+                <span style={{ fontSize: 11, color: 'var(--m)', fontWeight: 400, marginLeft: 4 }}>
+                  {headers.length} columns found in your file
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--m)', marginBottom: 14 }}>
+                Auto-detected below. Fix any that look wrong — columns not listed will be ignored.
               </div>
 
-              {/* Column mapping hint */}
-              <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.15)', fontSize: 12, color: 'var(--m)' }}>
-                💡 <strong>Auto-mapped columns:</strong> Any column with "name", "grade"/"class", "parent", "mobile"/"phone", "email" in its header is auto-detected. Column order doesn't matter.
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(Object.keys(LEAD_FIELD_LABELS) as LeadField[]).map(field => {
+                  const count = mappedCounts[field];
+                  const hasMapping = !!mapping[field];
+                  return (
+                    <div key={field} style={{ display: 'grid', gridTemplateColumns: '130px 1fr auto', alignItems: 'center', gap: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
+                        {LEAD_FIELD_LABELS[field]}
+                        {field === 'mobile' && <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>}
+                      </div>
+                      <select
+                        style={{ ...SS, borderColor: hasMapping ? 'var(--acc)' : 'var(--bd)', color: hasMapping ? 'var(--text)' : 'var(--m)' }}
+                        value={mapping[field]}
+                        onChange={e => updateMapping(field, e.target.value)}
+                      >
+                        <option value="">— Not in file —</option>
+                        {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                      <div style={{ fontSize: 11, fontWeight: 700, minWidth: 50, textAlign: 'right',
+                        color: hasMapping && count > 0 ? '#10b981' : hasMapping ? '#f59e0b' : 'var(--m)' }}>
+                        {hasMapping ? (count > 0 ? `✅ ${count}` : '⚠️ 0') : '—'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Raw headers preview */}
+              <div style={{ marginTop: 14, padding: '8px 12px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--bd)', fontSize: 11, color: 'var(--m)' }}>
+                <strong style={{ color: 'var(--text)' }}>Your file's column headers:</strong>{' '}
+                {headers.map((h, i) => (
+                  <span key={i} style={{ display: 'inline-block', background: 'var(--acc3)', color: 'var(--acc)', borderRadius: 4, padding: '1px 6px', margin: '2px 3px', fontWeight: 600 }}>{h}</span>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Step 2: Preview */}
+          {/* ── STEP 3: Preview & Confirm ─────────────────────────────── */}
           {step >= 2 && mapped.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 24, height: 24, borderRadius: '50%', background: step > 2 ? '#10b981' : 'var(--acc)', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{step > 2 ? '✓' : '2'}</span>
-                Preview Mapped Data
-                <span style={{ fontSize: 12, color: 'var(--m)', fontWeight: 400 }}>({mapped.length} rows found)</span>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--acc)', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>3</span>
+                Preview
+                <span style={{ fontSize: 11, color: 'var(--m)', fontWeight: 400 }}>First 6 rows</span>
               </div>
               <div className="tbl-wrap" style={{ marginBottom: 12 }}>
                 <table>
-                  <thead><tr><th>Student Name</th><th>Grade</th><th>Parent Name</th><th>Mobile</th><th>Email</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>Student Name</th>
+                      <th>Grade</th>
+                      <th>Parent Name</th>
+                      <th>Mobile</th>
+                      <th>Email</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {mapped.slice(0, 8).map((r, i) => (
+                    {mapped.slice(0, 6).map((r, i) => (
                       <tr key={i}>
-                        <td style={{ fontWeight: 600 }}>{r.student_name ?? <span style={{ color: 'var(--m)', fontStyle: 'italic' }}>—</span>}</td>
-                        <td>{r.grade ?? <span style={{ color: 'var(--m)' }}>—</span>}</td>
-                        <td>{r.parent_name ?? <span style={{ color: 'var(--m)' }}>—</span>}</td>
-                        <td><code style={{ fontSize: 11 }}>{r.mobile ?? <span style={{ color: 'var(--m)' }}>—</span>}</code></td>
-                        <td style={{ fontSize: 11 }}>{r.email ?? <span style={{ color: 'var(--m)' }}>—</span>}</td>
+                        <td style={{ fontWeight: 600 }}>{r.student_name ?? <span style={{ color:'var(--m)',fontStyle:'italic' }}>—</span>}</td>
+                        <td>{r.grade ?? <span style={{ color:'var(--m)' }}>—</span>}</td>
+                        <td>{r.parent_name ?? <span style={{ color:'var(--m)' }}>—</span>}</td>
+                        <td><code style={{ fontSize: 11 }}>{r.mobile ?? <span style={{ color:'var(--m)' }}>—</span>}</code></td>
+                        <td style={{ fontSize: 11 }}>{r.email ?? <span style={{ color:'var(--m)' }}>—</span>}</td>
                       </tr>
                     ))}
-                    {mapped.length > 8 && (
-                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--m)', fontSize: 12, padding: '10px 0' }}>…and {mapped.length - 8} more rows</td></tr>
+                    {mapped.length > 6 && (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--m)', fontSize: 11, padding: '8px 0' }}>… and {mapped.length - 6} more rows</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
-              <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 12, color: '#065f46' }}>
-                ✅ <strong>{mapped.length} leads</strong> ready to import into <strong>{schools.find(s => s.id === schoolId)?.name ?? 'selected school'}</strong>.
-                All rows imported (duplicates allowed — you can manage them after import).
+
+              {/* Summary */}
+              <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(16,185,129,0.06)', border: '1.5px solid rgba(16,185,129,0.2)', fontSize: 12 }}>
+                <div style={{ fontWeight: 700, color: '#10b981', marginBottom: 6 }}>📋 Import Summary</div>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <span>📋 <strong>{mapped.length}</strong> total rows</span>
+                  <span>📱 <strong>{mappedCounts.mobile}</strong> with mobile</span>
+                  <span>✉️ <strong>{mappedCounts.email}</strong> with email</span>
+                  <span>🏫 <strong>{schools.find(s => s.id === schoolId)?.name ?? '⚠️ Select school'}</strong></span>
+                </div>
+                {!schoolId && <div style={{ marginTop: 6, color: '#ef4444', fontWeight: 700 }}>⚠️ Please select a school above before importing.</div>}
               </div>
             </div>
           )}
 
-          {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn btn-outline" onClick={onClose} disabled={importing}>Cancel</button>
             {step >= 2 && mapped.length > 0 && (
               <button className="btn btn-primary"
-                disabled={!schoolId || importing}
+                disabled={!schoolId || importing || mapped.length === 0}
                 onClick={handleImport}>
                 {importing ? '⏳ Importing…' : `📥 Import ${mapped.length} Leads`}
               </button>
             )}
           </div>
+
         </div>
       </div>
     </div>
