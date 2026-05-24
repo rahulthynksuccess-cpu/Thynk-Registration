@@ -439,15 +439,18 @@ function LeadDetailModal({
 
 // ── Bulk Communicate Modal ────────────────────────────────────────────────────
 function BroadcastModal({
-  leads, schools, templates, onClose, showToast,
+  leads, schools, programs, templates, onClose, showToast,
 }: {
   leads: Lead[];
   schools: Row[];
+  programs: Row[];
   templates: Row[];
   onClose: () => void;
   showToast: (m: string, i?: string) => void;
 }) {
   const [step,         setStep]         = useState<1|2|3|4>(1);
+  const [progFilter,   setProgFilter]   = useState('');
+  const [schoolFilter, setSchoolFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<LeadStatus[]>([]);
   const [selected,     setSelected]     = useState<Set<string>>(new Set(leads.map(l => l.id)));
   const [search,       setSearch]       = useState('');
@@ -473,8 +476,16 @@ function BroadcastModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const filteredSchoolsForBroadcast = useMemo(() =>
+    schools
+      .filter(s => progFilter ? s.project_id === progFilter : true)
+      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+  , [schools, progFilter]);
+
   const filtered = useMemo(() => {
     let base = leads;
+    if (progFilter)   base = base.filter(l => l.project_id === progFilter || l.schools?.project_id === progFilter);
+    if (schoolFilter) base = base.filter(l => l.school_id === schoolFilter);
     if (statusFilter.length) base = base.filter(l => statusFilter.includes(l.status));
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -488,7 +499,7 @@ function BroadcastModal({
       );
     }
     return base;
-  }, [leads, statusFilter, search]);
+  }, [leads, progFilter, schoolFilter, statusFilter, search]);
 
   const selectedLeads = leads.filter(l => selected.has(l.id));
   const chanTpls = templates.filter(t => t.channel === channel && t.is_active !== false);
@@ -503,61 +514,28 @@ function BroadcastModal({
   async function handleSend() {
     if (!channel || !tplId || !selected.size) return;
     setSending(true);
-    const results: any[] = [];
-    let sent = 0, failed = 0, skipped = 0;
-
-    // Group by school for school_id
-    for (const lead of selectedLeads) {
-      const school = schools.find(s => s.id === lead.school_id);
-      const vars = {
-        student_name: lead.student_name ?? '', parent_name: lead.parent_name ?? '',
-        grade: lead.grade ?? '', mobile: lead.mobile ?? '', email: lead.email ?? '',
-        school_name: school?.name ?? '',
-      };
-
-      const to_phone = lead.mobile;
-      const to_email = lead.email;
-
-      if (channel === 'whatsapp' && !to_phone) {
-        results.push({ name: lead.student_name ?? '—', status: 'skipped', error: 'No phone' });
-        skipped++; continue;
-      }
-      if (channel === 'email' && !to_email) {
-        results.push({ name: lead.student_name ?? '—', status: 'skipped', error: 'No email' });
-        skipped++; continue;
-      }
-
-      try {
-        const res = await authFetch(`${BACKEND}/api/admin/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channel, template_id: tplId,
-            school_id: lead.school_id,
-            to_phone: channel === 'whatsapp' ? to_phone : undefined,
-            to_email: channel === 'email'    ? to_email : undefined,
-            smtp_config_id: channel === 'email' ? smtpConfigId || undefined : undefined,
-            vars,
-          }),
-        });
-        const d = await res.json();
-        if (res.ok) {
-          results.push({ name: lead.student_name ?? '—', status: 'sent', recipient: channel === 'whatsapp' ? to_phone : to_email });
-          sent++;
-        } else {
-          results.push({ name: lead.student_name ?? '—', status: 'failed', error: d.error });
-          failed++;
-        }
-      } catch (e: any) {
-        results.push({ name: lead.student_name ?? '—', status: 'failed', error: e.message });
-        failed++;
-      }
-    }
-
-    setSending(false);
-    setResult({ sent, failed, skipped, total: results.length, results });
-    setStep(4);
-    showToast(`Sent ${sent} · Failed ${failed} · Skipped ${skipped}`, '📢');
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/leads/campaigns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel,
+          template_id: tplId,
+          lead_ids: Array.from(selected),
+          smtp_config_id: channel === 'email' ? smtpConfigId || undefined : undefined,
+          filters: {
+            prog_filter: progFilter || null,
+            school_filter: schoolFilter || null,
+            status_filter: statusFilter.length ? statusFilter : null,
+          },
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) { showToast(d.error ?? 'Send failed', '❌'); return; }
+      setResult(d);
+      setStep(4);
+      showToast(`📢 Sent ${d.sent} · Failed ${d.failed} · Skipped ${d.skipped}`, '✅');
+    } finally { setSending(false); }
   }
 
   const card: React.CSSProperties = { background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 14, padding: '20px 22px', marginBottom: 16 };
@@ -604,11 +582,41 @@ function BroadcastModal({
           {/* ── STEP 1: Filter ─────────────────────────────────────────────── */}
           {step === 1 && (
             <div style={card}>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>🎯 Filter by Lead Status</div>
-              <div style={{ fontSize: 12, color: 'var(--m)', marginBottom: 16 }}>Select which statuses to include. Leave blank for all leads.</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>🎯 Filter Leads</div>
+              <div style={{ fontSize: 12, color: 'var(--m)', marginBottom: 16 }}>Narrow down by program, school, and/or status. Leave blank to include all leads.</div>
+
+              {/* Program + School row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--m)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>🎓 Program</label>
+                  <select style={SS} value={progFilter} onChange={e => { setProgFilter(e.target.value); setSchoolFilter(''); }}>
+                    <option value="">All Programs</option>
+                    {programs.filter(p => p.status === 'active').map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--m)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>🏫 School</label>
+                  <select style={SS} value={schoolFilter} onChange={e => setSchoolFilter(e.target.value)}>
+                    <option value="">All Schools</option>
+                    {filteredSchoolsForBroadcast.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Status filter */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>📊 Lead Status</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                 {LEAD_STATUSES.map(s => {
                   const active = statusFilter.includes(s.value);
+                  // Count against already-program/school-filtered base
+                  const base = leads
+                    .filter(l => !progFilter || l.project_id === progFilter || l.schools?.project_id === progFilter)
+                    .filter(l => !schoolFilter || l.school_id === schoolFilter);
+                  const count = base.filter(l => l.status === s.value).length;
                   return (
                     <div key={s.value}
                       onClick={() => setStatusFilter(p => active ? p.filter(x => x !== s.value) : [...p, s.value])}
@@ -618,15 +626,32 @@ function BroadcastModal({
                         display: 'flex', alignItems: 'center', gap: 6,
                       }}>
                       {s.icon} {s.label}
-                      <span style={{ fontSize: 10, opacity: .7 }}>({leads.filter(l => l.status === s.value).length})</span>
+                      <span style={{ fontSize: 10, opacity: .7 }}>({count})</span>
                     </div>
                   );
                 })}
               </div>
-              <div style={{ padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--bd)', fontSize: 12, color: 'var(--m)', marginBottom: 16 }}>
-                {statusFilter.length === 0 ? `✅ All ${leads.length} leads included` : `✅ ${leads.filter(l => statusFilter.includes(l.status)).length} leads match selected statuses`}
+
+              {/* Match summary */}
+              <div style={{ padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--bd)', fontSize: 12, color: 'var(--m)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>✅</span>
+                <span>
+                  <strong style={{ color: 'var(--text)' }}>{filtered.length}</strong> leads match
+                  {progFilter && <> · <strong style={{ color: 'var(--acc)' }}>{programs.find(p => p.id === progFilter)?.name}</strong></>}
+                  {schoolFilter && <> · <strong style={{ color: 'var(--acc)' }}>{schools.find(s => s.id === schoolFilter)?.name}</strong></>}
+                  {statusFilter.length > 0 && <> · {statusFilter.length} status{statusFilter.length > 1 ? 'es' : ''} selected</>}
+                </span>
+                {(progFilter || schoolFilter || statusFilter.length > 0) && (
+                  <button onClick={() => { setProgFilter(''); setSchoolFilter(''); setStatusFilter([]); }}
+                    style={{ marginLeft: 'auto', fontSize: 11, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                    ✕ Clear filters
+                  </button>
+                )}
               </div>
-              <button className="btn btn-primary" onClick={() => setStep(2)}>Next: Select Individual Leads →</button>
+
+              <button className="btn btn-primary" onClick={() => { setSelected(new Set(filtered.map(l => l.id))); setStep(2); }} disabled={filtered.length === 0}>
+                Next: Select Individual Leads ({filtered.length}) →
+              </button>
             </div>
           )}
 
@@ -1166,6 +1191,253 @@ function BulkActionBar({
   );
 }
 
+// ── Broadcast Summary Panel ───────────────────────────────────────────────────
+function BroadcastSummaryPanel({
+  schools, programs, showToast,
+}: {
+  schools: Row[];
+  programs: Row[];
+  showToast: (m: string, i?: string) => void;
+}) {
+  const [campaigns,    setCampaigns]    = useState<Row[]>([]);
+  const [loading,      setLoading]      = useState(false);
+  const [selected,     setSelected]     = useState<Row|null>(null);
+  const [logs,         setLogs]         = useState<Row[]>([]);
+  const [logsLoading,  setLogsLoading]  = useState(false);
+  const [logFilter,    setLogFilter]    = useState<'all'|'sent'|'failed'|'skipped'>('all');
+  const [search,       setSearch]       = useState('');
+
+  async function loadCampaigns() {
+    setLoading(true);
+    try {
+      const res  = await authFetch(`${BACKEND}/api/admin/leads/campaigns`);
+      const data = await res.json();
+      setCampaigns(data.campaigns ?? []);
+    } finally { setLoading(false); }
+  }
+
+  async function loadLogs(campaign: Row) {
+    setSelected(campaign);
+    setLogsLoading(true);
+    try {
+      const res  = await authFetch(`${BACKEND}/api/admin/leads/campaigns/${campaign.id}`);
+      const data = await res.json();
+      setLogs(data.logs ?? []);
+    } finally { setLogsLoading(false); }
+  }
+
+  useEffect(() => { loadCampaigns(); }, []);
+
+  const displayedLogs = useMemo(() => {
+    let base = logs;
+    if (logFilter !== 'all') base = base.filter(l => l.status === logFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      base = base.filter(l =>
+        l.student_name?.toLowerCase().includes(q) ||
+        l.recipient?.toLowerCase().includes(q)
+      );
+    }
+    return base;
+  }, [logs, logFilter, search]);
+
+  // Export CSV
+  function exportCSV() {
+    if (!logs.length || !selected) return;
+    const rows = [
+      ['Student Name', 'Recipient', 'Status', 'Provider', 'Error', 'Sent At'],
+      ...logs.map(l => [
+        l.student_name ?? '—', l.recipient ?? '—', l.status, l.provider ?? '—',
+        l.error ?? '', l.sent_at ? new Date(l.sent_at).toLocaleString('en-IN') : '',
+      ]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `lead-broadcast-${selected.id.slice(0, 8)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  const channelColor: Record<string, string> = { email: 'var(--acc)', whatsapp: '#10b981' };
+  const channelIcon:  Record<string, string> = { email: '✉️', whatsapp: '💬' };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontFamily: 'Sora,sans-serif', fontSize: 20, fontWeight: 800 }}>📊 Broadcast Summary</div>
+          <div style={{ fontSize: 12, color: 'var(--m)', marginTop: 3 }}>{campaigns.length} campaigns · click any row to see per-recipient detail</div>
+        </div>
+        <button className="btn btn-outline" onClick={loadCampaigns}>🔄 Refresh</button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--m)' }}>⏳ Loading campaigns…</div>
+      ) : campaigns.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--m)' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>No broadcast campaigns yet</div>
+          <div style={{ fontSize: 13, marginTop: 6 }}>Use the 📢 Communicate button on the Leads tab to send your first campaign.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 1fr' : '1fr', gap: 20 }}>
+
+          {/* ── Campaign List ────────────────────────────────────── */}
+          <div>
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Campaign</th>
+                    <th>Channel</th>
+                    <th>School</th>
+                    <th style={{ textAlign: 'right' }}>✅ Sent</th>
+                    <th style={{ textAlign: 'right' }}>❌ Failed</th>
+                    <th style={{ textAlign: 'right' }}>⚠️ Skip</th>
+                    <th style={{ textAlign: 'right' }}>📬 Total</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map(c => {
+                    const sentPct = c.total > 0 ? Math.round((c.sent / c.total) * 100) : 0;
+                    const isActive = selected?.id === c.id;
+                    return (
+                      <tr key={c.id} onClick={() => loadLogs(c)}
+                        style={{ cursor: 'pointer', background: isActive ? 'var(--acc3)' : undefined }}>
+                        <td>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: isActive ? 'var(--acc)' : 'var(--text)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {c.template_name ?? 'Campaign'}
+                          </div>
+                          {/* Progress bar */}
+                          <div style={{ marginTop: 4, height: 4, borderRadius: 2, background: 'var(--bd)', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', borderRadius: 2, background: '#10b981', width: `${sentPct}%` }} />
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--m)', marginTop: 2 }}>{sentPct}% delivered</div>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                            background: `${channelColor[c.channel]}22`, color: channelColor[c.channel] }}>
+                            {channelIcon[c.channel]} {c.channel}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11, color: 'var(--m)' }}>
+                          {c.schools?.name ?? (c.school_id ? '—' : '🌐 Multi-school')}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 800, color: '#10b981' }}>{c.sent}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: c.failed > 0 ? '#ef4444' : 'var(--m)' }}>{c.failed}</td>
+                        <td style={{ textAlign: 'right', color: c.skipped > 0 ? '#f59e0b' : 'var(--m)' }}>{c.skipped}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{c.total}</td>
+                        <td style={{ fontSize: 11, color: 'var(--m)', whiteSpace: 'nowrap' }}>
+                          {new Date(c.created_at).toLocaleDateString('en-IN')}<br />
+                          <span style={{ fontSize: 10 }}>{new Date(c.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ── Campaign Detail / Logs ────────────────────────────── */}
+          {selected && (
+            <div style={{ background: 'var(--card)', borderRadius: 16, border: '1.5px solid var(--bd)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* Detail header */}
+              <div style={{ padding: '16px 18px', borderBottom: '1.5px solid var(--bd)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontFamily: 'Sora,sans-serif', fontWeight: 800, fontSize: 14 }}>
+                    {channelIcon[selected.channel]} {selected.template_name}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--m)', marginTop: 3 }}>
+                    {new Date(selected.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={exportCSV} style={{ padding: '6px 12px', borderRadius: 7, border: '1.5px solid var(--bd)', background: 'var(--bg)', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: 'var(--m)' }}>
+                    ⬇️ CSV
+                  </button>
+                  <button onClick={() => { setSelected(null); setLogs([]); }} style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--bd)', background: 'var(--bg)', fontSize: 14, cursor: 'pointer', color: 'var(--m)' }}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* KPI row */}
+              <div style={{ display: 'flex', borderBottom: '1.5px solid var(--bd)' }}>
+                {[
+                  { label: 'Sent',    val: selected.sent,    color: '#10b981', bg: 'rgba(16,185,129,0.08)', icon: '✅' },
+                  { label: 'Failed',  val: selected.failed,  color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  icon: '❌' },
+                  { label: 'Skipped', val: selected.skipped, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', icon: '⚠️' },
+                  { label: 'Total',   val: selected.total,   color: 'var(--acc)', bg: 'var(--acc3)',        icon: '📬' },
+                ].map(k => (
+                  <div key={k.label}
+                    onClick={() => setLogFilter(k.label.toLowerCase() as any)}
+                    style={{ flex: 1, padding: '12px 8px', textAlign: 'center', cursor: 'pointer', background: logFilter === k.label.toLowerCase() ? k.bg : 'transparent', borderRight: '1px solid var(--bd)', transition: 'background .15s' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: k.color, fontFamily: 'Sora,sans-serif' }}>{k.val}</div>
+                    <div style={{ fontSize: 10, color: 'var(--m)', marginTop: 2 }}>{k.icon} {k.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Filters */}
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--bd)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--m)' }}>🔍</span>
+                  <input style={{ ...IS, paddingLeft: 26, fontSize: 12 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or recipient…" />
+                </div>
+                <button onClick={() => setLogFilter('all')} style={{ padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${logFilter === 'all' ? 'var(--acc)' : 'var(--bd)'}`, background: logFilter === 'all' ? 'var(--acc3)' : 'transparent', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: logFilter === 'all' ? 'var(--acc)' : 'var(--m)' }}>All</button>
+              </div>
+
+              {/* Logs table */}
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 420 }}>
+                {logsLoading ? (
+                  <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--m)' }}>⏳ Loading…</div>
+                ) : displayedLogs.length === 0 ? (
+                  <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--m)', fontSize: 13 }}>No records match.</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid var(--bd)', background: 'var(--bg)' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: 'var(--m)', textTransform: 'uppercase' }}>Name</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: 'var(--m)', textTransform: 'uppercase' }}>Recipient</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: 'var(--m)', textTransform: 'uppercase' }}>Status</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: 'var(--m)', textTransform: 'uppercase' }}>Note</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedLogs.map((log, i) => (
+                        <tr key={log.id ?? i} style={{ borderBottom: '1px solid var(--bd)' }}>
+                          <td style={{ padding: '8px 12px', fontWeight: 600 }}>{log.student_name ?? '—'}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--m)', fontFamily: 'monospace', fontSize: 11 }}>{log.recipient ?? '—'}</td>
+                          <td style={{ padding: '8px 12px' }}>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700,
+                              background: log.status === 'sent' ? 'rgba(16,185,129,0.1)' : log.status === 'failed' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                              color:      log.status === 'sent' ? '#10b981' : log.status === 'failed' ? '#ef4444' : '#f59e0b',
+                            }}>
+                              {log.status === 'sent' ? '✅' : log.status === 'failed' ? '❌' : '⚠️'} {log.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: 11, color: 'var(--m)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {log.error ?? log.provider ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main LeadDatabase Component ───────────────────────────────────────────────
 export function LeadDatabase({
   programs, schools, templates, showToast,
@@ -1175,6 +1447,7 @@ export function LeadDatabase({
   templates: Row[];
   showToast: (m: string, i?: string) => void;
 }) {
+  const [activeTab,    setActiveTab]    = useState<'leads'|'summary'>('leads');
   const [leads,        setLeads]        = useState<Lead[]>([]);
   const [loading,      setLoading]      = useState(false);
   const [filterProg,   setFilterProg]   = useState('');
@@ -1286,6 +1559,26 @@ export function LeadDatabase({
           <button className="btn btn-outline" onClick={loadLeads}>🔄 Refresh</button>
         </div>
       </div>
+
+      {/* ── Tabs ───────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--card)', padding: 4, borderRadius: 12, border: '1.5px solid var(--bd)', width: 'fit-content' }}>
+        {([
+          ['leads',   '📋', 'Leads'],
+          ['summary', '📊', 'Broadcast Summary'],
+        ] as const).map(([id, icon, label]) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            style={{ padding: '8px 18px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans,sans-serif',
+              background: activeTab === id ? 'var(--acc)' : 'transparent',
+              color: activeTab === id ? '#fff' : 'var(--m)',
+              transition: 'all .15s',
+            }}>
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ══════════════════ LEADS TAB ════════════════════════════════════ */}
+      {activeTab === 'leads' && (<>
 
       {/* ── Status KPI strips ──────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -1426,8 +1719,10 @@ export function LeadDatabase({
 
       {showComms && (
         <BroadcastModal
-          leads={displayed.length > 0 ? displayed : leads}
-          schools={schools} templates={templates}
+          leads={leads}
+          schools={schools}
+          programs={programs}
+          templates={templates}
           onClose={() => setShowComms(false)}
           showToast={showToast}
         />
@@ -1446,6 +1741,14 @@ export function LeadDatabase({
           schools={schools}
         />
       )}
+
+      </>)} {/* end leads tab */}
+
+      {/* ══════════════════ SUMMARY TAB ══════════════════════════════════ */}
+      {activeTab === 'summary' && (
+        <BroadcastSummaryPanel schools={schools} programs={programs} showToast={showToast} />
+      )}
+
     </div>
   );
 }
