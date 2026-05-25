@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  serverExternalPackages: ['mupdf'],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.supabase.co' },
@@ -8,7 +9,6 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // Apply CORS headers to every /api/* route
         source: '/api/:path*',
         headers: [
           { key: 'Access-Control-Allow-Origin',  value: '*' },
@@ -19,5 +19,4 @@ const nextConfig = {
     ];
   },
 };
-
 module.exports = nextConfig;
