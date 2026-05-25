@@ -15,40 +15,41 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 interface InsertJob {
   pageIdx:   number;
-  x0: number; y0: number; x1: number; y1: number;
+  /** Redact rect (original token position — used to erase old text) */
+  redactX0: number; redactY0: number; redactX1: number; redactY1: number;
+  /** Draw position — where we start writing the new text */
+  drawX0:   number;
   baseline:  number;
+  /** Maximum width allowed for the new text before we scale down */
+  maxWidth:  number;
   newText:   string;
+  /** Original font size from the PDF — used as the preferred size */
   fontSize:  number;
   isBold:    boolean;
   colorRgb:  [number, number, number];
-  /** If set, a clickable URI annotation is added covering this rect */
+  /** If set, a clickable URI annotation is added covering the draw area */
   linkUri?:  string;
 }
 
 // ─── Core replacement function ────────────────────────────────────────────────
 //
-// Fix 1 — School name overflow:
-//   Auto-scale font size down so the replacement name NEVER exceeds the
-//   original token bounding box width. Uses pdf-lib's font.widthOfTextAtSize()
-//   to measure accurately before drawing.
+// School name (Fix 1):
+//   The template PDF has a line like "Invitation to Participate - Cyboard School".
+//   Only the token ("Cyboard School") is replaced. mupdf gives us the EXACT
+//   bounding rect of just the token text. We erase only that rect, then draw
+//   the new name starting at the same x0, with maxWidth = (page width - x0 - margin)
+//   so longer names never get squeezed to illegibly small sizes.
+//   Font size stays at the original PDF size; we only scale down as a last resort
+//   if the text is truly wider than the available page space.
 //
-// Fix 2 — Broken link (split URL across two PDF spans):
-//   The registration URL is split by the PDF renderer into two adjacent line
-//   spans, e.g.:
-//     span A:  "https://thynksuccess.com/registration/mentalmat"
-//     span B:  "h2026/?school=cyboard2026"
-//   The school code token ("cyboard2026") lives only in span B.
-//   Old approach: replace only span B's text → the full URL is never
-//   a single clickable link (span A has no hyperlink annotation).
-//
-//   New approach:
-//   a) Detect both spans (A = everything before codeToken in that URL,
-//      B = span containing codeToken).
-//   b) Redact both spans with mupdf.
-//   c) Re-draw the combined full URL as one text run at span A's x0, spanning
-//      enough width, using the same font/size.
-//   d) Add a pdf-lib URI link annotation covering the union rect of A+B so
-//      the entire text is clickable.
+// URL / school code (Fix 2):
+//   The registration URL is split across two adjacent PDF spans:
+//     Span A: "https://thynksuccess.com/registration/mentalmat"
+//     Span B: "h2026/?school=cyboard2026"
+//   We redact BOTH spans, re-draw the full stitched URL at span A's x0,
+//   and add a clickable URI annotation over the union rect so the whole
+//   URL is one functional hyperlink. Font size is taken directly from the
+//   original PDF spans (≈9.96 pt) — no scaling applied.
 //
 async function replacePdfTokens(
   pdfBuf:      Buffer,
@@ -60,7 +61,6 @@ async function replacePdfTokens(
   codeColorHex: string,
 ): Promise<Buffer> {
 
-  // Lazy-load mupdf to prevent WASM init at build/static-analysis time
   const mupdf = await import('mupdf');
 
   function hexToRgb(hex: string): [number, number, number] {
@@ -86,104 +86,115 @@ async function replacePdfTokens(
     const readPage  = readDoc.loadPage(i);
     const writePage = writeDoc.loadPage(i);
 
+    // Page dimensions for computing available width
+    const pageBounds: number[] = writePage.getBounds();  // [x0,y0,x1,y1]
+    const pageWidth  = pageBounds[2] - pageBounds[0];
+    const pageMargin = 38; // conservative right margin in pt
+
     const stext = JSON.parse(readPage.toStructuredText('preserve-whitespace').asJSON()) as {
-      blocks: Array<{ lines?: Array<{ text?: string; font?: { weight?: string; size?: number }; y?: number; bbox?: { x: number; y: number } }> }>;
+      blocks: Array<{ lines?: Array<{ text?: string; font?: { weight?: string; size?: number }; y?: number }> }>;
     };
     const allLines = stext.blocks?.flatMap(b => b.lines ?? []) ?? [];
 
-    // ── Fix 1: School name — fit text to original rect width ─────────────────
+    // ── School name: erase token rect, draw new name with page-width budget ──
     const nameHits: number[][][] = readPage.search(nameToken);
     for (const hitQuads of nameHits) {
       for (const quad of hitQuads) {
         const [x0, y0, x1, y1] = quadToRect(quad);
         const matchLine = allLines.find(l => l.text?.includes(nameToken));
-        const fontSize  = matchLine?.font?.size ?? 11;
+        const fontSize  = matchLine?.font?.size ?? 13.56;   // default from sample PDF
         const isBold    = matchLine?.font?.weight === 'bold';
         const baseline  = matchLine?.y ?? y1;
 
+        // Erase only the token's original rect
         const annot = writePage.createAnnotation('Redact');
-        annot.setRect([x0, y0, x1, y1]);          // exact, no padding
-        // fontSize will be clamped at draw time using pdf-lib font metrics
-        inserts.push({ pageIdx: i, x0, y0, x1, y1, baseline, newText: newName, fontSize, isBold, colorRgb: nameColor });
+        annot.setRect([x0, y0, x1, y1]);
+
+        // Available draw width = from token x0 to page right margin
+        // This is always much wider than the token itself, accommodating any school name
+        const maxWidth = pageWidth - x0 - pageMargin;
+
+        inserts.push({
+          pageIdx: i,
+          redactX0: x0, redactY0: y0, redactX1: x1, redactY1: y1,
+          drawX0: x0,
+          baseline, maxWidth,
+          newText: newName,
+          fontSize,
+          isBold,
+          colorRgb: nameColor,
+        });
       }
     }
 
-    // ── Fix 2: URL link — handle split spans and make full URL clickable ──────
-    //
-    // Strategy:
-    //   1. Find the span containing the code token (span B).
-    //   2. Look for the preceding span that is the start of the same URL (span A).
-    //      Span A ends right where span B begins on the same logical line.
-    //   3. Redact both A and B.
-    //   4. Re-draw the stitched URL (A_prefix + B_with_newCode) starting at A.x0.
-    //   5. Add a link annotation over the union bounding box.
-    //
+    // ── URL / code token: stitch both spans, redact both, re-draw + link annot ─
     const codeSpan = allLines.find(l => l.text?.includes(codeToken));
 
     if (codeSpan?.text) {
-      const spanBText = codeSpan.text;
+      const spanBText    = codeSpan.text;
       const newSpanBText = spanBText.replace(
         new RegExp(codeToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
         newCode,
       );
 
-      // Try to find a URL prefix span immediately before the code span.
-      // It should contain 'http' and be on the same approximate y-region.
+      // Find the URL prefix span (span A) — same approximate y-region, contains 'http'
       const spanBLineY = (codeSpan as any).y ?? 0;
       const urlPrefixSpan = allLines.find(l =>
         l !== codeSpan &&
         l.text?.includes('http') &&
         !l.text.includes(codeToken) &&
-        // Within 20pt of span B vertically (they're adjacent lines of a wrapped URL)
-        Math.abs(((l as any).y ?? 0) - spanBLineY) < 20
+        Math.abs(((l as any).y ?? 0) - spanBLineY) < 25
       );
 
       if (urlPrefixSpan?.text) {
-        // We have both halves of the URL. Combine them.
-        const spanAText    = urlPrefixSpan.text;
-        const fullOldUrl   = spanAText + spanBText;
-        const fullNewUrl   = spanAText + newSpanBText;
+        // Both halves found — stitch into one full URL
+        const spanAText  = urlPrefixSpan.text;
+        const fullNewUrl = spanAText + newSpanBText;
+
+        // Font size from the original PDF spans (≈9.96 pt) — use as-is
+        const fontSize = (urlPrefixSpan as any).font?.size ?? 9.96;
+        const isBold   = (urlPrefixSpan as any).font?.weight === 'bold';
+        const baseline = (urlPrefixSpan as any).y ?? 0;
 
         // Redact span A
-        const spanAHits: number[][][] = readPage.search(spanAText.trim());
         let spanARect: [number,number,number,number] | null = null;
+        const spanAHits: number[][][] = readPage.search(spanAText.trim());
         for (const hitQuads of spanAHits) {
           for (const quad of hitQuads) {
             const r = quadToRect(quad);
             spanARect = r;
-            const annot = writePage.createAnnotation('Redact');
-            annot.setRect(r);
+            const a = writePage.createAnnotation('Redact');
+            a.setRect(r);
           }
         }
 
         // Redact span B
-        const spanBHits: number[][][] = readPage.search(spanBText.trim());
         let spanBRect: [number,number,number,number] | null = null;
+        const spanBHits: number[][][] = readPage.search(spanBText.trim());
         for (const hitQuads of spanBHits) {
           for (const quad of hitQuads) {
             const r = quadToRect(quad);
             spanBRect = r;
-            const annot = writePage.createAnnotation('Redact');
-            annot.setRect(r);
+            const a = writePage.createAnnotation('Redact');
+            a.setRect(r);
           }
         }
 
         if (spanARect && spanBRect) {
-          const fontSize = (codeSpan as any).font?.size ?? (urlPrefixSpan as any).font?.size ?? 10;
-          const isBold   = (urlPrefixSpan as any).font?.weight === 'bold';
-          const baseline = (urlPrefixSpan as any).y ?? spanARect[3];
-
-          // Union bounding box for the link annotation
           const unionX0 = Math.min(spanARect[0], spanBRect[0]);
           const unionY0 = Math.min(spanARect[1], spanBRect[1]);
           const unionX1 = Math.max(spanARect[2], spanBRect[2]);
           const unionY1 = Math.max(spanARect[3], spanBRect[3]);
 
-          // Draw combined URL text starting at span A's x0
+          // maxWidth = full union width (URL should fit — it's the same length)
+          const maxWidth = unionX1 - unionX0;
+
           inserts.push({
             pageIdx: i,
-            x0: spanARect[0], y0: unionY0, x1: unionX1, y1: unionY1,
+            redactX0: unionX0, redactY0: unionY0, redactX1: unionX1, redactY1: unionY1,
+            drawX0: spanARect[0],
             baseline,
+            maxWidth,
             newText: fullNewUrl,
             fontSize,
             isBold,
@@ -191,18 +202,29 @@ async function replacePdfTokens(
             linkUri: fullNewUrl,
           });
         }
+
       } else {
-        // No URL prefix span found — fall back to replacing span B only
+        // Fallback: no URL prefix span found, replace span B only
         const spanBHits: number[][][] = readPage.search(spanBText.trim());
         for (const hitQuads of spanBHits) {
           for (const quad of hitQuads) {
             const [x0, y0, x1, y1] = quadToRect(quad);
-            const fontSize = (codeSpan as any).font?.size ?? 10;
+            const fontSize = (codeSpan as any).font?.size ?? 9.96;
             const isBold   = (codeSpan as any).font?.weight === 'bold';
             const baseline = (codeSpan as any).y ?? y1;
             const annot = writePage.createAnnotation('Redact');
             annot.setRect([x0, y0, x1, y1]);
-            inserts.push({ pageIdx: i, x0, y0, x1, y1, baseline, newText: newSpanBText, fontSize, isBold, colorRgb: codeColor });
+            inserts.push({
+              pageIdx: i,
+              redactX0: x0, redactY0: y0, redactX1: x1, redactY1: y1,
+              drawX0: x0,
+              baseline,
+              maxWidth: x1 - x0,
+              newText: newSpanBText,
+              fontSize,
+              isBold,
+              colorRgb: codeColor,
+            });
           }
         }
       }
@@ -211,85 +233,74 @@ async function replacePdfTokens(
     writePage.applyRedactions(false, 1);
   }
 
-  // Copy to Node Buffer before further WASM ops (prevents ArrayBuffer detach)
   const redactedBuf = Buffer.from(
     writeDoc.saveToBuffer('garbage=4,deflate').asUint8Array()
   );
 
-  // ── pdf-lib: overlay replacement text ─────────────────────────────────────
+  // ── pdf-lib: draw replacement text + optional link annotations ────────────
   const pdfDoc   = await PDFDocument.load(redactedBuf);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   for (const ins of inserts) {
-    const page        = pdfDoc.getPage(ins.pageIdx);
-    const pageHeight  = page.getHeight();
+    const page       = pdfDoc.getPage(ins.pageIdx);
+    const pageHeight = page.getHeight();
+    const font       = ins.isBold ? fontBold : fontReg;
+    const [r, g, b]  = ins.colorRgb;
+
+    // pdf-lib y-coords (origin = bottom-left)
     const pdfBaseline = pageHeight - ins.baseline;
-    const pdfBot      = pageHeight - ins.y1;
-    const pdfTop      = pageHeight - ins.y0;
-    const [r, g, b]   = ins.colorRgb;
-    const font        = ins.isBold ? fontBold : fontReg;
+    const pdfBot      = pageHeight - ins.redactY1;
+    const pdfTop      = pageHeight - ins.redactY0;
 
-    // ── Fix 1: Auto-scale font size so text fits within original rect width ──
-    const availableWidth = ins.x1 - ins.x0;
-    let drawSize = ins.fontSize;
-    if (availableWidth > 0) {
-      const textWidth = font.widthOfTextAtSize(ins.newText, drawSize);
-      if (textWidth > availableWidth) {
-        // Scale down proportionally, with a minimum of 6pt
-        drawSize = Math.max(6, drawSize * (availableWidth / textWidth));
-      }
-    }
-
-    // White cover — exact original width only
+    // White cover over the original token rect
     page.drawRectangle({
-      x: ins.x0, y: pdfBot,
-      width:  ins.x1 - ins.x0,
+      x: ins.redactX0, y: pdfBot,
+      width:  ins.redactX1 - ins.redactX0,
       height: pdfTop - pdfBot,
       color:  rgb(1, 1, 1),
       borderWidth: 0,
     });
 
-    // Replacement text at original baseline
+    // Font size: use the original PDF size.
+    // Only scale down if the text genuinely overflows the available page space.
+    let drawSize = ins.fontSize;
+    const textWidth = font.widthOfTextAtSize(ins.newText, drawSize);
+    if (textWidth > ins.maxWidth && ins.maxWidth > 0) {
+      // Scale down proportionally, minimum 8pt to remain readable
+      drawSize = Math.max(8, drawSize * (ins.maxWidth / textWidth));
+    }
+
     page.drawText(ins.newText, {
-      x:     ins.x0,
-      y:     pdfBaseline,
+      x:    ins.drawX0,
+      y:    pdfBaseline,
       font,
-      size:  drawSize,
+      size: drawSize,
       color: rgb(r, g, b),
     });
 
-    // ── Fix 2: Add clickable URI annotation for URL text ─────────────────────
+    // Add a clickable URI annotation for link fields
     if (ins.linkUri) {
-      // pdf-lib link annotations: use page.node / annotation dict
-      // We create a Link annotation via the low-level PDFDict API
-      const pdfLibPage = pdfDoc.getPage(ins.pageIdx);
-      // Annotation rect in pdf-lib coords (origin bottom-left)
-      const annotRect = [ins.x0, pdfBot, ins.x1, pdfTop];
-
-      // Build the annotation using pdf-lib's low-level API
-      const pdfRef = pdfDoc.context;
-      const linkAnnot = pdfRef.obj({
-        Type:    pdfRef.obj('Annot'),
-        Subtype: pdfRef.obj('Link'),
-        Rect:    pdfRef.obj(annotRect),
-        Border:  pdfRef.obj([0, 0, 0]),   // invisible border
-        A: pdfRef.obj({
-          Type: pdfRef.obj('Action'),
-          S:    pdfRef.obj('URI'),
-          URI:  pdfRef.obj(ins.linkUri),
+      const annotRect = [ins.drawX0, pdfBot, ins.redactX1, pdfTop];
+      const ctx = pdfDoc.context;
+      const linkAnnot = ctx.obj({
+        Type:    ctx.obj('Annot'),
+        Subtype: ctx.obj('Link'),
+        Rect:    ctx.obj(annotRect),
+        Border:  ctx.obj([0, 0, 0]),
+        A: ctx.obj({
+          Type: ctx.obj('Action'),
+          S:    ctx.obj('URI'),
+          URI:  ctx.obj(ins.linkUri),
         }),
       });
-
-      const annotRef = pdfDoc.context.register(linkAnnot);
-
-      // Add to page's Annots array
-      const pageNode = pdfLibPage.node;
-      const existingAnnots = pageNode.get(pdfDoc.context.obj('Annots'));
+      const annotRef = ctx.register(linkAnnot);
+      const pageNode = page.node;
+      const existingAnnots = pageNode.get(ctx.obj('Annots'));
       if (existingAnnots && existingAnnots.constructor.name === 'PDFArray') {
         (existingAnnots as any).push(annotRef);
       } else {
-        pageNode.set(pdfDoc.context.obj('Annots'), pdfDoc.context.obj([annotRef]));
+        pageNode.set(ctx.obj('Annots'), ctx.obj([annotRef]));
       }
     }
   }
