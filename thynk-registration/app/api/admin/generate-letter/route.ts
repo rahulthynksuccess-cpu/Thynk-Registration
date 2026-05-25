@@ -37,7 +37,7 @@ interface InsertJob {
 //   the code replaced. The preceding URL line ('https://...mentalma') is
 //   unchanged — no token in it, so no need to touch it.
 //
-export async function replacePdfTokens(
+async function replacePdfTokens(
   pdfBuf:      Buffer,
   nameToken:   string,
   codeToken:   string,
