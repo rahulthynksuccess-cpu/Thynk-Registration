@@ -9,13 +9,6 @@ import { StudentLogPanel } from '@/components/admin/StudentLogPanel';
 import { ManualPaymentPanel }   from '@/components/admin/ManualPaymentPanel';
 import { ReportingPage } from '@/components/admin/ReportingPage';
 import { DocumentUploadPanel } from '@/components/admin/DocumentUploadPanel';
-import { LetterGeneratorPanel } from '@/components/admin/LetterGeneratorPanel';
-
-// Add a tab:
-{ id: 'letters', label: '📨 Letter Generator' }
-
-// Render:
-{activeTab === 'letters' && <LetterGeneratorPanel showToast={showToast} />}
 import { NotificationControlPanel, NotificationBell, NotificationDropdown } from '@/components/admin/NotificationControlPanel';
 import { LeadDatabase } from '@/components/admin/LeadDatabase';
 import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
