@@ -10,6 +10,7 @@ import { ManualPaymentPanel }   from '@/components/admin/ManualPaymentPanel';
 import { ReportingPage } from '@/components/admin/ReportingPage';
 import { DocumentUploadPanel } from '@/components/admin/DocumentUploadPanel';
 import { NotificationControlPanel, NotificationBell, NotificationDropdown } from '@/components/admin/NotificationControlPanel';
+import { LetterGeneratorPanel } from '@/components/admin/LetterGeneratorPanel';
 import { LeadDatabase } from '@/components/admin/LeadDatabase';
 import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -100,6 +101,7 @@ const NAV = [
   { section:'Client Portal' },
   { id:'documents',     icon:'📁', label:'Document Upload' },
   { id:'notifications', icon:'🔔', label:'Notifications',  badge:true },
+  { id:'letters',       icon:'📨', label:'Letter Generator' },
   { section:'Integrations' },
   { id:'_integrations', icon:'⚙️',  label:'Payment & Email', href:'/admin/integrations' },
   { id:'_triggers',     icon:'🔔', label:'Message Triggers', href:'/admin/message-triggers' },
@@ -2201,9 +2203,10 @@ export default function AdminDashboard() {
           {/* ── NOTIFICATION CONTROL PANEL ───────────────────────────── */}
           <div className={`page${activePage==='notifications'?' active':''}`}>
             {activePage==='notifications' && <NotificationControlPanel showToast={(m,i)=>showToast(m,i??'')} />}
-          </div>
-
-        </main>
+            <div className={`page${activePage==='letters'?' active':''}`}>
+  {activePage==='letters' && <LetterGeneratorPanel showToast={(m,i)=>showToast(m,i??'')} />}
+</div>
+               </main>
       </div>
 
       {/* ── Student detail modal ──────────────────────────────────── */}
