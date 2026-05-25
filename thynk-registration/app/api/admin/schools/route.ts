@@ -40,13 +40,11 @@ function currencyForCountry(country: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  // Allow both super_admin and sub_admin to fetch schools (sub_admin gets scoped results)
   const user = await getUserFromRequest(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const service = createServiceClient();
 
-  // Determine role and allowed schools
   const { data: roleRows } = await service
     .from('admin_roles')
     .select('role, school_id, all_schools')
@@ -78,7 +76,6 @@ export async function GET(req: NextRequest) {
     query = query.eq('status', statusFilter) as any;
   }
 
-  // Sub-admin: scope to their assigned schools only (unless all_schools = true)
   if (isSubAdmin && !isSuperAdmin) {
     const hasAllSchools = roleRows?.some(r => r.role === 'sub_admin' && r.all_schools);
     if (!hasAllSchools) {
@@ -90,7 +87,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Consultant: scope to schools where consultant_id = their user id
   if (isConsultant && !isSuperAdmin) {
     query = query.eq('consultant_id', user.id) as any;
   }
@@ -134,9 +130,6 @@ export async function POST(req: NextRequest) {
   const redirectURL = `https://thynksuccess.com/registration/${program.slug}/?school=${code}`;
   const discCode    = (discount_code || code).toUpperCase();
 
-  // Resolve consultant_id:
-  // - If caller is a consultant → always use their own id
-  // - If caller is super_admin  → use the bodyConsultantId (may be null)
   const resolvedConsultantId =
     callerRole === 'consultant' ? user.id : (bodyConsultantId || null);
 
@@ -156,7 +149,6 @@ export async function POST(req: NextRequest) {
       project_slug:           program.slug,
       discount_code:          discCode,
       consultant_id:          resolvedConsultantId,
-      // Admin-created schools are approved immediately
       status:                 'approved',
       is_active:              is_active !== false,
       is_registration_active: is_registration_active !== false,
@@ -197,7 +189,39 @@ export async function POST(req: NextRequest) {
     max_uses:        null,
   });
 
-  // ── AUTO-CREATE USERS FOR ALL CONTACT PERSONS ─────────────────
+  // ── AUTO-GENERATE LETTER ───────────────────────────────────────────────────
+  try {
+    const { data: template } = await service
+      .from('letter_templates')
+      .select('id')
+      .eq('project_id', project_id)
+      .eq('is_active', true)
+      .single();
+
+    if (template) {
+      const baseUrl    = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+      const authHeader = req.headers.get('Authorization') ?? '';
+      fetch(`${baseUrl}/api/admin/generate-letter`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          schoolId:    school.id,
+          projectId:   project_id,
+          triggeredBy: 'auto_school_create',
+        }),
+      }).catch(err => {
+        console.error('[auto-letter] Failed to queue letter generation:', err);
+      });
+    }
+  } catch (err) {
+    console.error('[auto-letter] Template lookup failed:', err);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── AUTO-CREATE USERS FOR ALL CONTACT PERSONS ─────────────────────────────
   const contacts: any[] = Array.isArray(contact_persons) ? contact_persons : [];
   const createdUsers: { email: string; status: string }[] = [];
 
@@ -205,10 +229,8 @@ export async function POST(req: NextRequest) {
     const email  = (contact.email  || '').trim();
     const mobile = (contact.mobile || contact.phone || '').trim();
 
-    // Skip if no email — we need email as username
     if (!email) continue;
 
-    // Password = mobile number; fallback to a safe default if missing
     const password = mobile || 'ThynkSchool@123';
 
     try {
@@ -223,7 +245,6 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Assign school_admin role linked to this school
       await service.from('admin_roles').insert({
         user_id:   newUser.user.id,
         role:      'school_admin',
@@ -246,7 +267,7 @@ export async function POST(req: NextRequest) {
       metadata:    { created_users: createdUsers },
     });
   }
-  // ──────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
 
   return NextResponse.json({ school, created_users: createdUsers }, { status: 201 });
 }
@@ -285,14 +306,12 @@ export async function PATCH(req: NextRequest) {
   const resolvedCountry  = country || existing?.country || 'India';
   const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
 
-  // Preserve existing status — do not allow PATCH to accidentally reset it
   const updatePayload: Record<string, any> = {
     ...rest,
     branding,
     country: resolvedCountry,
   };
 
-  // Strip status from rest if accidentally passed — PATCH must not change approval status
   delete updatePayload.status;
 
   if (patchConsultantId !== undefined)      updatePayload.consultant_id          = patchConsultantId || null;
@@ -351,73 +370,8 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-  // Hard delete — remove the school record entirely
   const { error } = await service.from('schools').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ success: true });
 }
-// app/api/admin/schools/route.ts  ← PATCH: add auto-letter generation after school creation
-// 
-// Find the existing POST handler and add this block RIGHT AFTER the pricing insert:
-//
-//   await service.from('pricing').insert({ ... });
-//
-// ─── ADD THIS BLOCK ────────────────────────────────────────────────────────────
-
-// Auto-generate letter if a template exists for this program
-  if (school && program) {
-    try {
-      const { data: template } = await service
-        .from('letter_templates')
-        .select('id')
-        .eq('project_id', project_id)
-        .eq('is_active', true)
-        .single();
-
-      if (template) {
-        const baseUrl    = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-        const authHeader = req.headers.get('Authorization') ?? '';
-        fetch(`${baseUrl}/api/admin/generate-letter`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader,
-          },
-          body: JSON.stringify({
-            schoolId:    school.id,
-            projectId:   project_id,
-            triggeredBy: 'auto_school_create',
-          }),
-        }).catch(err => {
-          console.error('[auto-letter] Failed to queue letter generation:', err);
-        });
-      }
-    } catch (err) {
-      console.error('[auto-letter] Template lookup failed:', err);
-    }
-  }
-
-// ─── END ADDED BLOCK ───────────────────────────────────────────────────────────
-//
-// Then continue with the existing return statement:
-//
-//   return NextResponse.json({ school, redirect_url: redirectURL });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ALTERNATIVE: If you prefer a Supabase Database Webhook instead of in-process,
-// create a webhook in Supabase Dashboard → Database → Webhooks:
-//
-//   Table:    schools
-//   Events:   INSERT
-//   URL:      https://your-app.com/api/admin/generate-letter
-//   Method:   POST
-//   Headers:  { "x-webhook-secret": "YOUR_SECRET" }
-//
-// Then in generate-letter/route.ts, add a handler for webhook payloads:
-//
-//   if (body.type === 'INSERT' && body.table === 'schools') {
-//     const school = body.record;
-//     // trigger letter generation for school.project_id
-//   }
-// ─────────────────────────────────────────────────────────────────────────────
