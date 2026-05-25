@@ -18,6 +18,8 @@
     "cashfree-pg": "^3.0.2",
     "nodemailer": "^6.9.13",
     "@aws-sdk/client-ses": "^3.600.0"
+    "pdf-lib": "^1.17.1",
+"mupdf": "latest"
   },
   "devDependencies": {
     "typescript": "^5",
