@@ -365,7 +365,7 @@ export async function DELETE(req: NextRequest) {
 //
 // ─── ADD THIS BLOCK ────────────────────────────────────────────────────────────
 
-  // Auto-generate letter if a template exists for this program
+// Auto-generate letter if a template exists for this program
   if (school && program) {
     try {
       const { data: template } = await service
@@ -376,13 +376,8 @@ export async function DELETE(req: NextRequest) {
         .single();
 
       if (template) {
-        // Fire-and-forget: call our own generate-letter endpoint internally
-        // We do this via a fetch so it runs async and doesn't block school creation response
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-        
-        // Get auth token from the current request to forward it
+        const baseUrl    = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
         const authHeader = req.headers.get('Authorization') ?? '';
-        
         fetch(`${baseUrl}/api/admin/generate-letter`, {
           method: 'POST',
           headers: {
@@ -395,12 +390,10 @@ export async function DELETE(req: NextRequest) {
             triggeredBy: 'auto_school_create',
           }),
         }).catch(err => {
-          // Non-blocking — log but don't fail school creation
           console.error('[auto-letter] Failed to queue letter generation:', err);
         });
       }
     } catch (err) {
-      // Non-blocking — log but don't fail school creation
       console.error('[auto-letter] Template lookup failed:', err);
     }
   }
