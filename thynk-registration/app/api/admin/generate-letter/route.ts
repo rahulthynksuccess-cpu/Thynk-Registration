@@ -6,10 +6,12 @@
 // npm install mupdf pdf-lib
 // ─────────────────────────────────────────────────────────────────────────────
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse }    from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import mupdf from 'mupdf';
 
 interface InsertJob {
   pageIdx:   number;
@@ -47,6 +49,9 @@ async function replacePdfTokens(
   codeColorHex: string,
 ): Promise<Buffer> {
 
+  // Lazy-load mupdf to prevent WASM init at build/static-analysis time
+  const mupdf = await import('mupdf');
+
   function hexToRgb(hex: string): [number, number, number] {
     const h = hex.replace('#', '');
     return [parseInt(h.slice(0,2),16)/255, parseInt(h.slice(2,4),16)/255, parseInt(h.slice(4,6),16)/255];
@@ -61,8 +66,8 @@ async function replacePdfTokens(
   const nameColor = hexToRgb(nameColorHex);
   const codeColor = hexToRgb(codeColorHex);
 
-  const readDoc  = (mupdf as any).Document.openDocument(pdfBuf, 'application/pdf');
-  const writeDoc = new (mupdf as any).PDFDocument(pdfBuf);
+  const readDoc  = mupdf.Document.openDocument(pdfBuf, 'application/pdf');
+  const writeDoc = new mupdf.PDFDocument(pdfBuf);
   const pageCount: number = writeDoc.countPages();
   const inserts: InsertJob[] = [];
 
@@ -97,7 +102,7 @@ async function replacePdfTokens(
     // text to get the complete span rect, then replace only the token within it.
     const codeLine = allLines.find(l => l.text?.includes(codeToken));
     if (codeLine?.text) {
-      const fullSpanText = codeLine.text;                          // full span  
+      const fullSpanText = codeLine.text;                          // full span
       const newSpanText  = fullSpanText.replace(                   // replace token
         new RegExp(codeToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
         newCode,
