@@ -357,3 +357,74 @@ export async function DELETE(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+// app/api/admin/schools/route.ts  ← PATCH: add auto-letter generation after school creation
+// 
+// Find the existing POST handler and add this block RIGHT AFTER the pricing insert:
+//
+//   await service.from('pricing').insert({ ... });
+//
+// ─── ADD THIS BLOCK ────────────────────────────────────────────────────────────
+
+  // Auto-generate letter if a template exists for this program
+  if (school && program) {
+    try {
+      const { data: template } = await service
+        .from('letter_templates')
+        .select('id')
+        .eq('project_id', project_id)
+        .eq('is_active', true)
+        .single();
+
+      if (template) {
+        // Fire-and-forget: call our own generate-letter endpoint internally
+        // We do this via a fetch so it runs async and doesn't block school creation response
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+        
+        // Get auth token from the current request to forward it
+        const authHeader = req.headers.get('Authorization') ?? '';
+        
+        fetch(`${baseUrl}/api/admin/generate-letter`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader,
+          },
+          body: JSON.stringify({
+            schoolId:    school.id,
+            projectId:   project_id,
+            triggeredBy: 'auto_school_create',
+          }),
+        }).catch(err => {
+          // Non-blocking — log but don't fail school creation
+          console.error('[auto-letter] Failed to queue letter generation:', err);
+        });
+      }
+    } catch (err) {
+      // Non-blocking — log but don't fail school creation
+      console.error('[auto-letter] Template lookup failed:', err);
+    }
+  }
+
+// ─── END ADDED BLOCK ───────────────────────────────────────────────────────────
+//
+// Then continue with the existing return statement:
+//
+//   return NextResponse.json({ school, redirect_url: redirectURL });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALTERNATIVE: If you prefer a Supabase Database Webhook instead of in-process,
+// create a webhook in Supabase Dashboard → Database → Webhooks:
+//
+//   Table:    schools
+//   Events:   INSERT
+//   URL:      https://your-app.com/api/admin/generate-letter
+//   Method:   POST
+//   Headers:  { "x-webhook-secret": "YOUR_SECRET" }
+//
+// Then in generate-letter/route.ts, add a handler for webhook payloads:
+//
+//   if (body.type === 'INSERT' && body.table === 'schools') {
+//     const school = body.record;
+//     // trigger letter generation for school.project_id
+//   }
+// ─────────────────────────────────────────────────────────────────────────────
