@@ -1,5 +1,4 @@
 'use client';
-import Script from 'next/script';
 import { authFetch } from '@/lib/supabase/client';
 import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
 import { SchoolsPageWithApproval } from '@/components/admin/SchoolsPageWithApproval';
@@ -1088,6 +1087,12 @@ export default function AdminDashboard() {
   const [schoolConsultantFilter, setSchoolConsultantFilter] = useState('');
 
   const chartsRef  = useRef<Record<string,any>>({});
+  useEffect(() => {
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.async = true;
+  document.head.appendChild(s);
+}, []);
   const toastTimer = useRef<any>();
 
   // ── Auth ─────────────────────────────────────────────────────────
@@ -1346,7 +1351,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-<Script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" strategy="lazyOnload" />
+
       <div id="admin-toast" className={`${toast.text?'show':''}${toast.type==='ok'?' tok':toast.type==='err'?' terr':''}`}>{toast.text}</div>
 
       <div className="admin-layout">
