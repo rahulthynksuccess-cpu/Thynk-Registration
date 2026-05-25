@@ -2205,15 +2205,18 @@ export default function AdminDashboard() {
             {activePage==='documents' && <DocumentUploadPanel showToast={(m,i)=>showToast(m,i??'')} />}
           </div>
 
-          {/* ── NOTIFICATION CONTROL PANEL ───────────────────────────── */}
+      {/* ── NOTIFICATION CONTROL PANEL ───────────────────────────── */}
           <div className={`page${activePage==='notifications'?' active':''}`}>
             {activePage==='notifications' && <NotificationControlPanel showToast={(m,i)=>showToast(m,i??'')} />}
-            <div className={`page${activePage==='letters'?' active':''}`}>
-  {activePage==='letters' && <LetterGeneratorPanel showToast={(m,i)=>showToast(m,i??'')} />}
-</div>
-               </main>
-      </div>
+          </div>
 
+          {/* ── LETTER GENERATOR ─────────────────────────────────────── */}
+          <div className={`page${activePage==='letters'?' active':''}`}>
+            {activePage==='letters' && <LetterGeneratorPanel showToast={(m,i)=>showToast(m,i??'')} />}
+          </div>
+
+        </main>
+      </div>
       {/* ── Student detail modal ──────────────────────────────────── */}
       {modal && (
         <StudentDetailModal
