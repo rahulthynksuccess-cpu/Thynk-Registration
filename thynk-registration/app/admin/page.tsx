@@ -11,6 +11,7 @@ import { DocumentUploadPanel } from '@/components/admin/DocumentUploadPanel';
 import { NotificationControlPanel, NotificationBell, NotificationDropdown } from '@/components/admin/NotificationControlPanel';
 import { LetterGeneratorPanel } from '@/components/admin/LetterGeneratorPanel';
 import { LeadDatabase } from '@/components/admin/LeadDatabase';
+import { ConsultantHub } from '@/components/admin/ConsultantHub';
 import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -293,7 +294,7 @@ function StudentDetailModal({
         </div>
 <ManualPaymentPanel
   student={student}
-  BACKEND={BACKEND}
+  
   onSuccess={(updated) => {
     showToast('✅ Payment recorded!', '✅');
     onPaymentSuccess?.({ ...student, ...updated, payment_status: 'paid' });
@@ -1818,7 +1819,7 @@ export default function AdminDashboard() {
                     schools={searchedSchools}
                     programs={programs}
                     isSuperAdmin={isSuperAdmin}
-                    BACKEND={BACKEND}
+                    
                     authHeaders={authHeaders}
                     onEdit={s => { loadPrograms(); setSchoolForm(s); }}
                     onRefresh={loadSchools}
@@ -2146,7 +2147,7 @@ export default function AdminDashboard() {
                 schools={schools}
                 allRows={visibleRows}
                 templates={templates}
-                BACKEND={BACKEND}
+                
                 authHeaders={authHeaders}
                 showToast={showToast}
               />
@@ -2182,12 +2183,12 @@ export default function AdminDashboard() {
                 </a>
               </div>
             </div>
-            {activePage==='consultants' && <ConsultantsTab
+            {activePage==='consultants' && <ConsultantHub
               consultants={consultants}
               schools={visibleSchools}
               allRows={enrichedVisibleRows}
               programs={programs}
-              BACKEND={BACKEND}
+              
               authHeaders={authHeaders}
               isSuperAdmin={isSuperAdmin}
               onReload={loadConsultants}
@@ -2301,7 +2302,7 @@ export default function AdminDashboard() {
       {templateForm!==null&&<TemplateFormModal initial={templateForm} programs={programs} onClose={()=>setTemplateForm(null)} onSave={async(data)=>{await saveForm('/api/admin/templates',data,()=>{setTemplateForm(null);loadTemplates();},data.id?'Template updated!':'Template created!');}} />}
       {consultantForm!==null&&<ConsultantFormModal
         initial={consultantForm}
-        BACKEND={BACKEND}
+        
         authHeaders={authHeaders}
         onClose={()=>setConsultantForm(null)}
         onSave={()=>{ setConsultantForm(null); loadConsultants(); showToast(consultantForm.id?'Consultant updated!':'Consultant created!','✅'); }}
@@ -2730,7 +2731,7 @@ function ConsultantsTab({ consultants, schools, allRows, programs, BACKEND, auth
         <RegistrationLinksModal
           consultant={regLinksConsultant}
           programs={programs}
-          BACKEND={BACKEND}
+          
           onClose={()=>setRegLinksConsultant(null)}
           showToast={showToast}
         />
@@ -2739,8 +2740,8 @@ function ConsultantsTab({ consultants, schools, allRows, programs, BACKEND, auth
   );
 }
 
-function RegistrationLinksModal({ consultant, programs, BACKEND, onClose, showToast }: {
-  consultant:Row; programs:Row[]; BACKEND:string; onClose:()=>void; showToast:(m:string,i?:string)=>void;
+function RegistrationLinksModal({ consultant, programs, BACKEND: _B, onClose, showToast }: {
+  consultant:Row; programs:Row[]; BACKEND?:string; onClose:()=>void; showToast:(m:string,i?:string)=>void;
 }) {
   const baseUrl = 'https://thynksuccess.com';
   const code    = consultant.consultant_code as string | null;
@@ -2982,19 +2983,36 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
 const CFM_LABEL: React.CSSProperties = { fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase' as const, letterSpacing:'0.5px', display:'block', marginBottom:5 };
 const CFM_IS: React.CSSProperties = { width:'100%', border:'1.5px solid var(--bd)', borderRadius:10, padding:'10px 14px', fontSize:14, fontFamily:'DM Sans,sans-serif', outline:'none', color:'var(--text)', background:'var(--bg)', boxSizing:'border-box' as const };
 
-function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, showToast }: {
-  initial:Row; BACKEND:string; authHeaders:()=>HeadersInit; onClose:()=>void; onSave:()=>void; showToast:(m:string,i?:string)=>void;
+const CFM_DOMAIN_OPTS = ['Academics','School Operations','Edtech Sales K12','Edtech Sales Higher Education','Others'];
+
+function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onClose, onSave, showToast }: {
+  initial:Row; BACKEND?:string; authHeaders:()=>HeadersInit; onClose:()=>void; onSave:()=>void; showToast:(m:string,i?:string)=>void;
 }) {
-  const [name,           setName]          = React.useState(initial.name            ?? '');
-  const [email,          setEmail]         = React.useState(initial.email           ?? '');
-  const [password,       setPassword]      = React.useState('');
-  const [code,           setCode]          = React.useState(initial.consultant_code  ?? '');
-  const [mobile,         setMobile]        = React.useState(initial.mobile_number    ?? '');
-  const [pan,            setPan]           = React.useState(initial.pan_number       ?? '');
-  const [isDefault,      setIsDefault]     = React.useState(!!initial.is_default_consultant);
-  const [saving,         setSaving]        = React.useState(false);
-  const [error,          setError]         = React.useState('');
+  const [name,          setName]         = React.useState(initial.name             ?? '');
+  const [email,         setEmail]        = React.useState(initial.email            ?? '');
+  const [password,      setPassword]     = React.useState('');
+  const [code,          setCode]         = React.useState(initial.consultant_code   ?? '');
+  const [mobile,        setMobile]       = React.useState(initial.mobile_number     ?? '');
+  const [pan,           setPan]          = React.useState(initial.pan_number        ?? '');
+  const [isDefault,     setIsDefault]    = React.useState(!!initial.is_default_consultant);
+  // Extended profile fields (all optional)
+  const [location,      setLocation]     = React.useState(initial.location          ?? '');
+  const [totalExp,      setTotalExp]     = React.useState(initial.total_exp_years   ? String(initial.total_exp_years) : '');
+  const [domains,       setDomains]      = React.useState<string[]>(Array.isArray(initial.domain_expertise) ? initial.domain_expertise : []);
+  const [locWorked,     setLocWorked]    = React.useState(initial.locations_worked  ?? '');
+  const [hasEdu,        setHasEdu]       = React.useState<boolean|null>(initial.has_edu_connections ?? null);
+  const [hasB2B,        setHasB2B]       = React.useState<boolean|null>(initial.has_b2b_exp         ?? null);
+  const [hasB2C,        setHasB2C]       = React.useState<boolean|null>(initial.has_b2c_exp         ?? null);
+  const [intro,         setIntro]        = React.useState(initial.detailed_intro    ?? '');
+  const [expSummary,    setExpSummary]   = React.useState(initial.experience_summary ?? '');
+  const [saving,        setSaving]       = React.useState(false);
+  const [error,         setError]        = React.useState('');
+  const [showExtended,  setShowExtended] = React.useState(false);
   const isEdit = !!initial.id;
+
+  function toggleDomain(d: string) {
+    setDomains(prev => prev.includes(d) ? prev.filter(x=>x!==d) : [...prev,d]);
+  }
 
   async function handleSave() {
     if (!name.trim()) { setError('Name is required'); return; }
@@ -3004,9 +3022,20 @@ function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, s
     setSaving(true); setError('');
     try {
       const method = isEdit ? 'PATCH' : 'POST';
+      const extFields = {
+        location:            location.trim() || null,
+        total_exp_years:     totalExp ? Number(totalExp) : null,
+        domain_expertise:    domains.length ? domains : null,
+        locations_worked:    locWorked.trim() || null,
+        has_edu_connections: hasEdu,
+        has_b2b_exp:         hasB2B,
+        has_b2c_exp:         hasB2C,
+        detailed_intro:      intro.trim() || null,
+        experience_summary:  expSummary.trim() || null,
+      };
       const body = isEdit
-        ? { id:initial.id, name, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault }
-        : { name, email, password, consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault };
+        ? { id:initial.id, name, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, ...extFields }
+        : { name, email, password, consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, ...extFields };
       const res  = await fetch(`${BACKEND}/api/admin/consultants`, { method, headers:{...(authHeaders() as any),'Content-Type':'application/json'}, body:JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? 'Failed'); setSaving(false); return; }
@@ -3014,19 +3043,36 @@ function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, s
     } catch(e:any) { setError(e.message); setSaving(false); }
   }
 
-  const IS:React.CSSProperties = {width:'100%',padding:'9px 12px',borderRadius:9,border:'1.5px solid var(--bd)',background:'var(--bg)',color:'var(--text)',fontSize:13,outline:'none'};
+  const IS:React.CSSProperties = {width:'100%',padding:'9px 12px',borderRadius:9,border:'1.5px solid var(--bd)',background:'var(--bg)',color:'var(--text)',fontSize:13,outline:'none',fontFamily:'DM Sans,sans-serif'};
   const LB:React.CSSProperties = {display:'block',fontSize:11,fontWeight:700,color:'var(--m)',marginBottom:4,textTransform:'uppercase',letterSpacing:.5};
+
+  function RadioYN({ value, onChange }: { value: boolean|null; onChange:(v:boolean)=>void }) {
+    return (
+      <div style={{display:'flex',gap:8}}>
+        {[true,false].map(v=>(
+          <button key={String(v)} onClick={()=>onChange(v)} type="button"
+            style={{padding:'7px 18px',borderRadius:8,border:'1.5px solid',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',
+              borderColor:value===v?'var(--acc)':'var(--bd)',
+              background:value===v?'var(--acc3)':'transparent',
+              color:value===v?'var(--acc)':'var(--m)'}}>
+            {v?'Yes':'No'}
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}
       onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:20,width:'100%',maxWidth:500,padding:'28px 28px 24px',maxHeight:'90vh',overflowY:'auto'}}>
+      <div style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:20,width:'100%',maxWidth:600,padding:'28px 28px 24px',maxHeight:'92vh',overflowY:'auto'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
           <h2 style={{margin:0,fontSize:18,fontWeight:800,color:'var(--text)',fontFamily:'Sora,sans-serif'}}>{isEdit?'✏️ Edit Consultant':'🤝 Add Consultant'}</h2>
           <button onClick={onClose} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',color:'var(--m)'}}>✕</button>
         </div>
         {error&&<div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#ef4444',marginBottom:16}}>{error}</div>}
 
+        {/* ── Core fields ── */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 14px'}}>
           <div style={{marginBottom:14}}>
             <label style={LB}>Full Name *</label>
@@ -3034,8 +3080,8 @@ function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, s
           </div>
           <div style={{marginBottom:14}}>
             <label style={LB}>Consultant Code *</label>
-            <input style={IS} value={code} onChange={e=>setCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,''))} placeholder="cons001" />
-            <div style={{fontSize:10,color:'var(--m)',marginTop:2}}>Used in link: /registration/brishark?consultant=<b>{code||'code'}</b></div>
+            <input style={IS} value={code} onChange={e=>setCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,''))} placeholder="tscons103" />
+            <div style={{fontSize:10,color:'var(--m)',marginTop:2}}>Sequence: last used tscons102</div>
           </div>
         </div>
 
@@ -3061,13 +3107,72 @@ function ConsultantFormModal({ initial, BACKEND, authHeaders, onClose, onSave, s
           </div>
         </div>
 
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18,background:'rgba(79,70,229,.06)',border:'1px solid rgba(79,70,229,.2)',borderRadius:10,padding:'10px 14px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,background:'rgba(79,70,229,.06)',border:'1px solid rgba(79,70,229,.2)',borderRadius:10,padding:'10px 14px'}}>
           <input type="checkbox" id="isDefault" checked={isDefault} onChange={e=>setIsDefault(e.target.checked)} style={{width:16,height:16,cursor:'pointer'}} />
           <label htmlFor="isDefault" style={{fontSize:13,fontWeight:700,color:'var(--text)',cursor:'pointer',flex:1}}>
             ⭐ Set as Default Consultant
             <span style={{display:'block',fontSize:11,fontWeight:400,color:'var(--m)'}}>Schools from the generic link will be tagged to this consultant</span>
           </label>
         </div>
+
+        {/* ── Extended profile (collapsible) ── */}
+        <button type="button" onClick={()=>setShowExtended(p=>!p)}
+          style={{width:'100%',padding:'9px 14px',borderRadius:10,border:'1.5px dashed var(--bd)',background:'var(--bg)',color:'var(--m)',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:showExtended?16:20,textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'DM Sans,sans-serif'}}>
+          <span>📋 Extended Profile Fields (optional)</span>
+          <span style={{fontSize:11}}>{showExtended?'▲ Hide':'▼ Show'}</span>
+        </button>
+
+        {showExtended && (
+          <div style={{border:'1.5px solid var(--bd)',borderRadius:12,padding:'16px 18px',marginBottom:18,background:'var(--bg)'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 14px'}}>
+              <div style={{marginBottom:14}}>
+                <label style={LB}>Location</label>
+                <input style={IS} value={location} onChange={e=>setLocation(e.target.value)} placeholder="Mumbai, Maharashtra" />
+              </div>
+              <div style={{marginBottom:14}}>
+                <label style={LB}>Total Experience (Years)</label>
+                <input style={IS} type="number" value={totalExp} onChange={e=>setTotalExp(e.target.value)} placeholder="8" min="0" max="60" />
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={LB}>Locations Worked</label>
+              <input style={IS} value={locWorked} onChange={e=>setLocWorked(e.target.value)} placeholder="Delhi, Mumbai, Bangalore" />
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={LB}>Domain Expertise</label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {CFM_DOMAIN_OPTS.map(d=>(
+                  <label key={d} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',border:`1.5px solid ${domains.includes(d)?'var(--acc)':'var(--bd)'}`,borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,background:domains.includes(d)?'var(--acc3)':'var(--card)',color:domains.includes(d)?'var(--acc)':'var(--m)'}}>
+                    <input type="checkbox" checked={domains.includes(d)} onChange={()=>toggleDomain(d)} style={{accentColor:'var(--acc)',width:13,height:13}} />
+                    {d}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0 14px',marginBottom:14}}>
+              <div>
+                <label style={LB}>Edu Connections</label>
+                <RadioYN value={hasEdu} onChange={setHasEdu} />
+              </div>
+              <div>
+                <label style={LB}>B2B Experience</label>
+                <RadioYN value={hasB2B} onChange={setHasB2B} />
+              </div>
+              <div>
+                <label style={LB}>B2C Experience</label>
+                <RadioYN value={hasB2C} onChange={setHasB2C} />
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={LB}>Detailed Introduction</label>
+              <textarea style={{...IS,minHeight:80,lineHeight:1.6}} value={intro} onChange={e=>setIntro(e.target.value)} placeholder="Brief professional introduction…" />
+            </div>
+            <div style={{marginBottom:0}}>
+              <label style={LB}>Experience Summary</label>
+              <textarea style={{...IS,minHeight:80,lineHeight:1.6}} value={expSummary} onChange={e=>setExpSummary(e.target.value)} placeholder="Summary of experience…" />
+            </div>
+          </div>
+        )}
 
         <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
