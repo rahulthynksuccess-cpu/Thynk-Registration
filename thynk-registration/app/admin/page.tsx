@@ -1819,7 +1819,7 @@ export default function AdminDashboard() {
                     schools={searchedSchools}
                     programs={programs}
                     isSuperAdmin={isSuperAdmin}
-                    
+                    BACKEND={BACKEND}
                     authHeaders={authHeaders}
                     onEdit={s => { loadPrograms(); setSchoolForm(s); }}
                     onRefresh={loadSchools}
@@ -2147,7 +2147,7 @@ export default function AdminDashboard() {
                 schools={schools}
                 allRows={visibleRows}
                 templates={templates}
-                
+                BACKEND={BACKEND}
                 authHeaders={authHeaders}
                 showToast={showToast}
               />
