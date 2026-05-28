@@ -550,6 +550,7 @@ export function SchoolsPageWithApproval({
           {isSuperAdmin && (
             <button className="btn btn-primary" onClick={() => onEdit({})}>+ Add School</button>
           )}
+          <SchoolReportDownloadBtn authHeaders={authHeaders} showToast={showToast} />
         </div>
       </div>
 
@@ -722,5 +723,106 @@ export function SchoolsTableWithStatus({
         </table>
       </div>
     </>
+  );
+}
+
+// ── School Report Download Button ─────────────────────────────────────────────
+function SchoolReportDownloadBtn({ authHeaders, showToast }: {
+  authHeaders: () => HeadersInit;
+  showToast:   (t: string, i?: string) => void;
+}) {
+  const [open,    setOpen]    = useState(false);
+  const [loading, setLoading] = useState<string | null>(null);
+
+  const options = [
+    { label: '📥 Full Report (All Schools)',  type: 'all',      color: '#4f46e5' },
+    { label: '✅ Approved Schools Only',       type: 'approved', color: '#059669' },
+    { label: '⏳ Pending Queue Only',          type: 'pending',  color: '#d97706' },
+  ];
+
+  async function download(type: string) {
+    setLoading(type);
+    setOpen(false);
+    showToast('Generating school report…', '⏳');
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/schools/report?type=${type}`, {
+        headers: authHeaders() as any,
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error ?? 'Report generation failed', '❌');
+        return;
+      }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const cap  = type === 'all' ? 'Full' : type === 'approved' ? 'Approved' : 'Pending';
+      a.href     = url;
+      a.download = `Thynk_School_Report_${cap}_${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('School report downloaded!', '✅');
+    } catch (e: any) {
+      showToast(e.message ?? 'Download failed', '❌');
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={() => setOpen(p => !p)}
+        disabled={!!loading}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '8px 14px', borderRadius: 9,
+          background: loading ? '#e5e7eb' : '#10b981',
+          border: 'none', color: '#fff',
+          fontSize: 12, fontWeight: 700,
+          cursor: loading ? 'not-allowed' : 'pointer',
+          fontFamily: 'DM Sans,sans-serif',
+        }}
+      >
+        {loading ? '⏳ Generating…' : '📥 Download Report ▾'}
+      </button>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 98 }}
+            onClick={() => setOpen(false)}
+          />
+          {/* Dropdown */}
+          <div style={{
+            position: 'absolute', top: '110%', right: 0, zIndex: 99,
+            background: 'var(--card)', border: '1.5px solid var(--bd)',
+            borderRadius: 12, padding: 6, minWidth: 240,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          }}>
+            {options.map(opt => (
+              <button
+                key={opt.type}
+                onClick={() => download(opt.type)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '10px 14px', border: 'none', borderRadius: 8,
+                  background: 'transparent', cursor: 'pointer',
+                  fontSize: 13, fontWeight: 600, color: opt.color,
+                  fontFamily: 'DM Sans,sans-serif',
+                  transition: 'background .1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

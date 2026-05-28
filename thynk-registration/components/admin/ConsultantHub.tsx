@@ -127,6 +127,7 @@ export function ConsultantHub({
             style={{ padding:'8px 14px', borderRadius:9, background:'#4f46e5', border:'none', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
             📋 Copy URL
           </button>
+          <DownloadReportBtn authHeaders={authHeaders} showToast={showToast} />
           {isSuperAdmin && (
             <button onClick={() => setConsultantForm({})}
               style={{ padding:'8px 14px', borderRadius:9, background:'transparent', border:'1.5px solid #4f46e5', color:'#4f46e5', fontSize:12, fontWeight:700, cursor:'pointer' }}>
@@ -1115,8 +1116,63 @@ function RejectModal({ reg, onReject, onClose }: {
   );
 }
 
-function RegistrationLinksModal({ consultant, programs, BACKEND, onClose, showToast }: {
-  consultant: Row; programs: Row[]; BACKEND: string; onClose: () => void; showToast: (m: string, i?: string) => void;
+// ═════════════════════════════════════════════════════════════════════════════
+// DOWNLOAD REPORT BUTTON
+// ═════════════════════════════════════════════════════════════════════════════
+function DownloadReportBtn({ authHeaders, showToast }: {
+  authHeaders: () => HeadersInit;
+  showToast:   (m: string, i?: string) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  async function download() {
+    setLoading(true);
+    showToast('Generating report…', '⏳');
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/consultant-registrations/report`, {
+        headers: authHeaders() as any,
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error ?? 'Report generation failed', '❌');
+        return;
+      }
+      const blob  = await res.blob();
+      const url   = URL.createObjectURL(blob);
+      const a     = document.createElement('a');
+      a.href      = url;
+      a.download  = `Thynk_Consultant_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Report downloaded!', '✅');
+    } catch (e: any) {
+      showToast(e.message ?? 'Download failed', '❌');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button onClick={download} disabled={loading}
+      style={{
+        padding:'8px 14px', borderRadius:9,
+        background: loading ? '#e5e7eb' : '#10b981',
+        border:'none', color:'#fff', fontSize:12, fontWeight:700,
+        cursor: loading ? 'not-allowed' : 'pointer',
+        display:'flex', alignItems:'center', gap:6, transition:'background .15s',
+      }}>
+      {loading ? '⏳ Generating…' : '📥 Download Report'}
+    </button>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// REGISTRATION LINKS MODAL
+// ═════════════════════════════════════════════════════════════════════════════
+function RegistrationLinksModal({ consultant, programs, BACKEND: _BURL, onClose, showToast }: {
+  consultant: Row; programs: Row[]; BACKEND?: string; onClose: () => void; showToast: (m: string, i?: string) => void;
 }) {
   const baseUrl = 'https://thynksuccess.com';
   const code    = consultant.consultant_code as string | null;

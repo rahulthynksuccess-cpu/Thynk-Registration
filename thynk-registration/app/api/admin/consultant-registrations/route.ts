@@ -113,7 +113,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Code conflict, please retry' }, { status: 409 });
   }
 
-  // 3. Create auth user — email = User ID, password = Thynk@1234
+  // 3. Create auth user — or reuse if already exists
+  let userId: string;
+
   const { data: newUser, error: authErr } = await service.auth.admin.createUser({
     email:         reg.contact_email,
     password:      'Thynk@1234',
@@ -122,13 +124,55 @@ export async function PATCH(req: NextRequest) {
   });
 
   if (authErr) {
-    const msg = authErr.message.toLowerCase().includes('already')
-      ? 'A user with this email already exists. Please check the Consultants list.'
-      : authErr.message;
-    return NextResponse.json({ error: msg }, { status: 400 });
+    if (authErr.message.toLowerCase().includes('already')) {
+      // User exists in auth — look them up and reuse
+      const { data: existingUsers, error: listErr } = await service.auth.admin.listUsers();
+      if (listErr) return NextResponse.json({ error: 'Could not look up existing user' }, { status: 500 });
+
+      const existingUser = (existingUsers.users as { id: string; email?: string }[])
+        .find(u => u.email === reg.contact_email);
+      if (!existingUser) return NextResponse.json({ error: 'User lookup failed' }, { status: 500 });
+
+      userId = existingUser.id;
+
+      // Check if already a consultant
+      const { data: existingProfile } = await service
+        .from('consultant_profiles')
+        .select('id, consultant_code')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (existingProfile) {
+        // Already a consultant — just mark registration approved and link it
+        await service
+          .from('consultant_registrations')
+          .update({
+            status:             'approved',
+            reviewed_at:        new Date().toISOString(),
+            reviewed_by:        user.id,
+            consultant_user_id: userId,
+            consultant_code:    existingProfile.consultant_code,
+          })
+          .eq('id', id);
+
+        return NextResponse.json({
+          success:         true,
+          action:          'approved',
+          note:            'Linked to existing consultant account',
+          consultant_code: existingProfile.consultant_code,
+          user_id:         userId,
+          email:           reg.contact_email,
+        });
+      }
+      // Exists in auth but not yet a consultant — continue with role + profile creation below
+    } else {
+      return NextResponse.json({ error: authErr.message }, { status: 400 });
+    }
+  } else {
+    userId = newUser.user.id;
   }
 
-  const userId = newUser.user.id;
+  // userId is now set above (either new or existing user)
 
   // 4. Assign consultant role
   const { error: roleErr } = await service.from('admin_roles').insert({
