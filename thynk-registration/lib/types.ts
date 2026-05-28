@@ -135,7 +135,9 @@ export type TriggerEvent =
   | 'payment.cancelled'
   | 'discount.applied'
   | 'school.registered'
-  | 'school.approved';
+  | 'school.approved'
+  | 'consultant.registered'
+  | 'consultant.approved';
 
 /**
  * Template variable keys MUST be snake_case to match:
@@ -176,6 +178,16 @@ export interface TemplateVars {
   // Utility
   retry_link?: string;      // backward compat alias for payment_link
   payment_link?: string;    // payment/registration page URL for this school
+
+  // Consultant vars (consultant.registered / consultant.approved events)
+  consultant_name?:    string;  // {{consultant_name}}
+  consultant_email?:   string;  // {{consultant_email}}
+  consultant_phone?:   string;  // {{consultant_phone}}
+  consultant_code?:    string;  // {{consultant_code}} — only on approved event
+  consultant_location?: string; // {{consultant_location}}
+  total_exp_years?:    string;  // {{total_exp_years}}
+  domain_expertise?:   string;  // {{domain_expertise}} — comma-joined
+  login_url?:          string;  // {{login_url}} — portal login link
 
   [key: string]: any;
 }

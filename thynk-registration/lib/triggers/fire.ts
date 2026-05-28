@@ -734,3 +734,155 @@ async function sendViaTwilio(config: any, phone: string, body: string) {
   });
   if (!res.ok) throw new Error(`Twilio error: ${res.status}`);
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CONSULTANT TRIGGERS
+// Fires notification_triggers with event_type = 'consultant.registered'
+// or 'consultant.approved'. No school_id or registration_id needed —
+// uses the consultant_registrations row directly.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export async function fireConsultantTriggers(
+  event: 'consultant.registered' | 'consultant.approved',
+  consultantRegId: string,
+  consultantUserId?: string,   // only set on 'consultant.approved'
+  consultantCode?: string,     // only set on 'consultant.approved'
+): Promise<void> {
+  const supabase = createServiceClient();
+  const tag = `[fireConsultantTriggers:${event}]`;
+
+  console.log(`${tag} START — regId=${consultantRegId} userId=${consultantUserId ?? '—'} code=${consultantCode ?? '—'}`);
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error(`${tag} FATAL: SUPABASE_SERVICE_ROLE_KEY not set`);
+    return;
+  }
+
+  // 1. Load matching active triggers (school_id IS NULL = global/consultant triggers)
+  const { data: triggers, error: triggerErr } = await supabase
+    .from('notification_triggers')
+    .select(`
+      *,
+      notification_templates (
+        id, name, channel, subject, body, is_active,
+        whatsapp_template_name, whatsapp_template_lang
+      )
+    `)
+    .is('school_id', null)
+    .eq('event_type', event)
+    .eq('is_active', true);
+
+  if (triggerErr) {
+    console.error(`${tag} DB error loading triggers:`, triggerErr.message);
+    return;
+  }
+
+  if (!triggers?.length) {
+    console.warn(`${tag} No active triggers found for event=${event}. Create one in Admin → Message Triggers.`);
+    return;
+  }
+
+  console.log(`${tag} Found ${triggers.length} trigger(s)`);
+
+  // 2. Build consultant vars from consultant_registrations row
+  const { data: reg, error: regErr } = await supabase
+    .from('consultant_registrations')
+    .select('*')
+    .eq('id', consultantRegId)
+    .single();
+
+  if (regErr || !reg) {
+    console.error(`${tag} consultant_registrations row not found: ${consultantRegId}`);
+    return;
+  }
+
+  const domains: string[] = Array.isArray(reg.domain_expertise) ? reg.domain_expertise : [];
+
+  const vars: TemplateVars = {
+    // Standard fields that templates already use
+    contact_email:       (reg.contact_email ?? '').toLowerCase().trim(),
+    contact_phone:       reg.contact_number ?? '',
+    // Consultant-specific
+    consultant_name:     reg.full_name      ?? '',
+    consultant_email:    (reg.contact_email ?? '').toLowerCase().trim(),
+    consultant_phone:    reg.contact_number ?? '',
+    consultant_location: reg.location       ?? '',
+    total_exp_years:     reg.total_exp_years != null ? String(reg.total_exp_years) : '',
+    domain_expertise:    domains.join(', '),
+    // Approved-only
+    consultant_code:     consultantCode     ?? '',
+    login_url:           'https://thynk-registration.vercel.app/login',
+    // Aliases
+    school_name:         'Thynk Success',
+    program_name:        'Consultant Network',
+  };
+
+  // 3. Fire each trigger
+  for (const trigger of triggers) {
+    const template = trigger.notification_templates;
+
+    if (!template) {
+      console.error(`${tag} trigger ${trigger.id} has no linked template — skipping`);
+      continue;
+    }
+    if (!template.is_active) {
+      console.warn(`${tag} template "${template.name}" is_active=false — skipping`);
+      continue;
+    }
+
+    const recipient = trigger.channel === 'email'
+      ? (vars.contact_email ?? '').toLowerCase().trim()
+      : (vars.contact_phone ?? '').replace(/\D/g, '');
+
+    if (!recipient) {
+      console.error(`${tag} Empty recipient for channel=${trigger.channel} — skipping`);
+      continue;
+    }
+
+    console.log(`${tag} Sending ${trigger.channel} → ${recipient}`);
+
+    // Pre-insert pending log
+    const { data: logRow } = await supabase.from('notification_logs').insert({
+      school_id:       null,
+      registration_id: null,
+      trigger_id:      trigger.id,
+      channel:         trigger.channel,
+      provider:        '',
+      recipient,
+      status:          'pending',
+      sent_at:         null,
+    }).select('id').single();
+
+    let finalProvider = '';
+    let lastError: string | null = null;
+    let status: 'sent' | 'failed' = 'failed';
+
+    try {
+      if (trigger.channel === 'email') {
+        // Pass '' as schoolId — sendEmail will fall through to default SMTP
+        finalProvider = await sendEmail(template, vars, '');
+        status = 'sent';
+        console.log(`${tag} ✅ email sent via ${finalProvider} to ${recipient}`);
+      } else if (trigger.channel === 'whatsapp') {
+        finalProvider = await sendWhatsApp(template, vars, '');
+        status = 'sent';
+        console.log(`${tag} ✅ whatsapp sent via ${finalProvider} to ${recipient}`);
+      }
+    } catch (err: any) {
+      lastError = err?.message ?? 'unknown error';
+      console.error(`${tag} ❌ FAILED ${trigger.channel} to ${recipient}: ${lastError}`);
+    }
+
+    // Update log
+    if (logRow?.id) {
+      await supabase.from('notification_logs').update({
+        status,
+        provider:          finalProvider || 'unknown',
+        sent_at:           status === 'sent' ? new Date().toISOString() : null,
+        provider_response: status === 'failed' ? { error: lastError } : null,
+      }).eq('id', logRow.id);
+    }
+  }
+
+  console.log(`${tag} DONE`);
+}

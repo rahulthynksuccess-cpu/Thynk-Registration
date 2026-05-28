@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
+import { fireConsultantTriggers } from '@/lib/triggers/fire';
 
 async function requireSuperAdmin(req: NextRequest) {
   const user = await getUserFromRequest(req);
@@ -245,6 +246,9 @@ export async function PATCH(req: NextRequest) {
       approved_by:       user.email,
     },
   });
+
+  // 9. Fire auto-email/WhatsApp trigger (consultant.approved)
+  await fireConsultantTriggers('consultant.approved', id, userId, consCode);
 
   return NextResponse.json({
     success:          true,

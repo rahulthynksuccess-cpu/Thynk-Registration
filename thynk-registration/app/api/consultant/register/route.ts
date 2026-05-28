@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { fireConsultantTriggers } from '@/lib/triggers/fire';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -84,6 +85,10 @@ export async function POST(req: NextRequest) {
       console.error('[consultant/register] DB error:', error);
       return NextResponse.json({ error: 'Failed to submit registration. Please try again.' }, { status: 500, headers: CORS });
     }
+
+    // Fire auto-email/WhatsApp trigger (consultant.registered)
+    // Awaited so Vercel doesn't kill it before it completes
+    await fireConsultantTriggers('consultant.registered', data.id);
 
     return NextResponse.json({ success: true, id: data.id }, { status: 201, headers: CORS });
 
