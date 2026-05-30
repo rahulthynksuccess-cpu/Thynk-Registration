@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 
+const CONSULTANT_EVENTS = ['consultant.registered', 'consultant.approved'];
+
 async function requireAdmin(req: NextRequest) {
   const user = await getUserFromRequest(req);
   if (!user) return null;
@@ -13,13 +15,17 @@ async function requireAdmin(req: NextRequest) {
 // recipient_type added in migration 006.
 function sanitizeTrigger(raw: Record<string, any>) {
   const { event_type, channel, template_id, school_id, is_active, recipient_type } = raw;
+
+  // Consultant events are always global (no school_id) and recipient is consultant
+  const isConsultantEvent = CONSULTANT_EVENTS.includes(event_type);
+
   return {
     event_type,
     channel,
     template_id,
-    school_id:      school_id ?? null,
+    school_id:      isConsultantEvent ? null : (school_id ?? null),
     is_active:      is_active ?? true,
-    recipient_type: recipient_type ?? 'student',
+    recipient_type: recipient_type ?? (isConsultantEvent ? 'consultant' : 'student'),
   };
 }
 
@@ -29,12 +35,21 @@ export async function GET(req: NextRequest) {
   const service = createServiceClient();
   const { searchParams } = new URL(req.url);
   const schoolId = searchParams.get('schoolId');
+
   let query = service
     .from('notification_triggers')
     .select('*, notification_templates(id, name, channel)')
     .order('created_at', { ascending: false });
-  if (schoolId) query = query.eq('school_id', schoolId);
-  else if (auth.role.role !== 'super_admin') query = query.eq('school_id', auth.role.school_id);
+
+  if (schoolId) {
+    // Specific school requested — return that school's triggers + global consultant triggers
+    query = query.or(`school_id.eq.${schoolId},event_type.in.(${CONSULTANT_EVENTS.map(e => `"${e}"`).join(',')})`);
+  } else if (auth.role.role !== 'super_admin') {
+    // Non-super-admin — show their school's triggers + global consultant triggers
+    query = query.or(`school_id.eq.${auth.role.school_id},school_id.is.null`);
+  }
+  // super_admin with no schoolId filter → return everything (no extra filter)
+
   const { data } = await query;
   return NextResponse.json({ triggers: data ?? [] });
 }
