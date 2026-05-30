@@ -201,7 +201,7 @@ export function ConsultantHub({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// TAB 1: PENDING REGISTRATIONS
+// TAB 1: PENDING REGISTRATIONS  (with bulk approve / reject)
 // ═════════════════════════════════════════════════════════════════════════════
 function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast }: {
   registrations: Row[];
@@ -210,10 +210,18 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
   onRefresh:     () => void;
   showToast:     (m: string, i?: string) => void;
 }) {
-  const [actionTarget, setActionTarget] = useState<Row | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<Row | null>(null);
-  const [expandedId,   setExpandedId]   = useState<string | null>(null);
-  const [search,       setSearch]       = useState('');
+  const [actionTarget,  setActionTarget]  = useState<Row | null>(null);
+  const [rejectTarget,  setRejectTarget]  = useState<Row | null>(null);
+  const [expandedId,    setExpandedId]    = useState<string | null>(null);
+  const [search,        setSearch]        = useState('');
+
+  // ── Bulk selection state ──────────────────────────────────────────────────
+  const [selected,      setSelected]      = useState<Set<string>>(new Set());
+  const [bulkApproving, setBulkApproving] = useState(false);
+  const [bulkRejecting, setBulkRejecting] = useState(false);
+  const [bulkProgress,  setBulkProgress]  = useState<{ done: number; total: number } | null>(null);
+  const [bulkRejectBox, setBulkRejectBox] = useState(false);
+  const [bulkReason,    setBulkReason]    = useState('');
 
   const filtered = useMemo(() => {
     if (!search.trim()) return registrations;
@@ -225,6 +233,24 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
     );
   }, [registrations, search]);
 
+  // Keep selected in sync when filter changes
+  const filteredIds = useMemo(() => new Set(filtered.map((r: Row) => r.id as string)), [filtered]);
+  const allFilteredSelected = filtered.length > 0 && filtered.every((r: Row) => selected.has(r.id));
+  const someSelected = selected.size > 0;
+
+  function toggleAll() {
+    if (allFilteredSelected) {
+      setSelected(prev => { const s = new Set(prev); filtered.forEach((r: Row) => s.delete(r.id)); return s; });
+    } else {
+      setSelected(prev => { const s = new Set(prev); filtered.forEach((r: Row) => s.add(r.id)); return s; });
+    }
+  }
+  function toggleOne(id: string) {
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+  function clearSelection() { setSelected(new Set()); }
+
+  // ── Single approve ────────────────────────────────────────────────────────
   async function approve(reg: Row) {
     try {
       const res  = await authFetch(`${BACKEND}/api/admin/consultant-registrations`, {
@@ -240,6 +266,7 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
     setActionTarget(null);
   }
 
+  // ── Single reject ─────────────────────────────────────────────────────────
   async function reject(reg: Row, reason: string) {
     try {
       const res = await authFetch(`${BACKEND}/api/admin/consultant-registrations`, {
@@ -251,6 +278,61 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
       else { const d = await res.json(); showToast(d.error ?? 'Failed', '❌'); }
     } catch (e: any) { showToast(e.message, '❌'); }
     setRejectTarget(null);
+  }
+
+  // ── Bulk approve ──────────────────────────────────────────────────────────
+  async function bulkApprove() {
+    const ids = [...selected].filter(id => filteredIds.has(id));
+    if (!ids.length) return;
+    setBulkApproving(true);
+    setBulkProgress({ done: 0, total: ids.length });
+    let ok = 0; let fail = 0;
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        const res  = await authFetch(`${BACKEND}/api/admin/consultant-registrations`, {
+          method:  'PATCH',
+          headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id: ids[i], action: 'approve' }),
+        });
+        if (res.ok) ok++; else fail++;
+      } catch { fail++; }
+      setBulkProgress({ done: i + 1, total: ids.length });
+      // Small delay to avoid overwhelming the server
+      await new Promise(r => setTimeout(r, 300));
+    }
+    setBulkApproving(false);
+    setBulkProgress(null);
+    clearSelection();
+    showToast(`✅ Bulk approved: ${ok} approved${fail > 0 ? `, ${fail} failed` : ''}`, ok > 0 ? '✅' : '❌');
+    onRefresh();
+  }
+
+  // ── Bulk reject ───────────────────────────────────────────────────────────
+  async function bulkReject() {
+    const ids = [...selected].filter(id => filteredIds.has(id));
+    if (!ids.length) return;
+    setBulkRejecting(true);
+    setBulkRejectBox(false);
+    setBulkProgress({ done: 0, total: ids.length });
+    let ok = 0; let fail = 0;
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        const res = await authFetch(`${BACKEND}/api/admin/consultant-registrations`, {
+          method:  'PATCH',
+          headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id: ids[i], action: 'reject', reject_reason: bulkReason.trim() || null }),
+        });
+        if (res.ok) ok++; else fail++;
+      } catch { fail++; }
+      setBulkProgress({ done: i + 1, total: ids.length });
+      await new Promise(r => setTimeout(r, 200));
+    }
+    setBulkRejecting(false);
+    setBulkProgress(null);
+    setBulkReason('');
+    clearSelection();
+    showToast(`Bulk rejected: ${ok} rejected${fail > 0 ? `, ${fail} failed` : ''}`, '🗑️');
+    onRefresh();
   }
 
   async function deleteReg(id: string) {
@@ -266,26 +348,93 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
 
   if (loading) return <Spinner text="Loading registrations…" />;
 
+  const isBulkBusy = bulkApproving || bulkRejecting;
+
   return (
     <div>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, gap:12, flexWrap:'wrap' }}>
-        <div style={{ fontSize:13, color:'var(--m)', fontWeight:600 }}>
-          {registrations.length} pending registration{registrations.length !== 1 ? 's' : ''}
+      {/* ── Top bar ── */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:12, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {/* Select all checkbox */}
+          <label style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer', fontSize:13, fontWeight:600, color:'var(--m)', userSelect:'none' }}>
+            <input type="checkbox"
+              checked={allFilteredSelected}
+              ref={el => { if (el) el.indeterminate = someSelected && !allFilteredSelected; }}
+              onChange={toggleAll}
+              style={{ width:15, height:15, accentColor:'var(--acc)', cursor:'pointer' }}
+            />
+            {someSelected ? `${selected.size} selected` : `${registrations.length} pending`}
+          </label>
+          {someSelected && (
+            <button onClick={clearSelection}
+              style={{ fontSize:11, color:'var(--m)', background:'none', border:'none', cursor:'pointer', textDecoration:'underline', padding:0 }}>
+              Clear
+            </button>
+          )}
         </div>
-        <input style={{ ...IS, maxWidth:260, padding:'8px 12px', fontSize:13 }}
+        <input style={{ ...IS, maxWidth:240, padding:'8px 12px', fontSize:13 }}
           placeholder="Search name, email, location…"
           value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
+      {/* ── Bulk action toolbar (slides in when items selected) ── */}
+      {someSelected && (
+        <div style={{
+          display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+          padding:'12px 16px', marginBottom:14,
+          background:'linear-gradient(135deg, rgba(79,70,229,0.06), rgba(139,92,246,0.06))',
+          border:'1.5px solid rgba(79,70,229,0.2)', borderRadius:12,
+          animation:'slideDown .18s ease',
+        }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--acc)', flex:1 }}>
+            {isBulkBusy && bulkProgress
+              ? `⏳ Processing… ${bulkProgress.done} / ${bulkProgress.total}`
+              : `${selected.size} consultant${selected.size !== 1 ? 's' : ''} selected`
+            }
+          </div>
+
+          {/* Progress bar */}
+          {isBulkBusy && bulkProgress && (
+            <div style={{ width:'100%', height:4, background:'var(--bd)', borderRadius:4, overflow:'hidden' }}>
+              <div style={{
+                height:'100%', borderRadius:4, transition:'width .3s',
+                width: `${Math.round(bulkProgress.done / bulkProgress.total * 100)}%`,
+                background: bulkApproving ? '#10b981' : '#ef4444',
+              }} />
+            </div>
+          )}
+
+          {!isBulkBusy && (
+            <>
+              <button onClick={bulkApprove}
+                style={{ padding:'8px 18px', borderRadius:9, border:'none', background:'#10b981', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+                ✅ Approve All ({selected.size})
+              </button>
+              <button onClick={() => setBulkRejectBox(true)}
+                style={{ padding:'8px 18px', borderRadius:9, border:'1.5px solid rgba(239,68,68,.3)', background:'rgba(239,68,68,.06)', color:'#ef4444', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                ✕ Reject All ({selected.size})
+              </button>
+              <button onClick={clearSelection}
+                style={{ padding:'8px 14px', borderRadius:9, border:'1.5px solid var(--bd)', background:'transparent', color:'var(--m)', fontSize:12, cursor:'pointer' }}>
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Cards ── */}
       {filtered.length === 0 ? (
         <EmptyState icon="📥" title="No pending registrations" sub="Online registrations from the embedded form will appear here for your review." />
       ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          {filtered.map(reg => (
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {filtered.map((reg: Row) => (
             <RegistrationCard
               key={reg.id}
               reg={reg}
               expanded={expandedId === reg.id}
+              selected={selected.has(reg.id)}
+              onSelect={() => toggleOne(reg.id)}
               onToggle={() => setExpandedId(expandedId === reg.id ? null : reg.id)}
               onApprove={() => setActionTarget(reg)}
               onReject={() => setRejectTarget(reg)}
@@ -295,7 +444,7 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
         </div>
       )}
 
-      {/* Approve confirm modal */}
+      {/* ── Single approve confirm ── */}
       {actionTarget && (
         <ConfirmModal
           title="✅ Approve Consultant"
@@ -316,7 +465,7 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
         />
       )}
 
-      {/* Reject modal */}
+      {/* ── Single reject modal ── */}
       {rejectTarget && (
         <RejectModal
           reg={rejectTarget}
@@ -324,21 +473,53 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
           onClose={() => setRejectTarget(null)}
         />
       )}
+
+      {/* ── Bulk reject reason modal ── */}
+      {bulkRejectBox && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+          onClick={e => { if (e.target === e.currentTarget) setBulkRejectBox(false); }}>
+          <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:18, padding:'28px', maxWidth:460, width:'100%' }}>
+            <h3 style={{ margin:'0 0 6px', fontSize:18, fontWeight:800, fontFamily:'Sora,sans-serif' }}>✕ Bulk Reject {selected.size} Registrations</h3>
+            <p style={{ fontSize:13, color:'var(--m)', marginBottom:18 }}>
+              This will reject <strong>{selected.size}</strong> selected registrations. This action cannot be undone.
+            </p>
+            <div style={{ marginBottom:18 }}>
+              <label style={{ ...LB, display:'block' }}>Rejection Reason (optional — applied to all)</label>
+              <textarea style={{ ...IS, minHeight:80, lineHeight:1.6 }}
+                value={bulkReason} onChange={e => setBulkReason(e.target.value)}
+                placeholder="E.g. Profile does not meet our current requirements…" />
+            </div>
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button onClick={() => setBulkRejectBox(false)}
+                style={{ padding:'9px 20px', borderRadius:10, border:'1.5px solid var(--bd)', background:'transparent', fontSize:13, cursor:'pointer', color:'var(--text)' }}>
+                Cancel
+              </button>
+              <button onClick={bulkReject}
+                style={{ padding:'9px 20px', borderRadius:10, border:'none', background:'#ef4444', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                ✕ Reject All {selected.size}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function RegistrationCard({ reg, expanded, onToggle, onApprove, onReject, onDelete }: {
-  reg: Row; expanded: boolean;
-  onToggle: () => void; onApprove: () => void; onReject: () => void; onDelete: () => void;
+function RegistrationCard({ reg, expanded, selected, onSelect, onToggle, onApprove, onReject, onDelete }: {
+  reg: Row; expanded: boolean; selected: boolean;
+  onSelect: () => void; onToggle: () => void; onApprove: () => void; onReject: () => void; onDelete: () => void;
 }) {
   const domains: string[] = Array.isArray(reg.domain_expertise) ? reg.domain_expertise : [];
 
   return (
-    <div style={{ border:'1.5px solid var(--bd)', borderRadius:14, overflow:'hidden', background:'var(--card)' }}>
+    <div style={{ border:`1.5px solid ${selected ? 'var(--acc)' : 'var(--bd)'}`, borderRadius:14, overflow:'hidden', background: selected ? 'rgba(79,70,229,0.03)' : 'var(--card)', transition:'border-color .15s, background .15s' }}>
       {/* Header row */}
-      <div style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px', flexWrap:'wrap' }}>
-        <div style={{ flex:1, minWidth:200 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', flexWrap:'wrap' }}>
+        {/* Checkbox */}
+        <input type="checkbox" checked={selected} onChange={onSelect}
+          style={{ width:16, height:16, accentColor:'var(--acc)', cursor:'pointer', flexShrink:0 }} />
+        <div style={{ flex:1, minWidth:180 }}>
           <div style={{ fontWeight:800, fontSize:15, color:'var(--text)', marginBottom:2 }}>{reg.full_name}</div>
           <div style={{ fontSize:12, color:'var(--m)', display:'flex', gap:14, flexWrap:'wrap' }}>
             <span>📧 {reg.contact_email}</span>

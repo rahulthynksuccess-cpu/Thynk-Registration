@@ -3614,17 +3614,189 @@ function IntegrationFormModal({ initial, schools, onClose, onSave }:{ initial:Ro
 
 // ── Trigger Form ────────────────────────────────────────────────────
 function TriggerFormModal({ initial, schools, templates, onClose, onSave }:{ initial:Row; schools:Row[]; templates:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
-  const [f,setF] = useState({ id:initial.id??'', school_id:initial.school_id??'', event_type:initial.event_type??'registration.created', channel:initial.channel??'email', template_id:initial.template_id??'', is_active:initial.is_active!==false });
-  const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.type==='checkbox'?(e.target as HTMLInputElement).checked:e.target.value}));
-  const filteredTemplates = templates.filter(t=>t.channel===f.channel);
+  const [f, setF] = useState({
+    id:          initial.id          ?? '',
+    school_id:   initial.school_id   ?? '',
+    event_type:  initial.event_type  ?? 'registration.created',
+    channel:     initial.channel     ?? 'email',
+    template_id: initial.template_id ?? '',
+    is_active:   initial.is_active   !== false,
+  });
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setF(p => ({ ...p, [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value }));
+
+  const filteredTemplates = templates.filter(t => t.channel === f.channel);
+
+  // Whether this event is consultant-specific (no school needed)
+  const isConsultantEvent = f.event_type.startsWith('consultant.');
+  const isSchoolEvent     = f.event_type.startsWith('school.');
+
+  // Variable hints per event type
+  const VAR_HINTS: Record<string, { label: string; vars: string[] }> = {
+    'registration.created': {
+      label: 'Student Registration',
+      vars: ['{{student_name}}','{{parent_name}}','{{contact_email}}','{{contact_phone}}','{{class_grade}}','{{school_name}}','{{program_name}}','{{payment_link}}'],
+    },
+    'payment.paid': {
+      label: 'Payment Success',
+      vars: ['{{student_name}}','{{parent_name}}','{{contact_email}}','{{contact_phone}}','{{amount}}','{{txn_id}}','{{school_name}}','{{program_name}}'],
+    },
+    'payment.failed': {
+      label: 'Payment Failed / Cancelled',
+      vars: ['{{student_name}}','{{parent_name}}','{{contact_email}}','{{contact_phone}}','{{school_name}}','{{program_name}}','{{retry_link}}'],
+    },
+    'payment.cancelled': {
+      label: 'Payment Cancelled',
+      vars: ['{{student_name}}','{{parent_name}}','{{contact_email}}','{{contact_phone}}','{{school_name}}','{{retry_link}}'],
+    },
+    'discount.applied': {
+      label: 'Discount Applied',
+      vars: ['{{student_name}}','{{parent_name}}','{{contact_email}}','{{contact_phone}}','{{amount}}','{{school_name}}'],
+    },
+    'school.registered': {
+      label: 'School Registration',
+      vars: ['{{school_name}}','{{org_name}}','{{contact_person_name}}','{{contact_designation}}','{{contact_email}}','{{contact_phone}}','{{city}}','{{program_name}}'],
+    },
+    'school.approved': {
+      label: 'School Approved',
+      vars: ['{{school_name}}','{{org_name}}','{{contact_person_name}}','{{contact_designation}}','{{contact_email}}','{{contact_phone}}','{{program_name}}'],
+    },
+    'consultant.registered': {
+      label: 'Consultant Self-Registration',
+      vars: ['{{consultant_name}}','{{consultant_email}}','{{consultant_phone}}','{{consultant_location}}','{{domain_expertise}}','{{total_exp_years}}'],
+    },
+    'consultant.approved': {
+      label: 'Consultant Approved',
+      vars: ['{{consultant_name}}','{{consultant_email}}','{{consultant_phone}}','{{consultant_code}}','{{consultant_location}}','{{domain_expertise}}','{{login_url}}'],
+    },
+  };
+
+  const hint = VAR_HINTS[f.event_type];
+
+  const EVENT_GROUPS = [
+    {
+      label: '🎓 Student Registration Events',
+      options: [
+        { value: 'registration.created', label: 'Registration Created' },
+        { value: 'payment.paid',         label: 'Payment Paid' },
+        { value: 'payment.failed',       label: 'Payment Failed' },
+        { value: 'payment.cancelled',    label: 'Payment Cancelled' },
+        { value: 'discount.applied',     label: 'Discount Applied' },
+      ],
+    },
+    {
+      label: '🏫 School Events',
+      options: [
+        { value: 'school.registered', label: 'School Registered' },
+        { value: 'school.approved',   label: 'School Approved' },
+      ],
+    },
+    {
+      label: '🤝 Consultant Events',
+      options: [
+        { value: 'consultant.registered', label: 'Consultant Registered (Online Form)' },
+        { value: 'consultant.approved',   label: 'Consultant Approved' },
+      ],
+    },
+  ];
+
   return (
-    <ModalShell title={f.id?'Edit Trigger':'New Trigger'} onClose={onClose}>
-      <Field label="Event *"><select style={SS} value={f.event_type} onChange={set('event_type')}><option value="registration.created">Registration Created</option><option value="payment.paid">Payment Paid</option><option value="payment.failed">Payment Failed</option><option value="payment.cancelled">Payment Cancelled</option><option value="discount.applied">Discount Applied</option></select></Field>
-      <Field label="Channel *"><select style={SS} value={f.channel} onChange={set('channel')}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select></Field>
-      <Field label="Template *"><select style={SS} value={f.template_id} onChange={set('template_id')}><option value="">Select template</option>{filteredTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
-      <Field label="School (blank = all schools)"><select style={SS} value={f.school_id} onChange={set('school_id')}><option value="">All Schools</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><input type="checkbox" id="t_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto'}}/><label htmlFor="t_active" style={{fontSize:13,fontWeight:600}}>Active</label></div>
-      <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Trigger'}</button></div>
+    <ModalShell title={f.id ? 'Edit Trigger' : 'New Trigger'} onClose={onClose}>
+
+      {/* Event Type */}
+      <Field label="Event *">
+        <select style={SS} value={f.event_type} onChange={e => {
+          const v = e.target.value;
+          // Auto-clear school when switching to consultant event
+          setF(p => ({ ...p, event_type: v, school_id: v.startsWith('consultant.') ? '' : p.school_id }));
+        }}>
+          {EVENT_GROUPS.map(grp => (
+            <optgroup key={grp.label} label={grp.label}>
+              {grp.options.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </Field>
+
+      {/* Consultant event info banner */}
+      {isConsultantEvent && (
+        <div style={{ marginBottom:14, padding:'10px 14px', background:'rgba(79,70,229,0.06)', border:'1.5px solid rgba(79,70,229,0.2)', borderRadius:10, fontSize:12, color:'#4f46e5', lineHeight:1.6 }}>
+          <strong>🤝 Consultant Trigger</strong> — This trigger fires globally for all consultant registrations. No school selection needed. Leave School blank.
+        </div>
+      )}
+
+      {/* School event info banner */}
+      {isSchoolEvent && (
+        <div style={{ marginBottom:14, padding:'10px 14px', background:'rgba(16,185,129,0.06)', border:'1.5px solid rgba(16,185,129,0.2)', borderRadius:10, fontSize:12, color:'#059669', lineHeight:1.6 }}>
+          <strong>🏫 School Trigger</strong> — Fires when a school is registered or approved. Leave School blank to apply to all schools, or pick a specific school.
+        </div>
+      )}
+
+      {/* Channel */}
+      <Field label="Channel *">
+        <select style={SS} value={f.channel} onChange={set('channel')}>
+          <option value="email">📧 Email</option>
+          <option value="whatsapp">💬 WhatsApp</option>
+        </select>
+      </Field>
+
+      {/* Template */}
+      <Field label="Template *">
+        <select style={SS} value={f.template_id} onChange={set('template_id')}>
+          <option value="">— Select template —</option>
+          {filteredTemplates.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+        {filteredTemplates.length === 0 && (
+          <div style={{ fontSize:11, color:'#d97706', marginTop:4 }}>
+            No active {f.channel} templates. Create one in the Templates tab first.
+          </div>
+        )}
+      </Field>
+
+      {/* School — hide for consultant events */}
+      {!isConsultantEvent && (
+        <Field label="School (blank = all schools)">
+          <select style={SS} value={f.school_id} onChange={set('school_id')}>
+            <option value="">All Schools (Global)</option>
+            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </Field>
+      )}
+
+      {/* Available variables hint */}
+      {hint && (
+        <div style={{ marginBottom:14, padding:'10px 14px', background:'var(--bg)', border:'1.5px solid var(--bd)', borderRadius:10 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:8 }}>
+            📋 Available Variables — {hint.label}
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+            {hint.vars.map(v => (
+              <code key={v} style={{ fontSize:11, background:'rgba(79,70,229,0.08)', color:'#4f46e5', border:'1px solid rgba(79,70,229,0.2)', borderRadius:5, padding:'2px 7px', cursor:'pointer', fontWeight:600 }}
+                onClick={() => { navigator.clipboard?.writeText(v); }}>
+                {v}
+              </code>
+            ))}
+          </div>
+          <div style={{ fontSize:10, color:'var(--m)', marginTop:6 }}>Click any variable to copy it</div>
+        </div>
+      )}
+
+      {/* Active toggle */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+        <input type="checkbox" id="t_active" checked={f.is_active} onChange={set('is_active')} style={{ width:'auto' }} />
+        <label htmlFor="t_active" style={{ fontSize:13, fontWeight:600 }}>Active</label>
+      </div>
+
+      <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:8 }}>
+        <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={() => onSave({ ...f, school_id: f.school_id || null })}>
+          {f.id ? 'Save Changes' : 'Create Trigger'}
+        </button>
+      </div>
     </ModalShell>
   );
 }
@@ -3670,6 +3842,28 @@ function TemplateFormModal({ initial, programs, onClose, onSave }:{ initial:Row;
 
       {f.channel==='email'&&<Field label="Subject *"><input style={IS} value={f.subject} onChange={set('subject')} placeholder="Your registration is confirmed — {{school_name}}"/></Field>}
       <Field label="Message Body *"><textarea style={{...IS,height:160,resize:'vertical'}} value={f.body} onChange={set('body')} placeholder={f.channel==='email'?`Hi {{student_name}},\n\nYour registration for {{school_name}} is confirmed!\n\nAmount: {{amount}}\nTransaction ID: {{txn_id}}\n\nThank you!`:`Hi {{student_name}}! 🎉\nYour registration for {{school_name}} is confirmed.\nAmount: {{amount}} | Txn: {{txn_id}}`}/></Field>
+      {/* Variable reference card */}
+      <div style={{marginBottom:14,padding:'10px 14px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
+        <div style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:8}}>📋 All Available Variables (click to copy)</div>
+        <div style={{fontSize:11,fontWeight:700,color:'#4f46e5',marginBottom:4}}>Student / Payment</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:8}}>
+          {['{{student_name}}','{{parent_name}}','{{contact_email}}','{{contact_phone}}','{{class_grade}}','{{school_name}}','{{program_name}}','{{amount}}','{{txn_id}}','{{payment_link}}','{{retry_link}}'].map(v=>(
+            <code key={v} onClick={()=>navigator.clipboard?.writeText(v)} style={{fontSize:10,background:'rgba(79,70,229,0.08)',color:'#4f46e5',border:'1px solid rgba(79,70,229,0.2)',borderRadius:4,padding:'2px 6px',cursor:'pointer'}}>{v}</code>
+          ))}
+        </div>
+        <div style={{fontSize:11,fontWeight:700,color:'#059669',marginBottom:4}}>School</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:8}}>
+          {['{{school_name}}','{{org_name}}','{{contact_person_name}}','{{contact_designation}}','{{city}}'].map(v=>(
+            <code key={v} onClick={()=>navigator.clipboard?.writeText(v)} style={{fontSize:10,background:'rgba(5,150,105,0.08)',color:'#059669',border:'1px solid rgba(5,150,105,0.2)',borderRadius:4,padding:'2px 6px',cursor:'pointer'}}>{v}</code>
+          ))}
+        </div>
+        <div style={{fontSize:11,fontWeight:700,color:'#7c3aed',marginBottom:4}}>🤝 Consultant</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+          {['{{consultant_name}}','{{consultant_email}}','{{consultant_phone}}','{{consultant_code}}','{{consultant_location}}','{{domain_expertise}}','{{total_exp_years}}','{{login_url}}'].map(v=>(
+            <code key={v} onClick={()=>navigator.clipboard?.writeText(v)} style={{fontSize:10,background:'rgba(124,58,237,0.08)',color:'#7c3aed',border:'1px solid rgba(124,58,237,0.2)',borderRadius:4,padding:'2px 6px',cursor:'pointer'}}>{v}</code>
+          ))}
+        </div>
+      </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><input type="checkbox" id="tm_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto'}}/><label htmlFor="tm_active" style={{fontSize:13,fontWeight:600}}>Active</label></div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={()=>onSave(f)}>{f.id?'Save Changes':'Create Template'}</button></div>
     </ModalShell>
