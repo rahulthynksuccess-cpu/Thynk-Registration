@@ -24,12 +24,17 @@ const EVENT_TYPES = [
   {key:'payment.failed',       label:'Payment Failed',       desc:'Fires when payment fails or is cancelled'},
   {key:'school.registered',    label:'School Registered',    desc:'Fires when a new school submits registration (free flow)'},
   {key:'school.approved',      label:'School Approved',      desc:'Fires when admin approves a school'},
+  {key:'consultant.registered',label:'Consultant Registered',desc:'Fires when a consultant submits the online registration form'},
+  {key:'consultant.approved',  label:'Consultant Approved',  desc:'Fires when admin approves a consultant registration'},
 ];
 
 // Events where recipient_type makes no sense (always goes to school contact)
 const SCHOOL_ONLY_EVENTS = new Set(['school.registered', 'school.approved']);
 
-const TEMPLATE_VARS = [
+// Events that go to consultant (no school needed)
+const CONSULTANT_EVENTS = new Set(['consultant.registered', 'consultant.approved']);
+
+const STUDENT_VARS = [
   '{{student_name}}','{{class_grade}}','{{gender}}','{{parent_name}}',
   '{{contact_phone}}','{{contact_email}}','{{school_name}}','{{program_name}}',
   '{{base_amount}}','{{discount_amount}}','{{final_amount}}',
@@ -37,6 +42,15 @@ const TEMPLATE_VARS = [
   '{{payment_link}}',
   '{{contact_person_name}}','{{contact_designation}}','{{org_name}}','{{city}}',
 ];
+
+const CONSULTANT_VARS = [
+  '{{consultant_name}}','{{consultant_email}}','{{consultant_phone}}',
+  '{{consultant_code}}','{{consultant_location}}','{{domain_expertise}}',
+  '{{total_exp_years}}','{{login_url}}',
+];
+
+// Combined for template form (show all)
+const TEMPLATE_VARS = [...STUDENT_VARS, ...CONSULTANT_VARS];
 
 const inp: React.CSSProperties = {
   width:'100%', padding:'10px 12px', background:'var(--card)',
@@ -257,13 +271,19 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
 
   const channelTemplates = templates.filter(t=>t.channel===f.channel&&t.is_active);
   const isSchoolOnlyEvent = SCHOOL_ONLY_EVENTS.has(f.event_type ?? '');
+  const isConsultantEvent = CONSULTANT_EVENTS.has(f.event_type ?? '');
 
-  // When event changes to school-only, force recipient_type to 'school'
+  // When event changes, auto-set recipient_type and clear school if consultant event
   function handleEventChange(newEvent: string) {
     setF(p => ({
       ...p,
-      event_type: newEvent,
-      recipient_type: SCHOOL_ONLY_EVENTS.has(newEvent) ? 'school' : (p.recipient_type ?? 'student'),
+      event_type:     newEvent,
+      school_id:      CONSULTANT_EVENTS.has(newEvent) ? null : p.school_id,
+      recipient_type: SCHOOL_ONLY_EVENTS.has(newEvent)
+        ? 'school'
+        : CONSULTANT_EVENTS.has(newEvent)
+          ? ('consultant' as any)
+          : (p.recipient_type ?? 'student'),
     }));
   }
 
@@ -281,14 +301,50 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
             <label style={lbl}>Event *</label>
             <select value={f.event_type??'registration.created'} onChange={e=>handleEventChange(e.target.value)}
               style={{...inp,cursor:'pointer'}}>
-              {EVENT_TYPES.map(et=>(
-                <option key={et.key} value={et.key}>{et.label}</option>
-              ))}
+              <optgroup label="🎓 Student Registration Events">
+                {EVENT_TYPES.filter(e=>!SCHOOL_ONLY_EVENTS.has(e.key)&&!CONSULTANT_EVENTS.has(e.key)).map(et=>(
+                  <option key={et.key} value={et.key}>{et.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="🏫 School Events">
+                {EVENT_TYPES.filter(e=>SCHOOL_ONLY_EVENTS.has(e.key)).map(et=>(
+                  <option key={et.key} value={et.key}>{et.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="🤝 Consultant Events">
+                {EVENT_TYPES.filter(e=>CONSULTANT_EVENTS.has(e.key)).map(et=>(
+                  <option key={et.key} value={et.key}>{et.label}</option>
+                ))}
+              </optgroup>
             </select>
             <p style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',marginTop:4}}>
               {EVENT_TYPES.find(e=>e.key===f.event_type)?.desc}
             </p>
           </div>
+
+          {/* Consultant event info banner */}
+          {isConsultantEvent && (
+            <div style={{padding:'10px 14px',background:'rgba(79,70,229,0.06)',border:'1.5px solid rgba(79,70,229,0.2)',borderRadius:10,fontSize:12,color:'#4f46e5',lineHeight:1.6,fontFamily:'DM Sans,sans-serif'}}>
+              🤝 <strong>Global Consultant Trigger</strong> — Fires for all consultant registrations. Email/WhatsApp sent directly to the consultant. No school needed.
+            </div>
+          )}
+
+          {/* Consultant variables hint */}
+          {isConsultantEvent && (
+            <div style={{padding:'10px 14px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:8,fontFamily:'DM Sans,sans-serif'}}>
+                📋 Available Variables (click to copy)
+              </div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                {CONSULTANT_VARS.map(v=>(
+                  <code key={v} onClick={()=>navigator.clipboard?.writeText(v)}
+                    style={{fontSize:11,background:'rgba(79,70,229,0.08)',color:'#4f46e5',border:'1px solid rgba(79,70,229,0.2)',borderRadius:5,padding:'2px 7px',cursor:'pointer',fontWeight:600}}>
+                    {v}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Channel */}
           <div>
@@ -304,7 +360,7 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
           </div>
 
           {/* Recipient Type — only shown for registration/payment events */}
-          {!isSchoolOnlyEvent && (
+          {!isSchoolOnlyEvent && !isConsultantEvent && (
             <div>
               <label style={lbl}>Send To *</label>
               <div style={{display:'flex',gap:8}}>
