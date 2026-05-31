@@ -14,7 +14,7 @@ interface Template { id:string; name:string; channel:Channel; subject?:string; b
 interface Trigger  {
   id:string; event_type:string; channel:Channel; school_id:string|null;
   template_id:string|null; is_active:boolean; created_at:string;
-  recipient_type: 'student' | 'school';
+  recipient_type: 'student' | 'school' | 'consultant';
   notification_templates?: {id:string; name:string; channel:string};
 }
 
@@ -282,7 +282,7 @@ function TriggerModal({initial,templates,schools,onClose,onSave}:{
       recipient_type: SCHOOL_ONLY_EVENTS.has(newEvent)
         ? 'school'
         : CONSULTANT_EVENTS.has(newEvent)
-          ? ('consultant' as any)
+          ? 'consultant'
           : (p.recipient_type ?? 'student'),
     }));
   }

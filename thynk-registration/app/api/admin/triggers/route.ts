@@ -16,16 +16,19 @@ async function requireAdmin(req: NextRequest) {
 function sanitizeTrigger(raw: Record<string, any>) {
   const { event_type, channel, template_id, school_id, is_active, recipient_type } = raw;
 
-  // Consultant events are always global (no school_id) and recipient is consultant
   const isConsultantEvent = CONSULTANT_EVENTS.includes(event_type);
 
+  // For consultant events: school_id must be null, recipient_type = 'consultant'
+  // (migration 008 adds 'consultant' to the DB check constraint)
   return {
     event_type,
     channel,
     template_id,
     school_id:      isConsultantEvent ? null : (school_id ?? null),
     is_active:      is_active ?? true,
-    recipient_type: recipient_type ?? (isConsultantEvent ? 'consultant' : 'student'),
+    recipient_type: isConsultantEvent
+      ? 'consultant'
+      : (recipient_type ?? 'student'),
   };
 }
 
