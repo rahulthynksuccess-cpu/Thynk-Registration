@@ -30,6 +30,14 @@ const LB: React.CSSProperties = {
   textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 5,
 };
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
+
+const DOMAIN_OPTIONS = [
+  'Academics',
+  'School Operations',
+  'Edtech Sales K12',
+  'Edtech Sales Higher Education',
+  'Others',
+];
 const fmtR = (p: number) => { const v = p / 100; return isNaN(v) ? '0' : v.toLocaleString('en-IN'); };
 const COLORS = ['#4f46e5','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#84cc16'];
 
@@ -214,6 +222,7 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
   const [rejectTarget,  setRejectTarget]  = useState<Row | null>(null);
   const [expandedId,    setExpandedId]    = useState<string | null>(null);
   const [search,        setSearch]        = useState('');
+  const [domainFilter,  setDomainFilter]  = useState<string[]>([]);
 
   // ── Bulk selection state ──────────────────────────────────────────────────
   const [selected,      setSelected]      = useState<Set<string>>(new Set());
@@ -224,14 +233,23 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
   const [bulkReason,    setBulkReason]    = useState('');
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return registrations;
-    const q = search.toLowerCase();
-    return registrations.filter(r =>
-      r.full_name?.toLowerCase().includes(q) ||
-      r.contact_email?.toLowerCase().includes(q) ||
-      r.location?.toLowerCase().includes(q)
-    );
-  }, [registrations, search]);
+    let list = registrations;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(r =>
+        r.full_name?.toLowerCase().includes(q) ||
+        r.contact_email?.toLowerCase().includes(q) ||
+        r.location?.toLowerCase().includes(q)
+      );
+    }
+    if (domainFilter.length > 0) {
+      list = list.filter(r => {
+        const d: string[] = Array.isArray(r.domain_expertise) ? r.domain_expertise : [];
+        return domainFilter.some(f => d.includes(f));
+      });
+    }
+    return list;
+  }, [registrations, search, domainFilter]);
 
   // Keep selected in sync when filter changes
   const filteredIds = useMemo(() => new Set(filtered.map((r: Row) => r.id as string)), [filtered]);
@@ -353,7 +371,7 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
   return (
     <div>
       {/* ── Top bar ── */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:12, flexWrap:'wrap' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10, gap:12, flexWrap:'wrap' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           {/* Select all checkbox */}
           <label style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer', fontSize:13, fontWeight:600, color:'var(--m)', userSelect:'none' }}>
@@ -363,7 +381,7 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
               onChange={toggleAll}
               style={{ width:15, height:15, accentColor:'var(--acc)', cursor:'pointer' }}
             />
-            {someSelected ? `${selected.size} selected` : `${registrations.length} pending`}
+            {someSelected ? `${selected.size} selected` : `${filtered.length}/${registrations.length} pending`}
           </label>
           {someSelected && (
             <button onClick={clearSelection}
@@ -372,9 +390,35 @@ function PendingTab({ registrations, loading, authHeaders, onRefresh, showToast 
             </button>
           )}
         </div>
-        <input style={{ ...IS, maxWidth:240, padding:'8px 12px', fontSize:13 }}
-          placeholder="Search name, email, location…"
-          value={search} onChange={e => setSearch(e.target.value)} />
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <input style={{ ...IS, width:220, padding:'8px 12px', fontSize:13 }}
+            placeholder="Search name, email, location…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+      </div>
+
+      {/* ── Domain filter pills ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:14 }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase', letterSpacing:'.05em' }}>Domain:</span>
+        {DOMAIN_OPTIONS.map(d => {
+          const active = domainFilter.includes(d);
+          return (
+            <button key={d} onClick={() => setDomainFilter(prev => active ? prev.filter(x => x !== d) : [...prev, d])}
+              style={{ padding:'4px 12px', borderRadius:20, border:'1.5px solid', fontSize:11, fontWeight:700, cursor:'pointer', transition:'all .15s', fontFamily:'DM Sans,sans-serif',
+                borderColor: active ? 'var(--acc)' : 'var(--bd)',
+                background:  active ? 'var(--acc)' : 'transparent',
+                color:       active ? '#fff' : 'var(--m)',
+              }}>
+              {d}
+            </button>
+          );
+        })}
+        {domainFilter.length > 0 && (
+          <button onClick={() => setDomainFilter([])}
+            style={{ padding:'4px 10px', borderRadius:20, border:'1.5px solid var(--bd)', fontSize:11, color:'var(--m)', background:'transparent', cursor:'pointer' }}>
+            ✕ Clear
+          </button>
+        )}
       </div>
 
       {/* ── Bulk action toolbar (slides in when items selected) ── */}
@@ -602,10 +646,11 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
   showToast:         (m: string, i?: string) => void;
   setConsultantForm: (r: Row | null) => void;
 }) {
-  const [search,      setSearch]      = useState('');
-  const [expandedId,  setExpandedId]  = useState<string | null>(null);
-  const [deleting,    setDeleting]    = useState<string | null>(null);
-  const [regLinksFor, setRegLinksFor] = useState<Row | null>(null);
+  const [search,       setSearch]      = useState('');
+  const [domainFilter, setDomainFilter] = useState<string[]>([]);
+  const [expandedId,   setExpandedId]  = useState<string | null>(null);
+  const [deleting,     setDeleting]    = useState<string | null>(null);
+  const [regLinksFor,  setRegLinksFor] = useState<Row | null>(null);
 
   // Merge auth-based consultants with extra profile fields from registrations
   const regByEmail: Record<string, Row> = {};
@@ -618,15 +663,24 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
   }));
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return enriched;
-    const q = search.toLowerCase();
-    return enriched.filter(c =>
-      c.name?.toLowerCase().includes(q) ||
-      c.email?.toLowerCase().includes(q) ||
-      c.consultant_code?.toLowerCase().includes(q) ||
-      c.location?.toLowerCase().includes(q)
-    );
-  }, [enriched, search]);
+    let list = enriched;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(c =>
+        c.name?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.consultant_code?.toLowerCase().includes(q) ||
+        c.location?.toLowerCase().includes(q)
+      );
+    }
+    if (domainFilter.length > 0) {
+      list = list.filter(c => {
+        const d: string[] = Array.isArray(c.domain_expertise) ? c.domain_expertise : [];
+        return domainFilter.some(f => d.includes(f));
+      });
+    }
+    return list;
+  }, [enriched, search, domainFilter]);
 
   async function handleDelete(id: string) {
     if (!confirm('Remove this consultant? Their schools will remain but become unassigned.')) return;
@@ -648,11 +702,37 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
 
   return (
     <div>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, gap:12, flexWrap:'wrap' }}>
-        <div style={{ fontSize:13, color:'var(--m)', fontWeight:600 }}>{consultants.length} consultant{consultants.length !== 1 ? 's' : ''}</div>
-        <input style={{ ...IS, maxWidth:260, padding:'8px 12px', fontSize:13 }}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10, gap:12, flexWrap:'wrap' }}>
+        <div style={{ fontSize:13, color:'var(--m)', fontWeight:600 }}>
+          {filtered.length}/{consultants.length} consultant{consultants.length !== 1 ? 's' : ''}
+        </div>
+        <input style={{ ...IS, maxWidth:240, padding:'8px 12px', fontSize:13 }}
           placeholder="Search name, email, code…"
           value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
+      {/* ── Domain filter pills ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:14 }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase', letterSpacing:'.05em' }}>Domain:</span>
+        {DOMAIN_OPTIONS.map(d => {
+          const active = domainFilter.includes(d);
+          return (
+            <button key={d} onClick={() => setDomainFilter(prev => active ? prev.filter(x => x !== d) : [...prev, d])}
+              style={{ padding:'4px 12px', borderRadius:20, border:'1.5px solid', fontSize:11, fontWeight:700, cursor:'pointer', transition:'all .15s', fontFamily:'DM Sans,sans-serif',
+                borderColor: active ? 'var(--acc)' : 'var(--bd)',
+                background:  active ? 'var(--acc)' : 'transparent',
+                color:       active ? '#fff' : 'var(--m)',
+              }}>
+              {d}
+            </button>
+          );
+        })}
+        {domainFilter.length > 0 && (
+          <button onClick={() => setDomainFilter([])}
+            style={{ padding:'4px 10px', borderRadius:20, border:'1.5px solid var(--bd)', fontSize:11, color:'var(--m)', background:'transparent', cursor:'pointer' }}>
+            ✕ Clear
+          </button>
+        )}
       </div>
 
       <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
@@ -679,6 +759,10 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
                     )}
                     {c.is_default_consultant && <span title="Default consultant" style={{ fontSize:14 }}>⭐</span>}
                     <span style={{ fontSize:10, background:'#d1fae5', color:'#065f46', borderRadius:20, padding:'2px 8px', fontWeight:700 }}>✅ Active</span>
+                    {domains.slice(0,2).map((d: string) => (
+                      <span key={d} style={{ fontSize:9, fontWeight:700, background:'rgba(79,70,229,.08)', color:'#4f46e5', border:'1px solid rgba(79,70,229,.2)', borderRadius:20, padding:'1px 7px' }}>{d}</span>
+                    ))}
+                    {domains.length > 2 && <span style={{ fontSize:9, fontWeight:700, color:'var(--m)', background:'var(--bg)', border:'1px solid var(--bd)', borderRadius:20, padding:'1px 7px' }}>+{domains.length-2}</span>}
                   </div>
                   <div style={{ fontSize:12, color:'var(--m)', display:'flex', gap:12, flexWrap:'wrap' }}>
                     <span>📧 {c.email}</span>
@@ -1119,25 +1203,105 @@ function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
     );
   }
 
+  const [consSearch, setConsSearch] = React.useState('');
+  const [consOpen,   setConsOpen]   = React.useState(false);
+
+  const selName = selConsultant === '__all__'
+    ? '🌐 All Consultants'
+    : (consultants.find(c => c.id === selConsultant)?.name ?? 'Unknown');
+
+  const selCount = selConsultant === '__all__'
+    ? enrichedRows.length
+    : enrichedRows.filter(r => r.consultant_id === selConsultant).length;
+
+  const filteredCons = consultants.filter(c =>
+    !consSearch.trim() ||
+    c.name?.toLowerCase().includes(consSearch.toLowerCase()) ||
+    c.email?.toLowerCase().includes(consSearch.toLowerCase()) ||
+    c.consultant_code?.toLowerCase().includes(consSearch.toLowerCase())
+  );
+
   return (
     <div style={{display:'flex',flexDirection:'column',gap:20}}>
       {consultants.length > 0 && (
-        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <span style={{fontSize:12,fontWeight:600,color:'var(--m)'}}>Filter by Consultant:</span>
-          {['__all__',...consultants.map(c=>c.id)].map((id,i) => {
-            const c = consultants.find(x=>x.id===id);
-            const label = id==='__all__' ? '🌐 All Consultants' : c?.name ?? id;
-            const count = id==='__all__' ? enrichedRows.length : enrichedRows.filter(r=>r.consultant_id===id).length;
-            return (
-              <button key={id} onClick={()=>setSelConsultant(id)}
-                style={{padding:'6px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',fontSize:12,fontWeight:600,transition:'all .15s',fontFamily:'DM Sans,sans-serif',
-                  background:selConsultant===id?colors[(i-1)%colors.length]??'var(--acc)':'transparent',
-                  borderColor:selConsultant===id?colors[(i-1)%colors.length]??'var(--acc)':'var(--bd)',
-                  color:selConsultant===id?'#fff':'var(--m)'}}>
-                {label} <span style={{opacity:.7,fontSize:10}}>({count})</span>
-              </button>
-            );
-          })}
+        <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--m)',flexShrink:0}}>Filter by Consultant:</span>
+          {/* Custom searchable dropdown — scales to 300+ consultants */}
+          <div style={{position:'relative',minWidth:280}}>
+            <button onClick={()=>setConsOpen(p=>!p)}
+              style={{width:'100%',padding:'9px 14px',borderRadius:10,border:'1.5px solid var(--bd)',background:'var(--card)',
+                display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,
+                cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:13,fontWeight:600,color:'var(--text)'}}>
+              <span>{selName}</span>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:11,background:'rgba(79,70,229,.1)',color:'#4f46e5',borderRadius:20,padding:'1px 8px',fontWeight:700}}>{selCount}</span>
+                <span style={{fontSize:10,color:'var(--m)'}}>{consOpen?'▲':'▼'}</span>
+              </div>
+            </button>
+            {consOpen && (
+              <>
+                <div style={{position:'fixed',inset:0,zIndex:98}} onClick={()=>setConsOpen(false)}/>
+                <div style={{position:'absolute',top:'110%',left:0,zIndex:99,background:'var(--card)',
+                  border:'1.5px solid var(--bd)',borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,.15)',
+                  width:'100%',minWidth:300,maxHeight:340,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+                  {/* Search inside dropdown */}
+                  <div style={{padding:'10px 12px',borderBottom:'1px solid var(--bd)',flexShrink:0}}>
+                    <input autoFocus value={consSearch} onChange={e=>setConsSearch(e.target.value)}
+                      placeholder="Search consultant…"
+                      style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid var(--bd)',fontSize:13,fontFamily:'DM Sans,sans-serif',outline:'none',boxSizing:'border-box'}}/>
+                  </div>
+                  <div style={{overflowY:'auto',flex:1}}>
+                    {/* All Consultants option */}
+                    <button onClick={()=>{setSelConsultant('__all__');setConsOpen(false);setConsSearch('');}}
+                      style={{width:'100%',padding:'10px 14px',border:'none',textAlign:'left',cursor:'pointer',
+                        fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',display:'flex',alignItems:'center',justifyContent:'space-between',
+                        background:selConsultant==='__all__'?'var(--acc3)':'transparent',
+                        color:selConsultant==='__all__'?'var(--acc)':'var(--text)'}}>
+                      <span>🌐 All Consultants</span>
+                      <span style={{fontSize:11,color:'var(--m)'}}>{enrichedRows.length} rows</span>
+                    </button>
+                    {filteredCons.length === 0 && (
+                      <div style={{padding:'12px 14px',fontSize:12,color:'var(--m)',textAlign:'center'}}>No consultants found</div>
+                    )}
+                    {filteredCons.map((c,i) => {
+                      const count = enrichedRows.filter(r=>r.consultant_id===c.id).length;
+                      const isSelected = selConsultant === c.id;
+                      const domains: string[] = Array.isArray(c.domain_expertise) ? c.domain_expertise : [];
+                      return (
+                        <button key={c.id}
+                          onClick={()=>{setSelConsultant(c.id);setConsOpen(false);setConsSearch('');}}
+                          style={{width:'100%',padding:'9px 14px',border:'none',textAlign:'left',cursor:'pointer',
+                            fontFamily:'DM Sans,sans-serif',display:'flex',alignItems:'center',gap:10,
+                            background:isSelected?'var(--acc3)':'transparent',
+                            borderTop:'1px solid var(--bd)'}}>
+                          <div style={{width:30,height:30,borderRadius:8,background:`linear-gradient(135deg,${colors[i%colors.length]},${colors[(i+1)%colors.length]})`,
+                            display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:13,flexShrink:0}}>
+                            {(c.name||'?')[0].toUpperCase()}
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,color:isSelected?'var(--acc)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name||c.email}</div>
+                            <div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap'}}>
+                              {c.consultant_code && <code style={{fontSize:9,background:'rgba(79,70,229,.1)',color:'#4f46e5',padding:'1px 5px',borderRadius:10,fontWeight:800}}>{c.consultant_code}</code>}
+                              {domains.slice(0,2).map((d:string)=>(
+                                <span key={d} style={{fontSize:9,background:'var(--bg)',color:'var(--m)',border:'1px solid var(--bd)',borderRadius:10,padding:'1px 5px'}}>{d}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <span style={{fontSize:11,color:'var(--m)',flexShrink:0}}>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          {selConsultant !== '__all__' && (
+            <button onClick={()=>setSelConsultant('__all__')}
+              style={{padding:'6px 12px',borderRadius:20,border:'1.5px solid var(--bd)',fontSize:11,color:'var(--m)',background:'transparent',cursor:'pointer'}}>
+              ✕ Clear
+            </button>
+          )}
         </div>
       )}
 
