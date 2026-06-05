@@ -229,31 +229,170 @@ function WhatsAppTab({showToast}:{showToast:(m:string)=>void}) {
 }
 
 // ── Multi-SMTP Email Configuration ──────────────────────────────────────────
+
+type EmailProvider = 'brevo' | 'gmail' | 'zoho' | 'outlook' | 'custom';
+
+interface ProviderMeta {
+  label: string;
+  icon: string;
+  color: string;
+  bg: string;
+  border: string;
+  smtpHost: string;
+  smtpPort: string;
+  passLabel: string;
+  passHint: string;
+  userHint: string;
+  setupSteps: string[];
+  docsUrl: string;
+  extraFields?: Array<{ key: string; label: string; hint: string }>;
+}
+
+const EMAIL_PROVIDERS: Record<EmailProvider, ProviderMeta> = {
+  brevo: {
+    label: 'Brevo',
+    icon: '🚀',
+    color: '#0b996e',
+    bg: 'rgba(11,153,110,.07)',
+    border: 'rgba(11,153,110,.3)',
+    smtpHost: 'smtp-relay.brevo.com',
+    smtpPort: '587',
+    passLabel: 'Brevo SMTP Key',
+    passHint: 'xsmtpsib-…  (from Account → SMTP & API → API Keys)',
+    userHint: 'abc123@smtp-brevo.com  (the "Login" value in SMTP tab)',
+    setupSteps: [
+      'Sign up free at brevo.com (300 emails/day, no credit card)',
+      'Go to Account → SMTP & API → SMTP tab',
+      'Click "Generate a new SMTP key" and copy it',
+      'Also copy the "Login" value — it looks like abc123@smtp-brevo.com',
+      'Paste Login → SMTP Username below, SMTP Key → SMTP Password',
+      'For real-time stats (opens/bounces): copy your API key from Account → SMTP & API → API Keys tab',
+      'Add & verify your sending domain under Senders & IPs → Domains',
+    ],
+    docsUrl: 'https://app.brevo.com/',
+  },
+  gmail: {
+    label: 'Gmail',
+    icon: '📬',
+    color: '#EA4335',
+    bg: 'rgba(234,67,53,.07)',
+    border: 'rgba(234,67,53,.3)',
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: '587',
+    passLabel: 'App Password',
+    passHint: '16-char App Password (NOT your Google password)',
+    userHint: 'your@gmail.com or your@workspace.com',
+    setupSteps: [
+      'Go to myaccount.google.com → Security',
+      'Enable 2-Step Verification if not already on',
+      'Search for "App Passwords" in the search bar',
+      'Select "Mail" app and "Other" device → name it "Thynk Registration"',
+      'Copy the 16-character password (spaces are OK — they\'re ignored)',
+      'Paste your Gmail address as SMTP Username and the App Password below',
+      'Note: Gmail limits ~500 emails/day — use Brevo for bulk sending',
+    ],
+    docsUrl: 'https://myaccount.google.com/apppasswords',
+  },
+  zoho: {
+    label: 'Zoho Mail',
+    icon: '🔷',
+    color: '#E42527',
+    bg: 'rgba(228,37,39,.07)',
+    border: 'rgba(228,37,39,.3)',
+    smtpHost: 'smtp.zoho.in',
+    smtpPort: '587',
+    passLabel: 'App-Specific Password',
+    passHint: 'Generated in Zoho Account → Security → App Passwords',
+    userHint: 'your@yourdomain.com (Zoho Mail address)',
+    setupSteps: [
+      'Log in to accounts.zoho.in → My Account',
+      'Go to Security → App Passwords',
+      'Click "Generate New Password" → name it "Thynk Registration"',
+      'Copy the generated password',
+      'Use your Zoho Mail address as SMTP Username',
+      'Note: Use smtp.zoho.in for India, smtp.zoho.com for global',
+      'Verify your sending domain in Zoho Mail Admin Console',
+    ],
+    docsUrl: 'https://accounts.zoho.in/security',
+  },
+  outlook: {
+    label: 'Outlook / 365',
+    icon: '🔵',
+    color: '#0078D4',
+    bg: 'rgba(0,120,212,.07)',
+    border: 'rgba(0,120,212,.3)',
+    smtpHost: 'smtp.office365.com',
+    smtpPort: '587',
+    passLabel: 'Password / App Password',
+    passHint: 'Your Microsoft account password or App Password if MFA is on',
+    userHint: 'your@outlook.com or your@company.onmicrosoft.com',
+    setupSteps: [
+      'For personal Outlook: use smtp-mail.outlook.com, port 587',
+      'For Microsoft 365 / Office: use smtp.office365.com, port 587',
+      'If Multi-Factor Auth is enabled, generate an App Password:',
+      '  → account.microsoft.com → Security → Advanced security options → App passwords',
+      'Enable SMTP AUTH for your mailbox in Microsoft 365 Admin Center:',
+      '  → Exchange Admin → Mailboxes → select user → Mail Flow Settings → SMTP AUTH',
+      'Use your full email address as SMTP Username',
+    ],
+    docsUrl: 'https://account.microsoft.com/security',
+  },
+  custom: {
+    label: 'Custom SMTP',
+    icon: '⚙️',
+    color: '#6366f1',
+    bg: 'rgba(99,102,241,.07)',
+    border: 'rgba(99,102,241,.3)',
+    smtpHost: '',
+    smtpPort: '587',
+    passLabel: 'SMTP Password',
+    passHint: 'Your SMTP account password',
+    userHint: 'SMTP username / email address',
+    setupSteps: [
+      'Enter the SMTP hostname provided by your email service',
+      'Common ports: 587 (STARTTLS, recommended), 465 (SSL), 25 (plain — usually blocked)',
+      'Use the login email address as SMTP Username',
+      'Use the account password or App Password as SMTP Password',
+      'Test the connection using the button below before saving',
+      'Make sure your server allows SMTP AUTH connections',
+    ],
+    docsUrl: '',
+    extraFields: [
+      { key: 'smtpHost', label: 'SMTP Host', hint: 'e.g. mail.yourdomain.com' },
+      { key: 'smtpPort', label: 'SMTP Port', hint: '587' },
+    ],
+  },
+};
+
 interface SmtpConfig {
-  id:        string;   // local uuid for React key
-  name:      string;   // display label e.g. "Mental Math SMTP"
-  program_id: string;  // projects.id or "" for Default
-  fromName:  string;
-  fromEmail: string;
-  smtpHost:  string;
-  smtpPort:  string;
-  smtpUser:  string;
-  smtpPass:  string;
-  enabled:   boolean;
+  id:         string;
+  name:       string;
+  provider:   EmailProvider;
+  program_id: string;
+  fromName:   string;
+  fromEmail:  string;
+  smtpHost:   string;
+  smtpPort:   string;
+  smtpUser:   string;
+  smtpPass:   string;
+  enabled:    boolean;
 }
 
 function newSmtp(overrides: Partial<SmtpConfig> = {}): SmtpConfig {
+  const provider: EmailProvider = (overrides.provider as EmailProvider) || 'gmail';
+  const meta = EMAIL_PROVIDERS[provider];
   return {
-    id: Math.random().toString(36).slice(2),
-    name: 'New SMTP',
+    id:         Math.random().toString(36).slice(2),
+    name:       'New Email Account',
+    provider,
     program_id: '',
-    fromName: 'Thynk Registration',
-    fromEmail: '',
-    smtpHost: 'smtp.gmail.com',
-    smtpPort: '587',
-    smtpUser: '',
-    smtpPass: '',
-    enabled: true,
+    fromName:   'Thynk Registration',
+    fromEmail:  '',
+    smtpHost:   meta.smtpHost,
+    smtpPort:   meta.smtpPort,
+    smtpUser:   '',
+    smtpPass:   '',
+    enabled:    true,
     ...overrides,
   };
 }
@@ -272,93 +411,231 @@ function SmtpCard({
   testing:  boolean;
   testResult: {ok:boolean;msg:string} | null;
 }) {
-  const [expanded, setExpanded] = useState(index === 0);
-  const [showPass, setShowPass] = useState(false);
-  const [testTo,   setTestTo]   = useState('');
+  const [expanded,    setExpanded]    = useState(index === 0);
+  const [showPass,    setShowPass]    = useState(false);
+  const [showGuide,   setShowGuide]   = useState(false);
+  const [testTo,      setTestTo]      = useState('');
   const isDefault = cfg.program_id === '';
   const prog = programs.find(p => p.id === cfg.program_id);
+  const meta = EMAIL_PROVIDERS[cfg.provider as EmailProvider] || EMAIL_PROVIDERS.custom;
+  const isConfigured = !!(cfg.smtpUser && cfg.smtpPass);
+  const PROVIDERS = Object.entries(EMAIL_PROVIDERS) as [EmailProvider, ProviderMeta][];
+
+  const switchProvider = (p: EmailProvider) => {
+    const m = EMAIL_PROVIDERS[p];
+    onChange({ provider: p, smtpHost: m.smtpHost, smtpPort: m.smtpPort });
+  };
 
   return (
-    <div style={{background:'var(--card)',border:`1.5px solid ${cfg.enabled?'rgba(79,70,229,.4)':'var(--bd)'}`,borderRadius:14,overflow:'hidden',marginBottom:10}}>
+    <div style={{background:'var(--card)',border:`1.5px solid ${cfg.enabled?meta.border:'var(--bd)'}`,borderRadius:16,overflow:'hidden',marginBottom:12}}>
       {/* Header */}
-      <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',cursor:'pointer',background:cfg.enabled?'rgba(79,70,229,.04)':'transparent'}} onClick={()=>setExpanded(e=>!e)}>
-        <div style={{width:32,height:32,borderRadius:'50%',background:isDefault?'linear-gradient(135deg,#10b981,#059669)':'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:800,flexShrink:0}}>
-          {isDefault ? '★' : index + 1}
+      <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',cursor:'pointer',background:cfg.enabled?meta.bg:'transparent',transition:'background .2s'}} onClick={()=>setExpanded(e=>!e)}>
+        <div style={{width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${meta.color},${meta.color}bb)`,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+          {meta.icon}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-            <span style={{fontWeight:700,fontSize:14,color:'var(--text)'}}>{cfg.name || 'Unnamed SMTP'}</span>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}}>
+            <span style={{fontWeight:700,fontSize:14,color:'var(--text)'}}>{cfg.name || 'Unnamed Account'}</span>
+            <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:meta.bg,color:meta.color,border:`1px solid ${meta.border}`}}>{meta.label}</span>
             {isDefault
-              ? <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(16,185,129,.12)',color:'#15803d'}}>★ Default (Fallback)</span>
+              ? <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(16,185,129,.12)',color:'#15803d'}}>★ Default</span>
               : prog
                 ? <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(99,102,241,.12)',color:'var(--acc)'}}>{prog.name}</span>
-                : <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(245,158,11,.12)',color:'#b45309'}}>⚠ No program assigned</span>
+                : <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:'rgba(245,158,11,.12)',color:'#b45309'}}>⚠ No program</span>
             }
-            {cfg.smtpUser && <span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(16,185,129,.08)',color:'#15803d'}}>✓ {cfg.smtpUser}</span>}
+            {isConfigured
+              ? <span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(16,185,129,.08)',color:'#15803d'}}>✓ Configured</span>
+              : <span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(239,68,68,.08)',color:'#dc2626'}}>⚠ Not configured</span>
+            }
           </div>
-          <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{cfg.smtpHost || '—'}:{cfg.smtpPort || '—'} · from {cfg.fromEmail || cfg.smtpUser || '—'}</div>
+          <div style={{fontSize:11,color:'var(--m)'}}>{cfg.smtpUser || '—'} · from {cfg.fromEmail || cfg.smtpUser || 'no from address'}</div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}} onClick={e=>e.stopPropagation()}>
-          <button onClick={()=>onChange({enabled:!cfg.enabled})}
-            style={{padding:'5px 12px',borderRadius:7,border:'1.5px solid var(--bd)',background:cfg.enabled?'var(--text)':'transparent',color:cfg.enabled?'#fff':'var(--m)',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-            {cfg.enabled?'Enabled':'Disabled'}
-          </button>
+          <div onClick={()=>onChange({enabled:!cfg.enabled})}
+            style={{width:40,height:22,borderRadius:11,background:cfg.enabled?meta.color:'var(--bd)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
+            <div style={{width:16,height:16,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:cfg.enabled?21:3,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
+          </div>
           {total > 1 && (
             <button onClick={onDelete}
               style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.07)',color:'#dc2626',fontSize:11,fontWeight:700,cursor:'pointer'}}>
               🗑
             </button>
           )}
-          <span style={{color:'var(--m)',fontSize:14}}>{expanded?'▲':'▼'}</span>
+          <span style={{color:'var(--m)',fontSize:14,transform:expanded?'rotate(180deg)':'none',transition:'transform .2s'}}>▼</span>
         </div>
       </div>
 
       {/* Body */}
       {expanded && (
-        <div style={{padding:'0 18px 18px',borderTop:'1px solid var(--bd)'}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginTop:16}}>
-            {/* Config name */}
-            <div><label style={lbl}>Config Name *</label>
-              <input value={cfg.name} onChange={e=>onChange({name:e.target.value})} placeholder="e.g. Mental Math SMTP" style={inp}/></div>
-            {/* Program assignment */}
-            <div><label style={lbl}>Assigned Program</label>
-              <select value={cfg.program_id} onChange={e=>onChange({program_id:e.target.value})}
-                style={{...inp,cursor:'pointer',appearance:'none' as any}}>
-                <option value="">★ Default (used when no program match)</option>
-                {programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>
-                {isDefault?'This SMTP is the fallback for all programs without a dedicated config.':'Emails for this program will use this SMTP.'}
-              </p>
-            </div>
-            {/* SMTP fields */}
-            <div><label style={lbl}>Sender Name</label><input value={cfg.fromName} onChange={e=>onChange({fromName:e.target.value})} placeholder="Thynk Registration" style={inp}/></div>
-            <div><label style={lbl}>From Email</label><input value={cfg.fromEmail} onChange={e=>onChange({fromEmail:e.target.value})} placeholder="noreply@yourdomain.com" style={inp}/></div>
-            <div><label style={lbl}>SMTP Host</label><input value={cfg.smtpHost} onChange={e=>onChange({smtpHost:e.target.value})} placeholder="smtp.gmail.com" style={inp}/></div>
-            <div><label style={lbl}>SMTP Port</label><input value={cfg.smtpPort} onChange={e=>onChange({smtpPort:e.target.value})} placeholder="587" style={inp}/></div>
-            <div><label style={lbl}>SMTP Username</label><input value={cfg.smtpUser} onChange={e=>onChange({smtpUser:e.target.value})} placeholder="your@gmail.com" style={inp}/></div>
-            <div><label style={lbl}>Password / App Password</label>
-              <div style={{position:'relative'}}>
-                <input type={showPass?'text':'password'} value={cfg.smtpPass} onChange={e=>onChange({smtpPass:e.target.value})} placeholder="xxxx xxxx xxxx xxxx" style={{...inp,paddingRight:40}}/>
-                <button type="button" onClick={()=>setShowPass(s=>!s)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button>
-              </div>
-              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}><a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer" style={{color:'var(--acc)'}}>Gmail: use App Password →</a></p>
+        <div style={{padding:'20px',borderTop:`1px solid var(--bd)`}}>
+
+          {/* Provider selector */}
+          <div style={{marginBottom:20}}>
+            <label style={{...lbl,marginBottom:10}}>Email Provider</label>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {PROVIDERS.map(([pid, pm]) => {
+                const sel = cfg.provider === pid;
+                return (
+                  <button key={pid} onClick={()=>switchProvider(pid)}
+                    style={{display:'flex',alignItems:'center',gap:7,padding:'8px 16px',borderRadius:10,border:`2px solid ${sel?pm.color:'var(--bd)'}`,background:sel?pm.bg:'var(--bg)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:700,color:sel?pm.color:'var(--m)',transition:'all .15s',outline:'none'}}>
+                    <span style={{fontSize:15}}>{pm.icon}</span> {pm.label}
+                    {sel && <span style={{fontSize:10}}>✓</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Test section */}
-          <div style={{marginTop:16,padding:'14px 16px',background:'var(--bg)',borderRadius:10,border:'1.5px solid var(--bd)'}}>
-            <div style={{fontWeight:700,fontSize:13,color:'var(--text)',marginBottom:10}}>📤 Send Test Email</div>
+          {/* Setup guide collapsible */}
+          <div style={{marginBottom:18,borderRadius:12,border:`1.5px solid ${meta.border}`,background:meta.bg,overflow:'hidden'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 16px',cursor:'pointer'}} onClick={()=>setShowGuide(g=>!g)}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:16}}>{meta.icon}</span>
+                <span style={{fontFamily:'DM Sans,sans-serif',fontWeight:700,fontSize:13,color:meta.color}}>{meta.label} setup guide</span>
+                <span style={{fontSize:10,color:meta.color,opacity:0.7}}>({meta.setupSteps.length} steps · ~2 min)</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                {meta.docsUrl && (
+                  <a href={meta.docsUrl} target="_blank" rel="noreferrer"
+                    onClick={e=>e.stopPropagation()}
+                    style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:meta.color,textDecoration:'none',fontWeight:600}}>
+                    Open dashboard ↗
+                  </a>
+                )}
+                <span style={{color:meta.color,fontSize:12,transform:showGuide?'rotate(180deg)':'none',transition:'transform .2s'}}>▼</span>
+              </div>
+            </div>
+            {showGuide && (
+              <div style={{padding:'0 16px 14px',borderTop:`1px solid ${meta.border}`}}>
+                <ol style={{margin:'10px 0 0',paddingLeft:18,display:'flex',flexDirection:'column',gap:5}}>
+                  {meta.setupSteps.map((step, i) => (
+                    <li key={i} style={{fontFamily:'DM Sans,sans-serif',fontSize:12,color:'var(--text)',lineHeight:1.6}}>{step}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
+
+          {/* Form fields */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+            <div>
+              <label style={lbl}>Display Name *</label>
+              <input value={cfg.name} onChange={e=>onChange({name:e.target.value})} placeholder="e.g. Brevo Marketing" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Assigned Program</label>
+              <select value={cfg.program_id} onChange={e=>onChange({program_id:e.target.value})}
+                style={{...inp,cursor:'pointer',appearance:'none' as any}}>
+                <option value="">★ Default (fallback for all programs)</option>
+                {programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>
+                {isDefault?'Used as fallback when no program-specific SMTP is set.':'Emails for this program will use this account.'}
+              </p>
+            </div>
+            <div>
+              <label style={lbl}>Sender Name</label>
+              <input value={cfg.fromName} onChange={e=>onChange({fromName:e.target.value})} placeholder="Thynk Registration" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Your "From" Email Address</label>
+              <input value={cfg.fromEmail} onChange={e=>onChange({fromEmail:e.target.value})} placeholder="hello@yourdomain.com" style={inp}/>
+              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>Must be a verified sender on {meta.label}</p>
+            </div>
+
+            {/* Custom SMTP host/port */}
+            {cfg.provider === 'custom' && (<>
+              <div>
+                <label style={lbl}>SMTP Host *</label>
+                <input value={cfg.smtpHost} onChange={e=>onChange({smtpHost:e.target.value})} placeholder="mail.yourdomain.com" style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>SMTP Port</label>
+                <input value={cfg.smtpPort} onChange={e=>onChange({smtpPort:e.target.value})} placeholder="587" style={inp}/>
+                <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>587 (STARTTLS) or 465 (SSL)</p>
+              </div>
+            </>)}
+
+            {/* Outlook variant selector */}
+            {cfg.provider === 'outlook' && (
+              <div style={{gridColumn:'1/-1'}}>
+                <label style={lbl}>Server Type</label>
+                <div style={{display:'flex',gap:8}}>
+                  {[
+                    {label:'Microsoft 365 / Office',host:'smtp.office365.com'},
+                    {label:'Personal Outlook.com',  host:'smtp-mail.outlook.com'},
+                  ].map(opt=>(
+                    <button key={opt.host} onClick={()=>onChange({smtpHost:opt.host})}
+                      style={{flex:1,padding:'9px 14px',borderRadius:9,border:`1.5px solid ${cfg.smtpHost===opt.host?meta.color:'var(--bd)'}`,background:cfg.smtpHost===opt.host?meta.bg:'var(--bg)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:cfg.smtpHost===opt.host?meta.color:'var(--m)',textAlign:'left' as const}}>
+                      {opt.label}
+                      <div style={{fontSize:10,opacity:0.7,marginTop:2}}>{opt.host}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Zoho region selector */}
+            {cfg.provider === 'zoho' && (
+              <div style={{gridColumn:'1/-1'}}>
+                <label style={lbl}>Server Region</label>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {[
+                    {label:'India (zoho.in)',   host:'smtp.zoho.in'},
+                    {label:'Global (zoho.com)',  host:'smtp.zoho.com'},
+                    {label:'Europe (zoho.eu)',   host:'smtp.zoho.eu'},
+                  ].map(opt=>(
+                    <button key={opt.host} onClick={()=>onChange({smtpHost:opt.host})}
+                      style={{flex:1,padding:'9px 14px',borderRadius:9,border:`1.5px solid ${cfg.smtpHost===opt.host?meta.color:'var(--bd)'}`,background:cfg.smtpHost===opt.host?meta.bg:'var(--bg)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:cfg.smtpHost===opt.host?meta.color:'var(--m)',textAlign:'left' as const}}>
+                      {opt.label}
+                      <div style={{fontSize:10,opacity:0.7,marginTop:2}}>{opt.host}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SMTP Username */}
+            <div>
+              <label style={lbl}>{cfg.provider === 'brevo' ? 'Brevo SMTP Login' : 'SMTP Username'}</label>
+              <input value={cfg.smtpUser} onChange={e=>onChange({smtpUser:e.target.value})} placeholder={meta.userHint} style={inp}/>
+              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{meta.userHint}</p>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label style={lbl}>{meta.passLabel}</label>
+              <div style={{position:'relative'}}>
+                <input type={showPass?'text':'password'} value={cfg.smtpPass} onChange={e=>onChange({smtpPass:e.target.value})} placeholder={meta.passHint} style={{...inp,paddingRight:40,fontFamily:showPass?'monospace':'DM Sans,sans-serif'}}/>
+                <button type="button" onClick={()=>setShowPass(s=>!s)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button>
+              </div>
+              <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{meta.passHint}</p>
+            </div>
+          </div>
+
+          {/* Server details read-only for preset providers */}
+          {cfg.provider !== 'custom' && (
+            <div style={{marginTop:14,padding:'10px 14px',background:'var(--bg)',borderRadius:9,border:'1.5px solid var(--bd)',display:'flex',gap:20,flexWrap:'wrap'}}>
+              <div style={{fontFamily:'monospace',fontSize:11,color:'var(--m)'}}>Host: <span style={{color:'var(--text)',fontWeight:600}}>{cfg.smtpHost}</span></div>
+              <div style={{fontFamily:'monospace',fontSize:11,color:'var(--m)'}}>Port: <span style={{color:'var(--text)',fontWeight:600}}>{cfg.smtpPort}</span></div>
+              <div style={{fontFamily:'monospace',fontSize:11,color:'var(--m)'}}>Encryption: <span style={{color:'var(--text)',fontWeight:600}}>STARTTLS</span></div>
+            </div>
+          )}
+
+          {/* Test */}
+          <div style={{marginTop:16,padding:'16px',background:'var(--bg)',borderRadius:12,border:'1.5px solid var(--bd)'}}>
+            <div style={{fontWeight:700,fontSize:13,color:'var(--text)',marginBottom:12}}>📤 Send Test Email</div>
             <div style={{display:'flex',gap:10,alignItems:'flex-end',flexWrap:'wrap'}}>
               <div style={{flex:1,minWidth:180}}>
                 <label style={lbl}>Send test to</label>
                 <input value={testTo} onChange={e=>setTestTo(e.target.value)} placeholder="your@email.com" style={inp}/>
               </div>
-              <button onClick={()=>onTest(testTo)} disabled={testing||!testTo.trim()}
-                style={{padding:'10px 18px',borderRadius:9,border:'1.5px solid var(--acc)',background:'transparent',color:'var(--acc)',cursor:(testing||!testTo)?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:(testing||!testTo)?0.6:1,whiteSpace:'nowrap'}}>
-                {testing?'⏳ Sending…':'🔌 Test This SMTP'}
+              <button onClick={()=>onTest(testTo)} disabled={testing||!testTo.trim()||!isConfigured}
+                style={{padding:'10px 20px',borderRadius:9,border:`1.5px solid ${meta.color}`,background:'transparent',color:meta.color,cursor:(testing||!testTo||!isConfigured)?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:(testing||!testTo||!isConfigured)?0.5:1,whiteSpace:'nowrap'}}>
+                {testing?'⏳ Sending…':'🔌 Test Connection'}
               </button>
             </div>
+            {!isConfigured && <p style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',margin:'8px 0 0'}}>⚠ Enter credentials above to enable testing</p>}
             {testResult && (
               <div style={{marginTop:10,padding:'10px 14px',borderRadius:8,background:testResult.ok?'rgba(16,185,129,.07)':'rgba(239,68,68,.07)',border:`1px solid ${testResult.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'}`,fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:testResult.ok?'#15803d':'var(--red)'}}>
                 {testResult.ok?'✅':'❌'} {testResult.msg}
@@ -371,8 +648,18 @@ function SmtpCard({
   );
 }
 
+function detectProvider(host: string): EmailProvider {
+  const h = host.toLowerCase();
+  if (h.includes('brevo') || h.includes('sendinblue')) return 'brevo';
+  if (h.includes('gmail') || h.includes('google'))     return 'gmail';
+  if (h.includes('zoho'))                              return 'zoho';
+  if (h.includes('outlook') || h.includes('office365') || h.includes('microsoft')) return 'outlook';
+  if (h === '')                                        return 'gmail'; // new/empty default
+  return 'custom';
+}
+
 function EmailTab({showToast}:{showToast:(m:string)=>void}) {
-  const [configs,  setConfigs]  = useState<SmtpConfig[]>([newSmtp({name:'Default SMTP'})]);
+  const [configs,  setConfigs]  = useState<SmtpConfig[]>([newSmtp({name:'Default Email Account', provider:'gmail'})]);
   const [programs, setPrograms] = useState<Row[]>([]);
   const [saving,   setSaving]   = useState(false);
   const [testingId,setTestingId]= useState<string|null>(null);
@@ -384,12 +671,13 @@ function EmailTab({showToast}:{showToast:(m:string)=>void}) {
     authFetch(`${BACKEND}/api/admin/settings`).then(r=>r.ok?r.json():null).then(d=>{
       const saved:SmtpConfig[] = d?.email_smtp_configs;
       if (saved?.length) {
-        setConfigs(saved.map(c=>({...newSmtp(), ...c, id: c.id || Math.random().toString(36).slice(2)})));
+        setConfigs(saved.map(c=>({...newSmtp(), ...c, id: c.id || Math.random().toString(36).slice(2), provider: c.provider || detectProvider(c.smtpHost||'')})));
       } else if (d?.email_settings) {
         // Migrate legacy single SMTP config
         const legacy = d.email_settings;
         setConfigs([newSmtp({
-          name: 'Default SMTP',
+          name: 'Default Email Account',
+          provider: detectProvider(legacy.smtpHost || ''),
           program_id: '',
           fromName:  legacy.fromName  || 'Thynk Registration',
           fromEmail: legacy.fromEmail || '',
@@ -410,7 +698,8 @@ function EmailTab({showToast}:{showToast:(m:string)=>void}) {
     const usedPrograms = configs.map(c=>c.program_id).filter(Boolean);
     const nextProg = programs.find(p=>!usedPrograms.includes(p.id));
     setConfigs(p=>[...p, newSmtp({
-      name: nextProg ? `${nextProg.name} SMTP` : `SMTP ${p.length+1}`,
+      name: nextProg ? `${nextProg.name} Email` : `Email Account ${p.length+1}`,
+      provider: 'gmail',
       program_id: nextProg?.id ?? '',
     })]);
   };
@@ -499,7 +788,7 @@ function EmailTab({showToast}:{showToast:(m:string)=>void}) {
       <div style={{display:'flex',gap:10,marginTop:16,alignItems:'center'}}>
         <button onClick={add}
           style={{display:'flex',alignItems:'center',gap:7,padding:'10px 20px',borderRadius:9,border:'1.5px solid var(--acc)',background:'transparent',color:'var(--acc)',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif'}}>
-          + Add SMTP Config
+          + Add Email Account
         </button>
         <button onClick={save} disabled={saving}
           style={{display:'flex',alignItems:'center',gap:7,padding:'10px 24px',borderRadius:9,background:'var(--acc)',border:'none',color:'#fff',cursor:saving?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',opacity:saving?0.7:1}}>
