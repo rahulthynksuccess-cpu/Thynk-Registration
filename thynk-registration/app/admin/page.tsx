@@ -1032,6 +1032,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [user, setUser]               = useState<any>(null);
   const [isSuperAdmin, setSuperAdmin] = useState(false);
+  const [isConsultant, setIsConsultant] = useState(false);
   // Sub-admin permissions (null = not a sub-admin)
   const [subAdminPages,   setSubAdminPages]   = useState<string[]|null>(null);   // null = all pages
   const [subAdminSchools, setSubAdminSchools] = useState<string[]|null>(null);   // null = all schools
@@ -1109,6 +1110,9 @@ export default function AdminDashboard() {
       setUser(sessionData.session.user);
       const { data: role } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','super_admin').is('school_id',null).maybeSingle();
       setSuperAdmin(!!role);
+      // Check if user is a consultant
+      const { data: consultantRole } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','consultant').maybeSingle();
+      setIsConsultant(!!consultantRole);
       // Load sub_admin page/school permissions if applicable
       if (!role) {
         const { data: subRows } = await supabase
@@ -1405,7 +1409,7 @@ export default function AdminDashboard() {
               <div className="sb-avatar">{user.email?.[0]?.toUpperCase()??'A'}</div>
               <div>
                 <div className="sb-user-name">{user.email?.split('@')[0]}</div>
-                <div className="sb-user-role">{isSuperAdmin?'Super Admin':isSubAdmin?'Sub Admin':'School Admin'}</div>
+                <div className="sb-user-role">{isSuperAdmin?'Super Admin':isSubAdmin?'Sub Admin':isConsultant?'Consultant':'School Admin'}</div>
               </div>
             </div>
             <button className="sb-item" onClick={doLogout} style={{color:'#fca5a5'}}><span className="icon">🚪</span>Logout</button>
@@ -2308,6 +2312,26 @@ export default function AdminDashboard() {
         onSave={()=>{ setConsultantForm(null); loadConsultants(); showToast(consultantForm.id?'Consultant updated!':'Consultant created!','✅'); }}
         showToast={showToast}
       />}
+
+      {/* ── Mobile Bottom Navigation Bar ──────────────────────────── */}
+      <nav className="mob-bottom-nav" aria-label="Mobile navigation">
+        {[
+          { id:'overview',     icon:'🏠', label:'Home'        },
+          { id:'students',     icon:'👨‍🎓', label:'Students'    },
+          { id:'consultants',  icon:'🤝', label:'Consultants' },
+          { id:'schools',      icon:'🏫', label:'Schools'     },
+          { id:'comms',        icon:'📢', label:'Comms'       },
+        ].map(item => (
+          <button
+            key={item.id}
+            className={`mob-nav-item${activePage === item.id ? ' active' : ''}`}
+            onClick={() => setActivePage(item.id)}
+          >
+            <span className="mob-nav-icon">{item.icon}</span>
+            <span className="mob-nav-label">{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </>
   );
 }
@@ -3085,12 +3109,12 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
           </div>
         </div>
 
-        {!isEdit&&(
-          <div style={{marginBottom:14}}>
-            <label style={LB}>Email *</label>
-            <input style={IS} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="consultant@example.com" />
-          </div>
-        )}
+        <div style={{marginBottom:14}}>
+          <label style={LB}>Email {isEdit ? '(read-only)' : '*'}</label>
+          <input style={{...IS, ...(isEdit ? {background:'var(--bg)', color:'var(--m)', cursor:'not-allowed'} : {})}}
+            type="email" value={email} onChange={isEdit ? undefined : e=>setEmail(e.target.value)}
+            readOnly={isEdit} placeholder="consultant@example.com" />
+        </div>
         <div style={{marginBottom:14}}>
           <label style={LB}>{isEdit?'New Password (leave blank to keep)':'Password *'}</label>
           <input style={IS} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder={isEdit?'Leave blank to keep current':'Min 8 characters'} />

@@ -488,12 +488,83 @@ td { padding: 11px 14px; font-size: 13px; vertical-align: middle; }
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar { transform: translateX(-100%); }
-  .main-content { margin-left: 0; }
+  .main-content { margin-left: 0; padding-bottom: 72px; }
   .field-row { grid-template-columns: 1fr; }
   .charts-grid { grid-template-columns: 1fr; }
   .breakdown-grid { grid-template-columns: 1fr; }
   .revenue-hero { flex-direction: column; gap: 16px; }
   .page { padding: 16px; }
+}
+
+/* ── Mobile Bottom Navigation Bar ──────────────────────────────────── */
+.mob-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mob-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: var(--card);
+    border-top: 1.5px solid var(--bd);
+    z-index: 200;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+    padding: 0 4px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mob-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 4px;
+    border-radius: 10px;
+    transition: background 0.15s;
+    min-width: 0;
+  }
+
+  .mob-nav-item:active {
+    background: var(--bg);
+  }
+
+  .mob-nav-item.active {
+    background: rgba(79, 70, 229, 0.08);
+  }
+
+  .mob-nav-icon {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .mob-nav-label {
+    font-size: 10px;
+    font-weight: 700;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--m);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    letter-spacing: 0.01em;
+  }
+
+  .mob-nav-item.active .mob-nav-label {
+    color: var(--acc);
+  }
+
+  .mob-nav-item.active .mob-nav-icon {
+    filter: none;
+  }
 }
 
 /* ── PayPal gateway button ───────────────────────────────────── */
