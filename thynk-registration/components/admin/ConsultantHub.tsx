@@ -815,6 +815,12 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
                     <InfoBlock label="Joined" value={new Date(c.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' })} />
                     <InfoBlock label="Source" value={c.registration_source === 'online' ? '🌐 Online Form' : '👤 Admin Added'} />
                   </div>
+                  {c.internal_remark && (
+                    <div style={{ marginBottom:14, background:'rgba(245,158,11,0.06)', border:'1.5px solid rgba(245,158,11,0.25)', borderRadius:10, padding:'10px 14px' }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:'#b45309', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:4 }}>🔒 Internal Remark (Admin Only)</div>
+                      <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6 }}>{c.internal_remark}</div>
+                    </div>
+                  )}
                   {domains.length > 0 && (
                     <div style={{ marginBottom:14 }}>
                       <div style={LB}>Domain Expertise</div>

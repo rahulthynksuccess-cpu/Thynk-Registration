@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   // Extra profile fields from consultant_profiles
   const { data: profiles } = await service
     .from('consultant_profiles')
-    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant')
+    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark')
     .in('user_id', userIds);
 
   const profileMap: Record<string, any> = {};
@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
     mobile_number:         profileMap[r.user_id]?.mobile_number         ?? null,
     pan_number:            profileMap[r.user_id]?.pan_number            ?? null,
     is_default_consultant: profileMap[r.user_id]?.is_default_consultant ?? false,
+    internal_remark:       profileMap[r.user_id]?.internal_remark       ?? null,
   }));
 
   return NextResponse.json({ consultants });
@@ -178,13 +179,14 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
-  const { id, name, password, consultant_code, mobile_number, pan_number, is_default_consultant } = await req.json();
+  const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark } = await req.json();
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  // Update auth user (name/password) — same as before
+  // Update auth user (name / email / password)
   const authUpdate: Record<string, any> = {};
   if (name)     authUpdate.user_metadata = { name: name.trim() };
   if (password) authUpdate.password      = password.trim();
+  if (email)    authUpdate.email         = email.trim();
   if (Object.keys(authUpdate).length) {
     const { error } = await service.auth.admin.updateUserById(id, authUpdate);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -200,6 +202,7 @@ export async function PATCH(req: NextRequest) {
   }
   if (mobile_number         !== undefined) profileUpdate.mobile_number         = mobile_number?.trim()  || null;
   if (pan_number            !== undefined) profileUpdate.pan_number            = pan_number?.trim()     || null;
+  if (internal_remark       !== undefined) profileUpdate.internal_remark       = internal_remark?.trim() || null;
   if (is_default_consultant !== undefined) {
     profileUpdate.is_default_consultant = !!is_default_consultant;
     if (is_default_consultant) {

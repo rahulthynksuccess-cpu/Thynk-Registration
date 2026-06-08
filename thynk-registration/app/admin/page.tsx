@@ -142,6 +142,18 @@ function StudentDetailModal({
   const [preview,     setPreview]     = React.useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [deleting,    setDeleting]    = React.useState(false);
+  const [showEdit,    setShowEdit]    = React.useState(false);
+  const [editFields,  setEditFields]  = React.useState({
+    student_name:  student.student_name  ?? '',
+    parent_name:   student.parent_name   ?? '',
+    class_grade:   student.class_grade   ?? '',
+    gender:        student.gender        ?? '',
+    city:          student.city          ?? '',
+    parent_school: student.parent_school ?? '',
+    contact_phone: student.contact_phone ?? '',
+    contact_email: student.contact_email ?? '',
+  });
+  const [editSaving,  setEditSaving]  = React.useState(false);
 
   async function handleDelete() {
     setDeleting(true);
@@ -361,14 +373,77 @@ function StudentDetailModal({
         )}
 
         {/* Delete button */}
-        {!sendChannel && !showDeleteConfirm && (
-          <div style={{ padding: '0 24px 20px' }}>
+        {!sendChannel && !showDeleteConfirm && !showEdit && (
+          <div style={{ padding: '0 24px 4px', display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setShowEdit(true)}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 12, border: '1.5px solid rgba(79,70,229,0.3)', background: 'rgba(79,70,229,0.06)', color: '#4f46e5', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              ✏️ Edit Student
+            </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              style={{ width: '100%', padding: '9px 0', borderRadius: 12, border: '1.5px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              🗑️ Delete Student
+              style={{ flex: 1, padding: '9px 0', borderRadius: 12, border: '1.5px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              🗑️ Delete
             </button>
           </div>
+        )}
+
+        {/* Edit student form */}
+        {showEdit && (() => {
+          const IS2: React.CSSProperties = { width:'100%', padding:'8px 11px', borderRadius:9, border:'1.5px solid var(--bd)', background:'var(--bg)', color:'var(--text)', fontSize:13, outline:'none', fontFamily:'DM Sans,sans-serif', boxSizing:'border-box' };
+          const LB2: React.CSSProperties = { display:'block', fontSize:11, fontWeight:700, color:'var(--m)', marginBottom:4, textTransform:'uppercase', letterSpacing:.5 };
+          async function saveEdit() {
+            setEditSaving(true);
+            try {
+              const res = await authFetch(`${BACKEND}/api/admin/registrations`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: student.id, ...editFields }),
+              });
+              const data = await res.json();
+              if (!res.ok) { showToast(data.error ?? 'Update failed', '❌'); }
+              else { showToast('Student updated!', '✅'); setShowEdit(false); if (onPaymentSuccess) onPaymentSuccess(editFields); }
+            } catch (e: any) { showToast(e.message, '❌'); }
+            setEditSaving(false);
+          }
+          return (
+            <div style={{ margin: '0 24px 20px', padding: '16px 18px', borderRadius: 14, background: 'rgba(79,70,229,0.04)', border: '1.5px solid rgba(79,70,229,0.2)' }}>
+              <div style={{ fontFamily: 'Sora,sans-serif', fontSize: 14, fontWeight: 800, color: '#4f46e5', marginBottom: 14 }}>✏️ Edit Student Details</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', marginBottom: 12 }}>
+                {([
+                  ['Student Name', 'student_name', 'text'],
+                  ['Parent Name', 'parent_name', 'text'],
+                  ['Class / Grade', 'class_grade', 'text'],
+                  ['Gender', 'gender', 'text'],
+                  ['City', 'city', 'text'],
+                  ['School (Parent)', 'parent_school', 'text'],
+                  ['Contact Phone', 'contact_phone', 'tel'],
+                  ['Contact Email', 'contact_email', 'email'],
+                ] as [string, keyof typeof editFields, string][]).map(([label, key, type]) => (
+                  <div key={key}>
+                    <label style={LB2}>{label}</label>
+                    <input style={IS2} type={type} value={editFields[key]}
+                      onChange={e => setEditFields(prev => ({ ...prev, [key]: e.target.value }))} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowEdit(false)} disabled={editSaving}
+                  style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: '1.5px solid var(--bd)', background: 'var(--card)', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: 'var(--m)' }}>
+                  Cancel
+                </button>
+                <button onClick={saveEdit} disabled={editSaving}
+                  style={{ flex: 2, padding: '9px 0', borderRadius: 10, border: 'none', background: editSaving ? 'rgba(79,70,229,0.4)' : '#4f46e5', fontFamily: 'DM Sans,sans-serif', fontSize: 13, fontWeight: 700, cursor: editSaving ? 'not-allowed' : 'pointer', color: '#fff' }}>
+                  {editSaving ? '⏳ Saving…' : '💾 Save Changes'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Delete button (when edit not shown) */}
+        {!sendChannel && !showDeleteConfirm && !showEdit && (
+          <div style={{ height: 16 }} />
         )}
 
         {/* Delete confirmation dialog */}
@@ -3019,6 +3094,7 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
   const [mobile,        setMobile]       = React.useState(initial.mobile_number     ?? '');
   const [pan,           setPan]          = React.useState(initial.pan_number        ?? '');
   const [isDefault,     setIsDefault]    = React.useState(!!initial.is_default_consultant);
+  const [internalRemark, setInternalRemark] = React.useState(initial.internal_remark ?? '');
   // Extended profile fields (all optional)
   const [location,      setLocation]     = React.useState(initial.location          ?? '');
   const [totalExp,      setTotalExp]     = React.useState(initial.total_exp_years   ? String(initial.total_exp_years) : '');
@@ -3058,7 +3134,7 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
         experience_summary:  expSummary.trim() || null,
       };
       const body = isEdit
-        ? { id:initial.id, name, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, ...extFields }
+        ? { id:initial.id, name, email:email.trim()||undefined, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, internal_remark:internalRemark.trim()||null, ...extFields }
         : { name, email, password, consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, ...extFields };
       const res  = await fetch(`${BACKEND}/api/admin/consultants`, { method, headers:{...(authHeaders() as any),'Content-Type':'application/json'}, body:JSON.stringify(body) });
       const data = await res.json();
@@ -3110,10 +3186,11 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
         </div>
 
         <div style={{marginBottom:14}}>
-          <label style={LB}>Email {isEdit ? '(read-only)' : '*'}</label>
-          <input style={{...IS, ...(isEdit ? {background:'var(--bg)', color:'var(--m)', cursor:'not-allowed'} : {})}}
-            type="email" value={email} onChange={isEdit ? undefined : e=>setEmail(e.target.value)}
-            readOnly={isEdit} placeholder="consultant@example.com" />
+          <label style={LB}>Email *</label>
+          <input style={IS}
+            type="email" value={email} onChange={e=>setEmail(e.target.value)}
+            placeholder="consultant@example.com" />
+          {isEdit && <div style={{fontSize:10,color:'var(--m)',marginTop:2}}>⚠️ Changing the email will update the consultant's login credentials.</div>}
         </div>
         <div style={{marginBottom:14}}>
           <label style={LB}>{isEdit?'New Password (leave blank to keep)':'Password *'}</label>
@@ -3195,6 +3272,19 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
               <label style={LB}>Experience Summary</label>
               <textarea style={{...IS,minHeight:80,lineHeight:1.6}} value={expSummary} onChange={e=>setExpSummary(e.target.value)} placeholder="Summary of experience…" />
             </div>
+          </div>
+        )}
+
+        {/* ── Internal Remark (admin-only, edit mode only) ── */}
+        {isEdit && (
+          <div style={{marginBottom:16,background:'rgba(245,158,11,0.06)',border:'1.5px solid rgba(245,158,11,0.25)',borderRadius:12,padding:'14px 16px'}}>
+            <label style={{...LB,color:'#b45309'}}>🔒 Internal Remark (Admin Only)</label>
+            <textarea style={{...IS,minHeight:72,lineHeight:1.6}}
+              value={internalRemark}
+              onChange={e=>setInternalRemark(e.target.value)}
+              placeholder="Private notes about this consultant — not visible to the consultant…"
+            />
+            <div style={{fontSize:10,color:'#b45309',marginTop:4,fontWeight:600}}>Only admins and super admins can view or edit this remark.</div>
           </div>
         )}
 
