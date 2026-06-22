@@ -1201,29 +1201,29 @@ export default function AdminDashboard() {
           .eq('role', 'sub_admin');
         if (subRows?.length) {
           const allSchools = subRows.some((r: any) => r.all_schools);
-          // Merge allowed_pages across all rows (they should be the same, but union is safest)
-          const pagesSet = new Set<string>();
-          subRows.forEach((r: any) => (r.allowed_pages ?? []).forEach((p: string) => pagesSet.add(p)));
-          const pages = Array.from(pagesSet);
-          setSubAdminPages(pages);        // non-null = sub_admin mode, restricts sidebar + content
+          // Merge allowed_pages across all rows — if any row has null allowed_pages treat as all-pages
+          const hasNullPages = subRows.some((r: any) => r.allowed_pages === null);
+          let pages: string[];
+          if (hasNullPages) {
+            // null in DB means "all pages granted" — leave subAdminPages null to signal super-like access
+            pages = [];
+            setSubAdminPages(null);
+          } else {
+            const pagesSet = new Set<string>();
+            subRows.forEach((r: any) => (r.allowed_pages ?? []).forEach((p: string) => pagesSet.add(p)));
+            pages = Array.from(pagesSet);
+            setSubAdminPages(pages);
+          }
           setSubAdminSchools(allSchools ? null : subRows.map((r: any) => r.school_id).filter(Boolean));
           // Navigate to first allowed page if default 'overview' is not permitted
           if (pages.length > 0 && !pages.includes('overview')) {
             setActivePage(pages[0]);
-          } else if (pages.length === 0) {
-            // No pages assigned — show nothing
-            setActivePage('__none__');
           }
-        } else {
-          // No sub_admin row found — could be a consultant or school_admin.
-          // Either way, NOT a super_admin, so lock down the page list.
-          // consultantRole already set above; school_admin handled by API-level school filtering.
-          // Leave subAdminPages as null only if we explicitly know they are a consultant.
-          // For any unknown role, set empty pages to block access.
-          if (!consultantRole) {
-            setSubAdminPages([]);  // unknown non-super role: block all pages
-          }
+          // Note: if pages is empty but hasNullPages=true, overview is fine (null = all access)
         }
+        // If no sub_admin rows found: user is consultant or school_admin — leave subAdminPages as null
+        // Consultants are handled by ConsultantHub; school_admins by API-level school filtering.
+        // Neither needs frontend page restriction via subAdminPages.
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -3491,8 +3491,14 @@ const ALL_PAGES = [
   { id:'schools',                 label:'Schools',                   section:'Management' },
   { id:'manage_school',           label:'Manage Schools',            section:'Management' },
   { id:'discounts',               label:'Discount Codes',            section:'Management' },
+  { id:'users',                   label:'Admin Users',               section:'Management' },
   { id:'consultants',             label:'Consultants',               section:'Consultants'},
   { id:'consultant_registrations',label:'Pending Consultant Signups',section:'Consultants'},
+  { id:'comms',                   label:'Communications',            section:'Actions'    },
+  { id:'leads',                   label:'Lead Database',             section:'Actions'    },
+  { id:'documents',               label:'Document Upload',           section:'Portal'     },
+  { id:'notifications',           label:'Notifications',             section:'Portal'     },
+  { id:'letters',                 label:'Letter Generator',          section:'Portal'     },
   { id:'logs_schools',            label:'School Logs',               section:'Logs'       },
   { id:'logs_students',           label:'Student Logs',              section:'Logs'       },
   { id:'logs_email',              label:'Email Logs',                section:'Logs'       },
