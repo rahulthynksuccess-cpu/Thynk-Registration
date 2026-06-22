@@ -1127,6 +1127,7 @@ export default function AdminDashboard() {
     return Math.max(Math.ceil((now.getTime() - startOfYear.getTime()) / 86400000), 1);
   });
   const accessTokenRef                = useRef<string>('');
+  const ownUserIdRef                  = useRef<string>('');  // tracks the logged-in admin's own user ID
 
   const [programs,     setPrograms]     = useState<Row[]>([]);
   const [schools,      setSchools]      = useState<Row[]>([]);
@@ -1182,6 +1183,7 @@ export default function AdminDashboard() {
       // Guard: if we already have a user loaded, don't re-run init (prevents flicker on token refresh)
       // This check is intentionally after the null guard above.
       accessTokenRef.current = sessionData.session.access_token;
+      ownUserIdRef.current   = sessionData.session.user.id;  // lock this admin's own user ID
       setUser(sessionData.session.user);
       const { data: role } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','super_admin').is('school_id',null).maybeSingle();
       setSuperAdmin(!!role);
@@ -1208,10 +1210,20 @@ export default function AdminDashboard() {
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Update token on session refresh/token events only.
-      // Never redirect here — createUser() can fire auth events on this session
-      // which would otherwise push to login and freeze the screen.
-      if (session) accessTokenRef.current = session.access_token;
+      // Only update token on legitimate session refresh events for the CURRENT user.
+      // IMPORTANT: createUser() (admin.createUser) on the service role does NOT fire
+      // onAuthStateChange on the browser client — only signUp()/signIn() do.
+      // However, as a safeguard, we only accept the new token if the user ID matches
+      // the already-authenticated super-admin stored in our React state.
+      // This prevents any accidental session hijack if the Supabase client picks up
+      // a stale broadcast from a createUser call.
+      if (session) {
+        // If we already have a user in state, only accept tokens for that same user.
+        // setUser is async (React state), so we use a ref for the guard.
+        if (!ownUserIdRef.current || session.user.id === ownUserIdRef.current) {
+          accessTokenRef.current = session.access_token;
+        }
+      }
     });
     return () => subscription.unsubscribe();
   }, [router]);
@@ -1500,6 +1512,7 @@ export default function AdminDashboard() {
           {/* ── OVERVIEW ────────────────────────────────────────────── */}
           <div className={`page${activePage==='overview'?' active':''}`}>
             {activePage==='overview' && !canSeePage('overview') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('overview') && <>
             <div className="topbar">
               <div className="topbar-left">
                 <h1>Overview <span>Dashboard</span></h1>
@@ -1764,24 +1777,25 @@ export default function AdminDashboard() {
                 })()}
               </div>
             </div>
+            </>}
           </div>
 
-          {/* ── REPORTING — uses external ReportingPage component ────── */}
           <div className={`page${activePage==='reporting'?' active':''}`}>
-            {activePage==='reporting' && !canSeePage('reporting') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <ReportingPage allRows={enrichedVisibleRows} programs={programs} schools={visibleSchools} />
+            {!canSeePage('reporting') && activePage==='reporting' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('reporting') && <ReportingPage allRows={enrichedVisibleRows} programs={programs} schools={visibleSchools} />}
           </div>
 
           {/* ── STUDENTS ────────────────────────────────────────────── */}
           <div className={`page${activePage==='students'?' active':''}`}>
-            {activePage==='students' && !canSeePage('students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"></div></div>
-            <StudentsTable rows={enrichedVisibleRows} programs={programs} consultants={consultants} onRowClick={setModal} />
+            {!canSeePage('students') && activePage==='students' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('students') && <><div className="topbar"><div className="topbar-left"><h1>Students <span>Table</span></h1><p>{visibleRows.length} total records</p></div><div className="topbar-right"></div></div>
+            <StudentsTable rows={enrichedVisibleRows} programs={programs} consultants={consultants} onRowClick={setModal} /></>}
           </div>
 
           {/* ── TRENDS ──────────────────────────────────────────────── */}
           <div className={`page${activePage==='trends'?' active':''}`}>
-            {activePage==='trends' && !canSeePage('trends') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('trends') && activePage==='trends' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('trends') && <>
             <div className="topbar"><div className="topbar-left"><h1>Trends <span>Analysis</span></h1></div></div>
             <div className="charts-grid">
               <div className="chart-card wide"><div className="chart-header"><div><div className="chart-title">📈 30-Day Trend</div></div></div><div className="chart-wrap tall"><canvas id="chartTrend"/></div></div>
@@ -1789,22 +1803,26 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── FOLLOW-UP ───────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='followup'?' active':''}`}>
-            {activePage==='followup' && !canSeePage('followup') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('followup') && activePage==='followup' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('followup') && <>
             <div className="topbar"><div className="topbar-left"><h1>Follow-Up <span>Tracker</span></h1><p>{followUpCount} need follow-up</p></div></div>
             <FollowUpList rows={visibleRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status))} onRowClick={setModal} />
           </div>
 
           {/* ── HEATMAP ─────────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='heatmap'?' active':''}`}>
-            {activePage==='heatmap' && !canSeePage('heatmap') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
-            <div className="topbar"><div className="topbar-left"><h1>City <span>Heatmap</span></h1></div></div>
-            <CityHeatmap rows={visibleRows} />
+            {!canSeePage('heatmap') && activePage==='heatmap' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('heatmap') && <><div className="topbar"><div className="topbar-left"><h1>City <span>Heatmap</span></h1></div></div>
+            <CityHeatmap rows={visibleRows} /></>}
           </div>
 
           {/* ── RECENT ──────────────────────────────────────────────── */}
           <div className={`page${activePage==='recent'?' active':''}`}>
-            {activePage==='recent' && !canSeePage('recent') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('recent') && activePage==='recent' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('recent') && <>
             <div className="topbar">
               <div className="topbar-left"><h1>Recent <span>Activity</span></h1><p>Student payment transactions only</p></div>
               <div className="topbar-right">
@@ -1815,8 +1833,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── PROGRAMS ────────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='programs'?' active':''}`}>
-            {activePage==='programs' && !canSeePage('programs') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('programs') && activePage==='programs' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('programs') && <>
             <div className="topbar">
               <div className="topbar-left"><h1>Programs <span>Management</span></h1><p>Define base programs with URLs and pricing</p></div>
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setProgramForm({})}>+ Add Program</button>}</div>
@@ -1844,6 +1864,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── SCHOOLS ─────────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='schools'?' active':''}`}>
             {activePage==='schools' && !canSeePage('schools') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('schools') && (<>
@@ -1918,7 +1939,8 @@ export default function AdminDashboard() {
 
           {/* ── MANAGE SCHOOLS ──────────────────────────────────────────── */}
           <div className={`page${activePage==='manage_school'?' active':''}`}>
-            {activePage==='manage_school' && !canSeePage('manage_school') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('manage_school') && activePage==='manage_school' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('manage_school') && <>
             <ManageSchool
               schools={visibleSchools}
               programs={programs}
@@ -1929,8 +1951,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── DISCOUNT CODES ───────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='discounts'?' active':''}`}>
-            {activePage==='discounts' && !canSeePage('discounts') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('discounts') && activePage==='discounts' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('discounts') && <>
             <div className="topbar">
               <div className="topbar-left"><h1>Discount <span>Codes</span></h1><p>{discounts.filter(d=>d.is_active).length} active codes</p></div>
               <div className="topbar-right"><button className="btn btn-primary" onClick={()=>setDiscountForm({})}>+ New Code</button></div>
@@ -1961,8 +1985,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── ADMIN USERS ──────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='users'?' active':''}`}>
-            {activePage==='users' && !canSeePage('users') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('users') && activePage==='users' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('users') && <>
             <div className="topbar">
               <div className="topbar-left"><h1>Admin <span>Users</span></h1></div>
               <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setUserForm({})}>+ Add Admin</button>}</div>
@@ -2047,6 +2073,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── INTEGRATIONS ─────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='integrations'?' active':''}`}>
             <div className="topbar">
               <div className="topbar-left"><h1>Integrations <span>Setup</span></h1><p>Payment gateways, email & WhatsApp providers</p></div>
@@ -2104,7 +2131,8 @@ export default function AdminDashboard() {
 
           {/* ── LOGS: SCHOOLS ─────────────────────────────────────────── */}
           <div className={`page${activePage==='logs_schools'?' active':''}`}>
-            {activePage==='logs_schools' && !canSeePage('logs_schools') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('logs_schools') && activePage==='logs_schools' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('logs_schools') && <>
             <div className="topbar"><div className="topbar-left"><h1>School <span>Logs</span></h1><p>Activity, registrations, email & WhatsApp logs per school</p></div></div>
             {activePage==='logs_schools' && (
               <div style={{padding:'0 0 24px'}}>
@@ -2120,8 +2148,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── LOGS: STUDENTS ────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='logs_students'?' active':''}`}>
-            {activePage==='logs_students' && !canSeePage('logs_students') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('logs_students') && activePage==='logs_students' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('logs_students') && <>
             <div className="topbar"><div className="topbar-left"><h1>Student <span>Logs</span></h1><p>Email & WhatsApp notification logs per student registration</p></div></div>
             {activePage==='logs_students' && (
               <div style={{padding:'0 0 24px'}}>
@@ -2137,8 +2167,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── LOGS: EMAIL ───────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='logs_email'?' active':''}`}>
-            {activePage==='logs_email' && !canSeePage('logs_email') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('logs_email') && activePage==='logs_email' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('logs_email') && <>
             <div className="topbar">
               <div className="topbar-left"><h1>Email <span>Trigger Logs</span></h1><p>All outbound email notifications (latest 200)</p></div>
               <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogEmailLoading(true);api('/api/admin/notification-logs?channel=email&limit=200').then((d:any)=>{setLogEmailRows(d.logs??[]);setLogEmailLoading(false);}).catch(()=>setLogEmailLoading(false));}}>🔄 Refresh</button></div>
@@ -2163,8 +2195,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── LOGS: WHATSAPP ────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='logs_whatsapp'?' active':''}`}>
-            {activePage==='logs_whatsapp' && !canSeePage('logs_whatsapp') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {!canSeePage('logs_whatsapp') && activePage==='logs_whatsapp' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
+            {canSeePage('logs_whatsapp') && <>
             <div className="topbar">
               <div className="topbar-left"><h1>WhatsApp <span>Trigger Logs</span></h1><p>All outbound WhatsApp notifications (latest 200)</p></div>
               <div className="topbar-right"><button className="btn btn-outline" onClick={()=>{setLogWaLoading(true);api('/api/admin/notification-logs?channel=whatsapp&limit=200').then((d:any)=>{setLogWaRows(d.logs??[]);setLogWaLoading(false);}).catch(()=>setLogWaLoading(false));}}>🔄 Refresh</button></div>
@@ -2189,6 +2223,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── TEMPLATES ────────────────────────────────────────────── */}
+            </>}
           <div className={`page${activePage==='templates'?' active':''}`}>
             <div className="topbar">
               <div className="topbar-left"><h1>Message <span>Templates</span></h1><p>Email & WhatsApp message drafts — program-specific or global</p></div>
@@ -2367,11 +2402,23 @@ export default function AdminDashboard() {
         // Close modal FIRST before the API call so any Supabase auth broadcast
         // from createUser() cannot affect the open modal state.
         setUserForm(null);
-        // Re-assert our own session token immediately after closing
+        // Re-assert our own session token before AND after the API call.
+        // createUser() via the service-role key should not affect the browser
+        // Supabase client's session, but we re-assert defensively here.
         const supabase = createClient();
         const { data: sessionSnap } = await supabase.auth.getSession();
-        if (sessionSnap.session) accessTokenRef.current = sessionSnap.session.access_token;
-        await saveForm('/api/admin/users',data,()=>{loadUsers();},'Admin user created!');
+        if (sessionSnap.session) {
+          accessTokenRef.current = sessionSnap.session.access_token;
+          ownUserIdRef.current   = sessionSnap.session.user.id;
+        }
+        await saveForm('/api/admin/users', data, async () => {
+          // Re-assert token after the create call completes (belt & suspenders)
+          const { data: snap2 } = await supabase.auth.getSession();
+          if (snap2.session && snap2.session.user.id === ownUserIdRef.current) {
+            accessTokenRef.current = snap2.session.access_token;
+          }
+          loadUsers();
+        }, 'Admin user created!');
       }
     } catch(err) {
       setUserForm(null);
