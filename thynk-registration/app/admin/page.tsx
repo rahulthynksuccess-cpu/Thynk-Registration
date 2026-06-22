@@ -1426,14 +1426,14 @@ export default function AdminDashboard() {
   const thisWeek = ovRows.filter(r=>new Date(r.created_at)>=new Date(Date.now()-7*24*60*60*1000)).length;
   const followUpCount = visibleRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status)).length;
 
-  const saveForm = async (path:string, data:Row, onDone:()=>void, successMsg:string) => {
+  const saveForm = async (path:string, data:Row, onDone:()=>void|Promise<void>, successMsg:string) => {
     try {
       const method = data.id ? 'PATCH' : 'POST';
       const res = await fetch(`${BACKEND}${path}`, { credentials: 'include', method, headers: authHeaders(), body:JSON.stringify(data) });
       const r   = await res.json();
       if (!res.ok) { showToast(r.error ?? 'Error', '❌'); return; }
       showToast(successMsg, '✅');
-      onDone();
+      await onDone();
     } catch(err) {
       showToast('Network error — please try again', '❌');
     }
@@ -1800,19 +1800,15 @@ export default function AdminDashboard() {
             <div className="charts-grid">
               <div className="chart-card wide"><div className="chart-header"><div><div className="chart-title">📈 30-Day Trend</div></div></div><div className="chart-wrap tall"><canvas id="chartTrend"/></div></div>
             </div>
-          </div>
-
-          {/* ── FOLLOW-UP ───────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='followup'?' active':''}`}>
             {!canSeePage('followup') && activePage==='followup' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('followup') && <>
             <div className="topbar"><div className="topbar-left"><h1>Follow-Up <span>Tracker</span></h1><p>{followUpCount} need follow-up</p></div></div>
             <FollowUpList rows={visibleRows.filter(r=>['pending','failed','cancelled','initiated'].includes(r.payment_status))} onRowClick={setModal} />
-          </div>
-
-          {/* ── HEATMAP ─────────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='heatmap'?' active':''}`}>
             {!canSeePage('heatmap') && activePage==='heatmap' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('heatmap') && <><div className="topbar"><div className="topbar-left"><h1>City <span>Heatmap</span></h1></div></div>
@@ -1830,10 +1826,8 @@ export default function AdminDashboard() {
               </div>
             </div>
             <UnifiedTimeline paymentRows={visibleRows.slice(0,100)} activityLogs={[]} onRowClick={setModal} />
-          </div>
-
-          {/* ── PROGRAMS ────────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='programs'?' active':''}`}>
             {!canSeePage('programs') && activePage==='programs' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('programs') && <>
@@ -1861,10 +1855,8 @@ export default function AdminDashboard() {
                 }
               </tbody>
             </table></div>
-          </div>
-
-          {/* ── SCHOOLS ─────────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='schools'?' active':''}`}>
             {activePage==='schools' && !canSeePage('schools') && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('schools') && (<>
@@ -1948,10 +1940,8 @@ export default function AdminDashboard() {
               onRefresh={loadSchools}
               showToast={(t, i) => showToast(t, i ?? '')}
             />
-          </div>
-
-          {/* ── DISCOUNT CODES ───────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='discounts'?' active':''}`}>
             {!canSeePage('discounts') && activePage==='discounts' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('discounts') && <>
@@ -1982,10 +1972,8 @@ export default function AdminDashboard() {
                 }
               </tbody>
             </table></div>
-          </div>
-
-          {/* ── ADMIN USERS ──────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='users'?' active':''}`}>
             {!canSeePage('users') && activePage==='users' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('users') && <>
@@ -2070,10 +2058,8 @@ export default function AdminDashboard() {
                 }
               </tbody>
             </table></div>
-          </div>
-
-          {/* ── INTEGRATIONS ─────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='integrations'?' active':''}`}>
             <div className="topbar">
               <div className="topbar-left"><h1>Integrations <span>Setup</span></h1><p>Payment gateways, email & WhatsApp providers</p></div>
@@ -2145,10 +2131,8 @@ export default function AdminDashboard() {
                 {logSelectedSchool ? <SchoolLogPanel schoolId={logSelectedSchool.id} schoolCode={logSelectedSchool.school_code} authHeaders={authHeaders} BACKEND={BACKEND} /> : <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a school above to view its logs.</div>}
               </div>
             )}
-          </div>
-
-          {/* ── LOGS: STUDENTS ────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='logs_students'?' active':''}`}>
             {!canSeePage('logs_students') && activePage==='logs_students' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('logs_students') && <>
@@ -2164,10 +2148,8 @@ export default function AdminDashboard() {
                 {logSelectedStudent ? <StudentLogPanel registrationId={logSelectedStudent.id} studentEmail={logSelectedStudent.parent_email??''} studentPhone={logSelectedStudent.parent_phone??''} authHeaders={authHeaders} BACKEND={BACKEND} /> : <div style={{padding:'40px 0',textAlign:'center',color:'var(--m)',fontSize:14}}>Select a student above to view notification logs.</div>}
               </div>
             )}
-          </div>
-
-          {/* ── LOGS: EMAIL ───────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='logs_email'?' active':''}`}>
             {!canSeePage('logs_email') && activePage==='logs_email' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('logs_email') && <>
@@ -2192,10 +2174,8 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table></div>
-          </div>
-
-          {/* ── LOGS: WHATSAPP ────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='logs_whatsapp'?' active':''}`}>
             {!canSeePage('logs_whatsapp') && activePage==='logs_whatsapp' && <div style={{padding:40,textAlign:'center',color:'var(--m)'}}><div style={{fontSize:32,marginBottom:12}}>🔒</div><div style={{fontWeight:700,fontSize:15}}>Access Restricted</div><div style={{fontSize:13,marginTop:6}}>You don't have permission to view this page.</div></div>}
             {canSeePage('logs_whatsapp') && <>
@@ -2220,10 +2200,8 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table></div>
-          </div>
-
-          {/* ── TEMPLATES ────────────────────────────────────────────── */}
             </>}
+          </div>
           <div className={`page${activePage==='templates'?' active':''}`}>
             <div className="topbar">
               <div className="topbar-left"><h1>Message <span>Templates</span></h1><p>Email & WhatsApp message drafts — program-specific or global</p></div>
