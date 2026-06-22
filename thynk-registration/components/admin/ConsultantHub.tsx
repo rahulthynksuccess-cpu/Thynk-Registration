@@ -65,6 +65,7 @@ export function ConsultantHub({
   programs,
   authHeaders,
   isSuperAdmin,
+  subAdminPages = null,
   onReload,
   showToast,
   consultantForm,
@@ -76,12 +77,21 @@ export function ConsultantHub({
   programs:         Row[];
   authHeaders:      () => HeadersInit;
   isSuperAdmin:     boolean;
+  subAdminPages?:   string[] | null;
   onReload:         () => void;
   showToast:        (m: string, i?: string) => void;
   consultantForm:   Row | null;
   setConsultantForm:(r: Row | null) => void;
 }) {
-  const [tab, setTab] = useState<'pending'|'approved'|'analytics'|'communicate'>('pending');
+  // Determine which tabs this user can see
+  // super_admin (subAdminPages===null): all tabs
+  // sub_admin with 'consultants' page: approved tab + analytics
+  // sub_admin with 'consultant_registrations' page: pending tab
+  const canSeePending  = isSuperAdmin || subAdminPages === null || subAdminPages.includes('consultant_registrations');
+  const canSeeApproved = isSuperAdmin || subAdminPages === null || subAdminPages.includes('consultants');
+
+  const defaultTab = canSeePending ? 'pending' : 'approved';
+  const [tab, setTab] = useState<'pending'|'approved'|'analytics'|'communicate'>(defaultTab);
   const [pendingRegs, setPendingRegs] = useState<Row[]>([]);
   const [approvedRegs, setApprovedRegs] = useState<Row[]>([]);
   const [regsLoading, setRegsLoading] = useState(false);
@@ -112,10 +122,10 @@ export function ConsultantHub({
   useEffect(() => { loadRegs(); }, [loadRegs]);
 
   const TAB_DEFS: { id: typeof tab; label: string; count?: number }[] = [
-    { id: 'pending',     label: `📥 Pending`, count: pendingRegs.length },
-    { id: 'approved',    label: '👥 Approved Consultants' },
-    { id: 'analytics',  label: '📊 Analytics' },
-    { id: 'communicate', label: '💬 Communicate' },
+    ...(canSeePending  ? [{ id: 'pending'     as const, label: `📥 Pending`, count: pendingRegs.length }] : []),
+    ...(canSeeApproved ? [{ id: 'approved'    as const, label: '👥 Approved Consultants' }] : []),
+    ...(canSeeApproved ? [{ id: 'analytics'   as const, label: '📊 Analytics' }] : []),
+    ...(canSeeApproved ? [{ id: 'communicate' as const, label: '💬 Communicate' }] : []),
   ];
 
   return (
