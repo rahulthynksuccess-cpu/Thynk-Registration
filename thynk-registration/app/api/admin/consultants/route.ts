@@ -1,5 +1,5 @@
 // app/api/admin/consultants/route.ts
-// CRUD for consultant users — super_admin only
+// CRUD for consultant users — super_admin only (read allowed for sub_admin with 'consultants' page)
 // Consultants can: create schools (web + mobile), view their assigned schools + reports
 //
 // NEW fields added to consultant_profiles table:
@@ -22,9 +22,39 @@ async function requireSuperAdmin(req: NextRequest) {
   return data ? user : null;
 }
 
+/** Returns the authenticated user if they are a super_admin OR a sub_admin
+ *  whose allowed_pages includes 'consultants'. Read-only callers use this. */
+async function requireSuperAdminOrSubAdminWithConsultants(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return null;
+  const service = createServiceClient();
+
+  // Check super_admin first
+  const { data: superRow } = await service
+    .from('admin_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('role', 'super_admin')
+    .is('school_id', null)
+    .maybeSingle();
+  if (superRow) return user;
+
+  // Check sub_admin with 'consultants' in allowed_pages
+  const { data: subRows } = await service
+    .from('admin_roles')
+    .select('allowed_pages')
+    .eq('user_id', user.id)
+    .eq('role', 'sub_admin');
+  if (subRows?.some((r: any) => Array.isArray(r.allowed_pages) && r.allowed_pages.includes('consultants'))) {
+    return user;
+  }
+
+  return null;
+}
+
 // GET /api/admin/consultants
 export async function GET(req: NextRequest) {
-  const user = await requireSuperAdmin(req);
+  const user = await requireSuperAdminOrSubAdminWithConsultants(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
