@@ -18,7 +18,7 @@ async function requireSuperAdmin(req: NextRequest) {
     .eq('user_id', user.id)
     .eq('role', 'super_admin')
     .is('school_id', null)
-    .single();
+    .maybeSingle();          // .single() throws PGRST116 when 0 rows; .maybeSingle() returns null
   return data ? user : null;
 }
 
@@ -63,16 +63,32 @@ export async function GET(req: NextRequest) {
         grouped[key].school_names.push((r.schools as any)?.name ?? r.school_id);
       }
     } else {
-      grouped[key] = {
-        id:           r.id,
-        user_id:      r.user_id,
-        role:         r.role,
-        email:        emailMap[r.user_id] ?? '—',
-        display_name: r.display_name,
-        school_id:    r.school_id,
-        schools:      r.schools,
-        created_at:   r.created_at,
-      };
+      // For consultant, super_admin, school_admin — one row per entry
+      // Skip duplicate consultant entries (consultant role may have multiple rows per user)
+      if (r.role === 'consultant') {
+        const cKey = `consultant::${r.user_id}`;
+        if (!grouped[cKey]) {
+          grouped[cKey] = {
+            id:           r.id,
+            user_id:      r.user_id,
+            role:         'consultant',
+            email:        emailMap[r.user_id] ?? '—',
+            display_name: r.display_name,
+            created_at:   r.created_at,
+          };
+        }
+      } else {
+        grouped[key] = {
+          id:           r.id,
+          user_id:      r.user_id,
+          role:         r.role,
+          email:        emailMap[r.user_id] ?? '—',
+          display_name: r.display_name,
+          school_id:    r.school_id,
+          schools:      r.schools,
+          created_at:   r.created_at,
+        };
+      }
     }
   }
 
