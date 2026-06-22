@@ -1467,7 +1467,10 @@ export default function AdminDashboard() {
               // Sub-admin: hide pages not in their allowed list AND hide all href/external links
               if (isSubAdmin && subAdminPages) {
                 if ('href' in item) return null; // hide Integrations, Settings, etc.
-                if (item.id && !item.action && !subAdminPages.includes(item.id)) return null;
+                // 'consultants' nav item is visible if sub-admin has either 'consultants' OR 'consultant_registrations'
+                if (item.id === 'consultants') {
+                  if (!subAdminPages.includes('consultants') && !subAdminPages.includes('consultant_registrations')) return null;
+                } else if (item.id && !item.action && !subAdminPages.includes(item.id)) return null;
               }
               const isActive = !item.action && !('href' in item) && activePage===item.id;
               return (
@@ -2267,9 +2270,9 @@ export default function AdminDashboard() {
               schools={visibleSchools}
               allRows={enrichedVisibleRows}
               programs={programs}
-              
               authHeaders={authHeaders}
               isSuperAdmin={isSuperAdmin}
+              subAdminPages={subAdminPages}
               onReload={loadConsultants}
               showToast={showToast}
               consultantForm={consultantForm}
@@ -3431,23 +3434,25 @@ function ResetPasswordModal({ user, BACKEND, authHeaders, onClose, showToast }: 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page IDs that can be granted to sub-admins (mirrors the NAV array)
 const ALL_PAGES = [
-  { id:'overview',      label:'Overview Dashboard',   section:'Analytics' },
-  { id:'reporting',     label:'Reporting',             section:'Analytics' },
-  { id:'students',      label:'Students',              section:'Analytics' },
-  { id:'trends',        label:'Trends',                section:'Analytics' },
-  { id:'followup',      label:'Follow-Up',             section:'Actions'   },
-  { id:'comms',         label:'Communications',         section:'Actions'   },
-  { id:'leads',         label:'Lead Database',          section:'Actions'   },
-  { id:'heatmap',       label:'City Heatmap',          section:'Actions'   },
-  { id:'recent',        label:'Recent Activity',       section:'Actions'   },
-  { id:'programs',      label:'Programs',              section:'Management'},
-  { id:'schools',       label:'Schools',               section:'Management'},
-  { id:'manage_school', label:'Manage Schools',        section:'Management'},
-  { id:'discounts',     label:'Discount Codes',        section:'Management'},
-  { id:'logs_schools',  label:'School Logs',           section:'Logs'      },
-  { id:'logs_students', label:'Student Logs',          section:'Logs'      },
-  { id:'logs_email',    label:'Email Logs',            section:'Logs'      },
-  { id:'logs_whatsapp', label:'WhatsApp Logs',         section:'Logs'      },
+  { id:'overview',                label:'Overview Dashboard',        section:'Analytics'  },
+  { id:'reporting',               label:'Reporting',                 section:'Analytics'  },
+  { id:'students',                label:'Students',                  section:'Analytics'  },
+  { id:'trends',                  label:'Trends',                    section:'Analytics'  },
+  { id:'followup',                label:'Follow-Up',                 section:'Actions'    },
+  { id:'comms',                   label:'Communications',            section:'Actions'    },
+  { id:'leads',                   label:'Lead Database',             section:'Actions'    },
+  { id:'heatmap',                 label:'City Heatmap',              section:'Actions'    },
+  { id:'recent',                  label:'Recent Activity',           section:'Actions'    },
+  { id:'programs',                label:'Programs',                  section:'Management' },
+  { id:'schools',                 label:'Schools',                   section:'Management' },
+  { id:'manage_school',           label:'Manage Schools',            section:'Management' },
+  { id:'discounts',               label:'Discount Codes',            section:'Management' },
+  { id:'consultants',             label:'Consultants',               section:'Consultants'},
+  { id:'consultant_registrations',label:'Pending Consultant Signups',section:'Consultants'},
+  { id:'logs_schools',            label:'School Logs',               section:'Logs'       },
+  { id:'logs_students',           label:'Student Logs',              section:'Logs'       },
+  { id:'logs_email',              label:'Email Logs',                section:'Logs'       },
+  { id:'logs_whatsapp',           label:'WhatsApp Logs',             section:'Logs'       },
 ];
 
 function UserFormModal({ schools, initial, onClose, onSave }: {
