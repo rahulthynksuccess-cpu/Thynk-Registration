@@ -32,10 +32,18 @@ export async function GET(req: NextRequest) {
   const { data: roles } = await service
     .from('admin_roles')
     .select('id, role, created_at, school_id, all_schools, allowed_pages, display_name, user_id, schools(id, name, school_code)')
+    .in('role', ['super_admin', 'sub_admin', 'school_admin', 'consultant'])
     .order('created_at', { ascending: false });
 
-  const { data: { users: authUsers } } = await service.auth.admin.listUsers();
-  const emailMap = Object.fromEntries(authUsers.map((u: any) => [u.id, u.email]));
+  // listUsers() returns max 100 by default — paginate to get all users
+  const emailMap: Record<string, string> = {};
+  let page = 1;
+  while (true) {
+    const { data: { users: pageUsers } } = await service.auth.admin.listUsers({ page, perPage: 1000 });
+    pageUsers.forEach((u: any) => { emailMap[u.id] = u.email; });
+    if (pageUsers.length < 1000) break;
+    page++;
+  }
 
   // Group sub_admin rows by user_id (multiple school rows per user)
   const grouped: Record<string, any> = {};
@@ -114,8 +122,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'email, password, role required' }, { status: 400 });
   if (role === 'school_admin' && !school_id)
     return NextResponse.json({ error: 'school_id required for school_admin' }, { status: 400 });
-  if (role === 'sub_admin' && !all_schools && allowed_school_ids.length === 0)
-    return NextResponse.json({ error: 'sub_admin needs all_schools=true or at least one school' }, { status: 400 });
+  // NOTE: sub_admin school access is optional — they can be page-restricted only (all_schools=true or no schools)
   if (role === 'sub_admin' && allowed_pages.length === 0)
     return NextResponse.json({ error: 'sub_admin requires at least one allowed page' }, { status: 400 });
 
@@ -129,18 +136,28 @@ export async function POST(req: NextRequest) {
   const uid = newUser.user.id;
 
   if (role === 'sub_admin') {
-    if (all_schools) {
-      await service.from('admin_roles').insert({
+    if (all_schools || allowed_school_ids.length === 0) {
+      // all_schools=true OR no specific schools → single row, school_id=null
+      const { error: insErr } = await service.from('admin_roles').insert({
         user_id: uid, role: 'sub_admin', school_id: null,
-        all_schools: true, allowed_pages, display_name: display_name || null,
+        all_schools: !!all_schools, allowed_pages, display_name: display_name || null,
       });
+      if (insErr) {
+        console.error('[users/POST] admin_roles insert failed:', insErr);
+        return NextResponse.json({ error: 'User created but role assignment failed: ' + insErr.message }, { status: 500 });
+      }
     } else {
-      await service.from('admin_roles').insert(
+      // Specific schools selected — one row per school
+      const { error: insErr } = await service.from('admin_roles').insert(
         allowed_school_ids.map((sid: string) => ({
           user_id: uid, role: 'sub_admin', school_id: sid,
           all_schools: false, allowed_pages, display_name: display_name || null,
         }))
       );
+      if (insErr) {
+        console.error('[users/POST] admin_roles multi-school insert failed:', insErr);
+        return NextResponse.json({ error: 'User created but role assignment failed: ' + insErr.message }, { status: 500 });
+      }
     }
   } else if (role === 'super_admin') {
     await service.from('admin_roles').insert({
@@ -170,12 +187,13 @@ export async function PATCH(req: NextRequest) {
   // Replace all existing sub_admin rows for this user
   await service.from('admin_roles').delete().eq('user_id', user_id).eq('role', 'sub_admin');
 
-  if (all_schools) {
+  if (all_schools || allowed_school_ids.length === 0) {
+    // all_schools=true OR no specific schools → single row with school_id=null
     await service.from('admin_roles').insert({
       user_id, role: 'sub_admin', school_id: null,
-      all_schools: true, allowed_pages, display_name: display_name || null,
+      all_schools: !!all_schools, allowed_pages, display_name: display_name || null,
     });
-  } else if (allowed_school_ids.length) {
+  } else {
     await service.from('admin_roles').insert(
       allowed_school_ids.map((sid: string) => ({
         user_id, role: 'sub_admin', school_id: sid,
