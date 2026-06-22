@@ -2394,28 +2394,35 @@ export default function AdminDashboard() {
         if (res.ok) { showToast('Permissions updated!','✅'); loadUsers(); }
         else        { const e=await res.json(); showToast('Error: '+(e.error||'Unknown'),'❌'); }
       } else {
-        // Close modal FIRST before the API call so any Supabase auth broadcast
-        // from createUser() cannot affect the open modal state.
-        setUserForm(null);
-        // Re-assert our own session token before AND after the API call.
-        // createUser() via the service-role key should not affect the browser
-        // Supabase client's session, but we re-assert defensively here.
+        // Re-assert our own session token before the API call
         const supabase = createClient();
         const { data: sessionSnap } = await supabase.auth.getSession();
         if (sessionSnap.session) {
           accessTokenRef.current = sessionSnap.session.access_token;
           ownUserIdRef.current   = sessionSnap.session.user.id;
         }
-        await saveForm('/api/admin/users', data, async () => {
-          // Re-assert our own token immediately after the POST completes
+        // Call API — keep modal open until we know it succeeded
+        const res = await fetch(`${BACKEND}/api/admin/users`, {
+          method: 'POST',
+          headers: { ...authHeaders() },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          // Show error IN modal (don't close it) so user can fix and retry
+          showToast('Error: ' + (json.error || 'Unknown error'), '❌');
+        } else {
+          // Success — close modal, reload list
+          setUserForm(null);
+          showToast('Admin user created! ✅', '');
+          // Re-assert token then reload
           const { data: snap2 } = await supabase.auth.getSession();
           if (snap2.session && snap2.session.user.id === ownUserIdRef.current) {
             accessTokenRef.current = snap2.session.access_token;
           }
-          // Small delay to ensure DB write is visible before we re-fetch
           await new Promise(r => setTimeout(r, 400));
           await loadUsers();
-        }, 'Admin user created!');
+        }
       }
     } catch(err) {
       setUserForm(null);
