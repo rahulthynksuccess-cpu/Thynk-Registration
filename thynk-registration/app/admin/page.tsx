@@ -1191,6 +1191,8 @@ export default function AdminDashboard() {
       const { data: consultantRole } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','consultant').maybeSingle();
       setIsConsultant(!!consultantRole);
       // Load sub_admin page/school permissions if applicable
+      // IMPORTANT: we always resolve this block so subAdminPages is never left as
+      // null (= super-admin) for a user who is actually a sub_admin.
       if (!role) {
         const { data: subRows } = await supabase
           .from('admin_roles')
@@ -1199,12 +1201,27 @@ export default function AdminDashboard() {
           .eq('role', 'sub_admin');
         if (subRows?.length) {
           const allSchools = subRows.some((r: any) => r.all_schools);
-          const pages = subRows[0]?.allowed_pages ?? [];
-          setSubAdminPages(pages);
+          // Merge allowed_pages across all rows (they should be the same, but union is safest)
+          const pagesSet = new Set<string>();
+          subRows.forEach((r: any) => (r.allowed_pages ?? []).forEach((p: string) => pagesSet.add(p)));
+          const pages = Array.from(pagesSet);
+          setSubAdminPages(pages);        // non-null = sub_admin mode, restricts sidebar + content
           setSubAdminSchools(allSchools ? null : subRows.map((r: any) => r.school_id).filter(Boolean));
           // Navigate to first allowed page if default 'overview' is not permitted
           if (pages.length > 0 && !pages.includes('overview')) {
             setActivePage(pages[0]);
+          } else if (pages.length === 0) {
+            // No pages assigned — show nothing
+            setActivePage('__none__');
+          }
+        } else {
+          // No sub_admin row found — could be a consultant or school_admin.
+          // Either way, NOT a super_admin, so lock down the page list.
+          // consultantRole already set above; school_admin handled by API-level school filtering.
+          // Leave subAdminPages as null only if we explicitly know they are a consultant.
+          // For any unknown role, set empty pages to block access.
+          if (!consultantRole) {
+            setSubAdminPages([]);  // unknown non-super role: block all pages
           }
         }
       }
@@ -1264,7 +1281,7 @@ export default function AdminDashboard() {
   const loadPrograms     = useCallback(async () => { const d = await api('/api/admin/projects');     setPrograms(d.projects??[]); }, [api]);
   const loadSchools      = useCallback(async () => { const d = await api('/api/admin/schools');      setSchools(d.schools??[]); }, [api]);
   const loadDiscounts    = useCallback(async () => { const d = await api('/api/admin/discounts');    setDiscounts(d.discounts??[]); }, [api]);
-  const loadUsers        = useCallback(async () => { const d = await api('/api/admin/users');        setAdminUsers(d.users??[]); }, [api]);
+  const loadUsers        = useCallback(async () => { const d = await api('/api/admin/users'); if (d?.users) setAdminUsers(d.users); }, [api]);
   const loadConsultants  = useCallback(async () => { try { const d = await api('/api/admin/consultants'); setConsultants(d.consultants??[]); } catch {} }, [api]);
   const loadIntegrations = useCallback(async () => { const d = await api('/api/admin/integrations'); setIntegrations(d.integrations??[]); }, [api]);
   const loadTriggers     = useCallback(async () => { const d = await api('/api/admin/triggers');     setTriggers(d.triggers??[]); }, [api]);
@@ -1979,7 +1996,7 @@ export default function AdminDashboard() {
             {canSeePage('users') && <>
             <div className="topbar">
               <div className="topbar-left"><h1>Admin <span>Users</span></h1></div>
-              <div className="topbar-right">{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setUserForm({})}>+ Add Admin</button>}</div>
+              <div className="topbar-right" style={{gap:8}}>{isSuperAdmin&&<button className="btn btn-primary" onClick={()=>setUserForm({})}>+ Add Admin</button>}<button className="btn btn-outline" onClick={loadUsers}>🔄 Refresh</button></div>
             </div>
             <div style={{background:'var(--acc3)',border:'1.5px solid rgba(79,70,229,.2)',borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
               <div style={{fontSize:22}}>🏫</div>
@@ -2005,8 +2022,8 @@ export default function AdminDashboard() {
                         {u.display_name&&<div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{u.display_name}</div>}
                       </td>
                       <td>
-                        <span className={`badge ${u.role==='super_admin'?'badge-paid':u.role==='sub_admin'?'badge-pending':'badge-initiated'}`}>
-                          {u.role==='super_admin'?'Super Admin':u.role==='sub_admin'?'Sub Admin':'School Admin'}
+                        <span className={`badge ${u.role==='super_admin'?'badge-paid':u.role==='sub_admin'?'badge-pending':u.role==='consultant'?'badge-paid':'badge-initiated'}`}>
+                          {u.role==='super_admin'?'Super Admin':u.role==='sub_admin'?'Sub Admin':u.role==='consultant'?'Consultant':'School Admin'}
                         </span>
                       </td>
                       <td style={{fontSize:12}}>
@@ -2390,12 +2407,14 @@ export default function AdminDashboard() {
           ownUserIdRef.current   = sessionSnap.session.user.id;
         }
         await saveForm('/api/admin/users', data, async () => {
-          // Re-assert token after the create call completes (belt & suspenders)
+          // Re-assert our own token immediately after the POST completes
           const { data: snap2 } = await supabase.auth.getSession();
           if (snap2.session && snap2.session.user.id === ownUserIdRef.current) {
             accessTokenRef.current = snap2.session.access_token;
           }
-          loadUsers();
+          // Small delay to ensure DB write is visible before we re-fetch
+          await new Promise(r => setTimeout(r, 400));
+          await loadUsers();
         }, 'Admin user created!');
       }
     } catch(err) {
