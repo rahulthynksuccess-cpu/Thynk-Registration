@@ -144,28 +144,56 @@ export async function POST(req: NextRequest) {
   if (codeExists)
     return NextResponse.json({ error: 'Consultant code already in use' }, { status: 400 });
 
-  // 1. Create auth user
+  // 1. Create auth user — or reuse if email already exists (e.g. user is already a sub_admin)
+  let consultantUserId: string;
   const { data: newUser, error: authErr } = await service.auth.admin.createUser({
     email:         email.trim(),
     password:      password.trim(),
     email_confirm: true,
     user_metadata: { name: name.trim() },
   });
-  if (authErr)
-    return NextResponse.json(
-      { error: authErr.message.includes('already') ? 'Email already registered' : authErr.message },
-      { status: 400 }
-    );
 
-  // 2. Write to admin_roles (source of truth — unchanged)
-  const { error: roleErr } = await service.from('admin_roles').insert({
-    user_id:   newUser.user.id,
-    role:      'consultant',
-    school_id: null,
-  });
-  if (roleErr) {
-    await service.auth.admin.deleteUser(newUser.user.id);
-    return NextResponse.json({ error: roleErr.message }, { status: 500 });
+  if (authErr) {
+    if (!authErr.message.toLowerCase().includes('already')) {
+      return NextResponse.json({ error: authErr.message }, { status: 400 });
+    }
+    // Email already in auth (e.g. they are a sub_admin) — find and reuse the existing user ID
+    let page = 1;
+    let foundUser: any = null;
+    while (!foundUser) {
+      const { data: { users: pageUsers } } = await service.auth.admin.listUsers({ page, perPage: 1000 });
+      foundUser = pageUsers.find((u: any) => u.email?.toLowerCase() === email.trim().toLowerCase());
+      if (!pageUsers || pageUsers.length < 1000) break;
+      page++;
+    }
+    if (!foundUser) {
+      return NextResponse.json({ error: 'Email exists in auth but user could not be located. Contact support.' }, { status: 500 });
+    }
+    consultantUserId = foundUser.id;
+
+    // Check if already a consultant profile
+    const { data: existingProfile } = await service
+      .from('consultant_profiles').select('id, consultant_code').eq('user_id', consultantUserId).maybeSingle();
+    if (existingProfile) {
+      return NextResponse.json({ error: 'This user is already a consultant (code: ' + existingProfile.consultant_code + ')' }, { status: 409 });
+    }
+  } else {
+    consultantUserId = newUser.user.id;
+  }
+
+  // 2. Write to admin_roles — skip if consultant role already exists for this user
+  const { data: existingCRole } = await service
+    .from('admin_roles').select('id').eq('user_id', consultantUserId).eq('role', 'consultant').maybeSingle();
+  if (!existingCRole) {
+    const { error: roleErr } = await service.from('admin_roles').insert({
+      user_id:   consultantUserId,
+      role:      'consultant',
+      school_id: null,
+    });
+    if (roleErr) {
+      if (!authErr) await service.auth.admin.deleteUser(consultantUserId); // only delete if we just created them
+      return NextResponse.json({ error: roleErr.message }, { status: 500 });
+    }
   }
 
   // 3. If setting as default, clear any existing default
@@ -178,22 +206,22 @@ export async function POST(req: NextRequest) {
 
   // 4. Write extra fields to consultant_profiles
   const { error: profileErr } = await service.from('consultant_profiles').insert({
-    user_id:               newUser.user.id,
+    user_id:               consultantUserId,
     consultant_code:       code,
     mobile_number:         mobile_number?.trim() || null,
     pan_number:            pan_number?.trim()    || null,
     is_default_consultant: !!is_default_consultant,
   });
   if (profileErr) {
-    await service.from('admin_roles').delete().eq('user_id', newUser.user.id).eq('role', 'consultant');
-    await service.auth.admin.deleteUser(newUser.user.id);
+    await service.from('admin_roles').delete().eq('user_id', consultantUserId).eq('role', 'consultant');
+    if (!authErr) await service.auth.admin.deleteUser(consultantUserId);
     return NextResponse.json({ error: profileErr.message }, { status: 500 });
   }
 
   return NextResponse.json({
     consultant: {
-      id:                    newUser.user.id,
-      email:                 newUser.user.email,
+      id:                    consultantUserId,
+      email:                 email.trim(),
       name:                  name.trim(),
       consultant_code:       code,
       mobile_number:         mobile_number?.trim() || null,
