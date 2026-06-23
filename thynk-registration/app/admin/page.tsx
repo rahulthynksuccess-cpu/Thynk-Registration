@@ -1184,21 +1184,46 @@ export default function AdminDashboard() {
       // This check is intentionally after the null guard above.
       accessTokenRef.current = sessionData.session.access_token;
       ownUserIdRef.current   = sessionData.session.user.id;  // lock this admin's own user ID
+
+      // ── GATE: verify this user has ANY valid admin role before rendering ──
+      // Fetch ALL roles for this user in one query
+      const { data: allRoles } = await supabase
+        .from('admin_roles')
+        .select('role, school_id, all_schools, allowed_pages')
+        .eq('user_id', sessionData.session.user.id);
+
+      // If no role rows at all → kick back to login (orphaned auth user)
+      if (!allRoles || allRoles.length === 0) {
+        await supabase.auth.signOut();
+        router.push('/admin/login?error=no_role');
+        return;
+      }
+
+      const isSuperAdminRole  = allRoles.some(r => r.role === 'super_admin' && !r.school_id);
+      const isSubAdminRole    = allRoles.some(r => r.role === 'sub_admin');
+      const isConsultantRole  = allRoles.some(r => r.role === 'consultant');
+      const isSchoolAdminRole = allRoles.some(r => r.role === 'school_admin');
+
+      // school_admin belongs in /school/dashboard, not /admin
+      if (!isSuperAdminRole && !isSubAdminRole && !isConsultantRole && isSchoolAdminRole) {
+        await supabase.auth.signOut();
+        router.push('/school/login');
+        return;
+      }
+
       setUser(sessionData.session.user);
-      const { data: role } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','super_admin').is('school_id',null).maybeSingle();
-      setSuperAdmin(!!role);
-      // Check if user is a consultant
-      const { data: consultantRole } = await supabase.from('admin_roles').select('role').eq('user_id', sessionData.session.user.id).eq('role','consultant').maybeSingle();
-      setIsConsultant(!!consultantRole);
+      setSuperAdmin(isSuperAdminRole);
+      setIsConsultant(isConsultantRole);
+
+      // Derive consultantRole for sub_admin block below
+      const consultantRole = isConsultantRole ? { role: 'consultant' } : null;
+      const role           = isSuperAdminRole  ? { role: 'super_admin' } : null;
       // Load sub_admin page/school permissions if applicable
       // IMPORTANT: we always resolve this block so subAdminPages is never left as
       // null (= super-admin) for a user who is actually a sub_admin.
       if (!role) {
-        const { data: subRows } = await supabase
-          .from('admin_roles')
-          .select('role, school_id, all_schools, allowed_pages')
-          .eq('user_id', sessionData.session.user.id)
-          .eq('role', 'sub_admin');
+        // Use allRoles already fetched above — no extra DB query needed
+        const subRows = allRoles.filter((r: any) => r.role === 'sub_admin');
         if (subRows?.length) {
           const allSchools = subRows.some((r: any) => r.all_schools);
           // Merge allowed_pages across all rows — if any row has null allowed_pages treat as all-pages
