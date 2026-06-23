@@ -22,17 +22,17 @@ function SchoolLoginForm() {
       setError('Incorrect email or password. Please try again.');
       return;
     }
-    // Verify user has school_admin role
-    const { data: role } = await supabase
+    // Verify user has EXACTLY school_admin role — sub_admin, consultant, super_admin must use /admin
+    const { data: roles } = await supabase
       .from('admin_roles')
       .select('role, school_id')
       .eq('user_id', data.user.id)
-      .maybeSingle();
+      .eq('role', 'school_admin');
 
-    if (!role) {
+    if (!roles || roles.length === 0) {
       await supabase.auth.signOut();
       setLoading(false);
-      setError('You do not have access to the school dashboard.');
+      setError('You do not have access to the school dashboard. If you are an admin, please use /admin/login.');
       return;
     }
     setTimeout(() => { window.location.href = redirect; }, 400);
