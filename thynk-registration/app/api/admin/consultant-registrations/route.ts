@@ -157,17 +157,28 @@ export async function PATCH(req: NextRequest) {
 
   if (authErr) {
     if (authErr.message.toLowerCase().includes('already')) {
-      // User exists in auth — look them up and reuse
-      const { data: existingUsers, error: listErr } = await service.auth.admin.listUsers();
-      if (listErr) return NextResponse.json({ error: 'Could not look up existing user' }, { status: 500 });
+      // User already exists in auth — look them up directly by email (no pagination issue)
+      const { data: { users: matchedUsers }, error: listErr } =
+        await service.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      // Try direct search first (faster), fall through to full scan if needed
+      let existingUser = matchedUsers?.find((u: any) => u.email === reg.contact_email);
 
-      const existingUser = (existingUsers.users as { id: string; email?: string }[])
-        .find(u => u.email === reg.contact_email);
-      if (!existingUser) return NextResponse.json({ error: 'User lookup failed' }, { status: 500 });
+      if (!existingUser) {
+        // Paginate to find the user if not in first 1000
+        let page = 2;
+        while (!existingUser) {
+          const { data: { users: nextPage } } = await service.auth.admin.listUsers({ page, perPage: 1000 });
+          existingUser = nextPage?.find((u: any) => u.email === reg.contact_email);
+          if (!nextPage || nextPage.length < 1000) break;
+          page++;
+        }
+      }
+
+      if (!existingUser) return NextResponse.json({ error: 'User lookup failed — email not found in auth' }, { status: 500 });
 
       userId = existingUser.id;
 
-      // Check if already a consultant
+      // Check if already a consultant profile exists for this user
       const { data: existingProfile } = await service
         .from('consultant_profiles')
         .select('id, consultant_code')
@@ -175,7 +186,7 @@ export async function PATCH(req: NextRequest) {
         .maybeSingle();
 
       if (existingProfile) {
-        // Already a consultant — just mark registration approved and link it
+        // Already has a consultant profile — just approve and link the registration
         await service
           .from('consultant_registrations')
           .update({
@@ -196,6 +207,19 @@ export async function PATCH(req: NextRequest) {
           email:           reg.contact_email,
         });
       }
+
+      // Check if admin_roles already has a consultant row for this user
+      // (could have been manually added) — if so, skip role insert below
+      const { data: existingConsultantRole } = await service
+        .from('admin_roles')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('role', 'consultant')
+        .maybeSingle();
+
+      if (existingConsultantRole) {
+        // Role exists but no profile — continue to create profile only
+      }
       // Exists in auth but not yet a consultant — continue with role + profile creation below
     } else {
       return NextResponse.json({ error: authErr.message }, { status: 400 });
@@ -206,16 +230,24 @@ export async function PATCH(req: NextRequest) {
 
   // userId is now set above (either new or existing user)
 
-  // 4. Assign consultant role
-  const { error: roleErr } = await service.from('admin_roles').insert({
-    user_id:   userId,
-    role:      'consultant',
-    school_id: null,
-  });
+  // 4. Assign consultant role — skip if already exists (user may be sub_admin with same email)
+  const { data: existingCRole } = await service
+    .from('admin_roles')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('role', 'consultant')
+    .maybeSingle();
 
-  if (roleErr) {
-    await service.auth.admin.deleteUser(userId);
-    return NextResponse.json({ error: roleErr.message }, { status: 500 });
+  if (!existingCRole) {
+    const { error: roleErr } = await service.from('admin_roles').insert({
+      user_id:   userId,
+      role:      'consultant',
+      school_id: null,
+    });
+    if (roleErr) {
+      console.error('[consultant-registrations/approve] role insert failed:', roleErr);
+      return NextResponse.json({ error: 'Role assignment failed: ' + roleErr.message }, { status: 500 });
+    }
   }
 
   // 5. Write extended profile
