@@ -46,19 +46,33 @@ export async function POST(req: NextRequest) {
 
     const service = createServiceClient();
 
-    // Prevent duplicate pending submissions for same email
+    // Prevent duplicate PENDING submissions for same email
+    // But allow re-registration if a previous request was approved but no consultant profile exists
+    // (handles case where user is sub_admin + wants to also be consultant)
     const { data: existing } = await service
       .from('consultant_registrations')
-      .select('id, status')
+      .select('id, status, consultant_user_id')
       .eq('contact_email', contact_email.trim().toLowerCase())
       .in('status', ['pending', 'approved'])
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    if (existing) {
-      const msg = existing.status === 'approved'
-        ? 'This email is already registered as a consultant.'
-        : 'A registration request for this email is already pending review.';
-      return NextResponse.json({ error: msg }, { status: 409, headers: CORS });
+    if (existing?.status === 'pending') {
+      return NextResponse.json({ error: 'A registration request for this email is already pending review.' }, { status: 409, headers: CORS });
+    }
+
+    if (existing?.status === 'approved' && existing.consultant_user_id) {
+      // Check if they actually have a consultant profile — if yes, truly already registered
+      const { data: profile } = await service
+        .from('consultant_profiles')
+        .select('id')
+        .eq('user_id', existing.consultant_user_id)
+        .maybeSingle();
+      if (profile) {
+        return NextResponse.json({ error: 'This email is already registered as a consultant.' }, { status: 409, headers: CORS });
+      }
+      // No profile yet despite being 'approved' — allow re-submission
     }
 
     const { data, error } = await service
