@@ -6,11 +6,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 function LoginForm() {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
   const router       = useRouter();
   const searchParams = useSearchParams();
   const redirect     = searchParams.get('redirect') ?? '/admin';
+  const errorParam   = searchParams.get('error');
+  const [error, setError] = useState(
+    errorParam === 'no_role' ? 'Your account has no admin access. Contact your administrator.' : ''
+  );
 
   async function doLogin() {
     setError('');
@@ -20,6 +23,19 @@ function LoginForm() {
     if (authErr || !data.session) {
       setLoading(false);
       setError('Incorrect email or password. Try again.');
+      return;
+    }
+    // Verify user has an admin role (super_admin, sub_admin, or school_admin)
+    // Consultants use a different portal — block them here
+    const { data: roleRows } = await supabase
+      .from('admin_roles')
+      .select('role')
+      .eq('user_id', data.user.id)
+      .in('role', ['super_admin', 'sub_admin', 'school_admin']);
+    if (!roleRows || roleRows.length === 0) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError('You do not have access to the admin panel.');
       return;
     }
     // Small delay to ensure session cookie is set before navigating
