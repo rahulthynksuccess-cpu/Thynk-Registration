@@ -268,11 +268,12 @@ export async function PATCH(req: NextRequest) {
   const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  // Sub-admins may only update internal_remark — silently ignore all other fields
+  // Sub-admins may only update internal_remark — use update (not upsert) to avoid INSERT path
   if (!isSuperAdmin) {
     const { error: remarkErr } = await service
       .from('consultant_profiles')
-      .upsert({ user_id: id, internal_remark: internal_remark?.trim() || null }, { onConflict: 'user_id' });
+      .update({ internal_remark: internal_remark?.trim() || null })
+      .eq('user_id', id);
     if (remarkErr) return NextResponse.json({ error: remarkErr.message }, { status: 400 });
 
     return NextResponse.json({ success: true });
