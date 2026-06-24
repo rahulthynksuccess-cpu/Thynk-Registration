@@ -146,7 +146,7 @@ export function ConsultantHub({
             📋 Copy URL
           </button>
           <DownloadReportBtn authHeaders={authHeaders} showToast={showToast} />
-          {isSuperAdmin && (
+          {canSeeApproved && (
             <button onClick={() => setConsultantForm({})}
               style={{ padding:'8px 14px', borderRadius:9, background:'transparent', border:'1.5px solid #4f46e5', color:'#4f46e5', fontSize:12, fontWeight:700, cursor:'pointer' }}>
               + Add Manually
@@ -193,7 +193,7 @@ export function ConsultantHub({
           consultants={consultants}
           registrations={approvedRegs}
           enrichedRows={enrichedRows}
-          isSuperAdmin={isSuperAdmin}
+          canManage={isSuperAdmin || subAdminPages === null || subAdminPages.includes('consultants')}
           authHeaders={authHeaders}
           onReload={onReload}
           showToast={showToast}
@@ -646,17 +646,18 @@ function RegistrationCard({ reg, expanded, selected, onSelect, onToggle, onAppro
 // ═════════════════════════════════════════════════════════════════════════════
 // TAB 2: APPROVED CONSULTANTS — full profile view
 // ═════════════════════════════════════════════════════════════════════════════
-function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, authHeaders, onReload, showToast, setConsultantForm }: {
+function ApprovedTab({ consultants, registrations, enrichedRows, canManage, authHeaders, onReload, showToast, setConsultantForm }: {
   consultants:       Row[];
   registrations:     Row[];
   enrichedRows:      Row[];
-  isSuperAdmin:      boolean;
+  canManage:         boolean;
   authHeaders:       () => HeadersInit;
   onReload:          () => void;
   showToast:         (m: string, i?: string) => void;
   setConsultantForm: (r: Row | null) => void;
 }) {
-  const [search,       setSearch]      = useState('');
+  const [search,             setSearch]             = useState('');
+  const [remarkFilter,       setRemarkFilter]        = useState(false);
   const [domainFilter, setDomainFilter] = useState<string[]>([]);
   const [expandedId,   setExpandedId]  = useState<string | null>(null);
   const [deleting,     setDeleting]    = useState<string | null>(null);
@@ -689,8 +690,11 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
         return domainFilter.some(f => d.includes(f));
       });
     }
+    if (remarkFilter) {
+      list = list.filter(c => c.internal_remark && c.internal_remark.trim() !== '');
+    }
     return list;
-  }, [enriched, search, domainFilter]);
+  }, [enriched, search, domainFilter, remarkFilter]);
 
   async function handleDelete(id: string) {
     if (!confirm('Remove this consultant? Their schools will remain but become unassigned.')) return;
@@ -719,6 +723,33 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
         <input style={{ ...IS, maxWidth:240, padding:'8px 12px', fontSize:13 }}
           placeholder="Search name, email, code…"
           value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
+      {/* ── Quick filter: Internal Remark Updated ── */}
+      <div style={{ marginBottom:10 }}>
+        <button
+          onClick={() => setRemarkFilter(prev => !prev)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', transition: 'all .15s', fontFamily: 'DM Sans,sans-serif',
+            border: `1.5px solid ${remarkFilter ? '#b45309' : 'var(--bd)'}`,
+            background: remarkFilter ? 'rgba(180,83,9,0.08)' : 'transparent',
+            color: remarkFilter ? '#b45309' : 'var(--m)',
+          }}>
+          🔒 Internal Remark Updated
+          {remarkFilter && (
+            <span style={{ fontSize:10, background:'#b45309', color:'#fff', borderRadius:20, padding:'1px 7px', fontWeight:800 }}>
+              {filtered.length}
+            </span>
+          )}
+        </button>
+        {remarkFilter && (
+          <button onClick={() => setRemarkFilter(false)}
+            style={{ marginLeft:6, padding:'4px 10px', borderRadius:20, border:'1.5px solid var(--bd)', fontSize:11, color:'var(--m)', background:'transparent', cursor:'pointer' }}>
+            ✕ Clear
+          </button>
+        )}
       </div>
 
       {/* ── Domain filter pills ── */}
@@ -792,7 +823,7 @@ function ApprovedTab({ consultants, registrations, enrichedRows, isSuperAdmin, a
                     style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid var(--bd)', background:'var(--bg)', color:'var(--m)', fontSize:12, fontWeight:700, cursor:'pointer' }}>
                     {isExpanded ? '▲ Less' : '▼ Profile'}
                   </button>
-                  {isSuperAdmin && (
+                  {canManage && (
                     <>
                       <button onClick={() => setConsultantForm(c)}
                         style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(79,70,229,.3)', background:'rgba(79,70,229,.06)', color:'#4f46e5', fontSize:12, fontWeight:700, cursor:'pointer' }}>
