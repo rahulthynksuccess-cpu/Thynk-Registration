@@ -233,12 +233,68 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/admin/consultants
 export async function PATCH(req: NextRequest) {
-  const user = await requireSuperAdmin(req);
+  const user = await getUserFromRequest(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
-  const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark } = await req.json();
+
+  // Determine role: super_admin or sub_admin-with-consultants-page
+  const { data: superRow } = await service
+    .from('admin_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('role', 'super_admin')
+    .is('school_id', null)
+    .maybeSingle();
+  const isSuperAdmin = !!superRow;
+
+  let isSubAdminWithAccess = false;
+  if (!isSuperAdmin) {
+    const { data: subRows } = await service
+      .from('admin_roles')
+      .select('allowed_pages')
+      .eq('user_id', user.id)
+      .eq('role', 'sub_admin');
+    isSubAdminWithAccess = subRows?.some(
+      (r: any) => Array.isArray(r.allowed_pages) && r.allowed_pages.includes('consultants')
+    ) ?? false;
+  }
+
+  if (!isSuperAdmin && !isSubAdminWithAccess) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  // Sub-admins may ONLY update internal_remark — all other fields require super_admin
+  if (!isSuperAdmin) {
+    if (
+      name !== undefined ||
+      email !== undefined ||
+      password !== undefined ||
+      consultant_code !== undefined ||
+      mobile_number !== undefined ||
+      pan_number !== undefined ||
+      is_default_consultant !== undefined
+    ) {
+      return NextResponse.json({ error: 'Forbidden: sub-admins may only update internal_remark' }, { status: 403 });
+    }
+
+    if (internal_remark === undefined) {
+      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    }
+
+    const { error: remarkErr } = await service
+      .from('consultant_profiles')
+      .upsert({ user_id: id, internal_remark: internal_remark?.trim() || null }, { onConflict: 'user_id' });
+    if (remarkErr) return NextResponse.json({ error: remarkErr.message }, { status: 400 });
+
+    return NextResponse.json({ success: true });
+  }
+
+  // ── super_admin: full update ──────────────────────────────────────────────
 
   // Update auth user (name / email / password)
   const authUpdate: Record<string, any> = {};
