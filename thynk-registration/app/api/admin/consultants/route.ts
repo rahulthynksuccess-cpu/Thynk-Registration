@@ -268,24 +268,8 @@ export async function PATCH(req: NextRequest) {
   const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  // Sub-admins may ONLY update internal_remark — all other fields require super_admin
+  // Sub-admins may only update internal_remark — silently ignore all other fields
   if (!isSuperAdmin) {
-    if (
-      name !== undefined ||
-      email !== undefined ||
-      password !== undefined ||
-      consultant_code !== undefined ||
-      mobile_number !== undefined ||
-      pan_number !== undefined ||
-      is_default_consultant !== undefined
-    ) {
-      return NextResponse.json({ error: 'Forbidden: sub-admins may only update internal_remark' }, { status: 403 });
-    }
-
-    if (internal_remark === undefined) {
-      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
-    }
-
     const { error: remarkErr } = await service
       .from('consultant_profiles')
       .upsert({ user_id: id, internal_remark: internal_remark?.trim() || null }, { onConflict: 'user_id' });
