@@ -2542,6 +2542,9 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
     allowed_grades: (initial.allowed_grades ?? []) as string[],
     email_trigger_enabled:    initial.email_trigger_enabled    !== false,
     whatsapp_trigger_enabled: initial.whatsapp_trigger_enabled !== false,
+    grade_specific_pricing: !!(initial.grade_prices_inr && Object.keys(initial.grade_prices_inr).length > 0),
+    grade_prices_inr: (initial.grade_prices_inr ?? {}) as Record<string,number>,
+    grade_prices_usd: (initial.grade_prices_usd ?? {}) as Record<string,number>,
   });
   const [allGrades, setAllGrades] = useState<Row[]>([]);
   const [gradesLoading, setGradesLoading] = useState(true);
@@ -2551,9 +2554,66 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
   }, []);
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.value}));
   const autoSlug = (name:string) => name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
-  function toggleGrade(gradeName: string) { setF(p => { const already = p.allowed_grades.includes(gradeName); return { ...p, allowed_grades: already ? p.allowed_grades.filter(g => g !== gradeName) : [...p.allowed_grades, gradeName] }; }); }
-  function selectAll()  { setF(p => ({ ...p, allowed_grades: allGrades.map(g => g.name) })); }
+  function toggleGrade(gradeName: string) {
+    setF(p => {
+      const already = p.allowed_grades.includes(gradeName);
+      const newGrades = already ? p.allowed_grades.filter(g => g !== gradeName) : [...p.allowed_grades, gradeName];
+      // When adding a grade, seed default prices if not already set
+      const newInr = { ...p.grade_prices_inr };
+      const newUsd = { ...p.grade_prices_usd };
+      if (!already) {
+        if (!newInr[gradeName] && p.base_amount_inr) newInr[gradeName] = Math.round(Number(p.base_amount_inr) * 100);
+        if (!newUsd[gradeName] && p.base_amount_usd) newUsd[gradeName] = Math.round(Number(p.base_amount_usd) * 100);
+      }
+      return { ...p, allowed_grades: newGrades, grade_prices_inr: newInr, grade_prices_usd: newUsd };
+    });
+  }
+  function selectAll()  { setF(p => {
+    const newGrades = allGrades.map(g => g.name);
+    const newInr = { ...p.grade_prices_inr };
+    const newUsd = { ...p.grade_prices_usd };
+    newGrades.forEach(gn => {
+      if (!newInr[gn] && p.base_amount_inr) newInr[gn] = Math.round(Number(p.base_amount_inr) * 100);
+      if (!newUsd[gn] && p.base_amount_usd) newUsd[gn] = Math.round(Number(p.base_amount_usd) * 100);
+    });
+    return { ...p, allowed_grades: newGrades, grade_prices_inr: newInr, grade_prices_usd: newUsd };
+  }); }
   function selectNone() { setF(p => ({ ...p, allowed_grades: [] })); }
+
+  // When toggling grade_specific_pricing ON, seed all allowed grades with base prices
+  function toggleGradeSpecificPricing(enabled: boolean) {
+    setF(p => {
+      if (!enabled) return { ...p, grade_specific_pricing: false };
+      const newInr: Record<string,number> = {};
+      const newUsd: Record<string,number> = {};
+      p.allowed_grades.forEach(gn => {
+        newInr[gn] = p.grade_prices_inr[gn] ?? (p.base_amount_inr ? Math.round(Number(p.base_amount_inr) * 100) : 0);
+        newUsd[gn] = p.grade_prices_usd[gn] ?? (p.base_amount_usd ? Math.round(Number(p.base_amount_usd) * 100) : 0);
+      });
+      // Also seed any grade not yet in allowed_grades from allGrades
+      allGrades.forEach(g => {
+        if (!newInr[g.name]) newInr[g.name] = p.base_amount_inr ? Math.round(Number(p.base_amount_inr) * 100) : 0;
+        if (!newUsd[g.name]) newUsd[g.name] = p.base_amount_usd ? Math.round(Number(p.base_amount_usd) * 100) : 0;
+      });
+      return { ...p, grade_specific_pricing: true, grade_prices_inr: newInr, grade_prices_usd: newUsd };
+    });
+  }
+
+  function setGradePrice(gradeName: string, currency: 'inr'|'usd', rawVal: string) {
+    const paise = rawVal === '' ? 0 : Math.round(Number(rawVal) * 100);
+    setF(p => ({
+      ...p,
+      grade_prices_inr: currency === 'inr' ? { ...p.grade_prices_inr, [gradeName]: paise } : p.grade_prices_inr,
+      grade_prices_usd: currency === 'usd' ? { ...p.grade_prices_usd, [gradeName]: paise } : p.grade_prices_usd,
+    }));
+  }
+
+  const gradesToShow = f.grade_specific_pricing
+    ? (f.allowed_grades.length > 0 ? f.allowed_grades : allGrades.map(g => g.name))
+    : [];
+
+  const hasUsd = !!f.base_amount_usd;
+
   return (
     <ModalShell title={f.id?'Edit Program':'New Program'} onClose={onClose}>
       <Field label="Program Name *"><input style={IS} value={f.name} onChange={e=>{setF(p=>({...p,name:e.target.value,slug:p.slug||autoSlug(e.target.value)}));}} placeholder="e.g. Thynk Success 2025"/></Field>
@@ -2563,6 +2623,91 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
         <Field label="Base Price — USD ($) (optional)"><div style={{position:'relative'}}><span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:14,pointerEvents:'none'}}>$</span><input style={{...IS,paddingLeft:26}} type="number" value={f.base_amount_usd} onChange={set('base_amount_usd')} placeholder="e.g. 50"/></div></Field>
         <Field label="Status"><select style={SS} value={f.status} onChange={set('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
       </div>
+
+      {/* ── Grade-Specific Pricing Toggle ─────────────────────────────── */}
+      <div style={{marginTop:18,padding:'14px 16px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>🏷️ Grade-Specific Pricing</div>
+            <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>Set different fees per grade instead of one flat price</div>
+          </div>
+          <div style={{display:'flex',gap:8,flexShrink:0}}>
+            {([true,false] as const).map(val => {
+              const active = f.grade_specific_pricing === val;
+              return (
+                <label key={String(val)} onClick={() => toggleGradeSpecificPricing(val)} style={{
+                  display:'flex',alignItems:'center',gap:6,padding:'6px 16px',borderRadius:8,cursor:'pointer',
+                  border:`1.5px solid ${active?(val?'#10b981':'var(--bd)'):'var(--bd)'}`,
+                  background: active?(val?'rgba(16,185,129,0.1)':'var(--card)'):'transparent',
+                  fontSize:12,fontWeight:700,fontFamily:'DM Sans,sans-serif',userSelect:'none' as const,
+                  color: active?(val?'#10b981':'var(--m)'):'var(--m)',transition:'all .12s',
+                }}>
+                  <input type="radio" checked={active} onChange={()=>{}} style={{display:'none'}}/>
+                  {val ? '✅ Yes' : '➖ No'}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {f.grade_specific_pricing && (
+          <div style={{marginTop:14}}>
+            <div style={{fontSize:11,color:'var(--m)',fontWeight:600,marginBottom:8}}>
+              💡 Prices pre-filled from base price. Edit per grade as needed. Values in full units (₹ / $), not paise.
+            </div>
+            {gradesToShow.length === 0 ? (
+              <div style={{padding:'12px 16px',borderRadius:8,border:'1.5px dashed var(--bd)',fontSize:12,color:'var(--m)',textAlign:'center'}}>
+                Select allowed grades below first — grade pricing rows will appear here.
+              </div>
+            ) : (
+              <div style={{border:'1.5px solid var(--bd)',borderRadius:10,overflow:'hidden'}}>
+                {/* Header */}
+                <div style={{display:'grid',gridTemplateColumns:`1fr ${hasUsd?'110px 110px':'110px'}`,gap:0,background:'var(--acc3)',padding:'8px 14px',borderBottom:'1px solid var(--bd)'}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--acc)',textTransform:'uppercase',letterSpacing:'.04em'}}>Grade</div>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--acc)',textTransform:'uppercase',letterSpacing:'.04em',textAlign:'right'}}>INR (₹)</div>
+                  {hasUsd && <div style={{fontSize:11,fontWeight:700,color:'#16a34a',textTransform:'uppercase',letterSpacing:'.04em',textAlign:'right'}}>USD ($)</div>}
+                </div>
+                {gradesToShow.map((gn, idx) => (
+                  <div key={gn} style={{
+                    display:'grid',
+                    gridTemplateColumns:`1fr ${hasUsd?'110px 110px':'110px'}`,
+                    gap:0,
+                    padding:'8px 14px',
+                    borderBottom: idx < gradesToShow.length-1 ? '1px solid var(--bd)' : 'none',
+                    background: idx%2===0 ? 'var(--card)' : 'var(--bg)',
+                    alignItems:'center',
+                  }}>
+                    <div style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>{gn}</div>
+                    <div style={{position:'relative',paddingLeft:6}}>
+                      <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:12,pointerEvents:'none'}}>₹</span>
+                      <input
+                        type="number" min="0" step="1"
+                        style={{...IS,paddingLeft:22,paddingTop:7,paddingBottom:7,fontSize:13,width:'100%'}}
+                        value={f.grade_prices_inr[gn] !== undefined ? String(f.grade_prices_inr[gn]/100) : ''}
+                        placeholder={f.base_amount_inr || '0'}
+                        onChange={e => setGradePrice(gn,'inr',e.target.value)}
+                      />
+                    </div>
+                    {hasUsd && (
+                      <div style={{position:'relative',paddingLeft:6}}>
+                        <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'var(--m)',fontSize:12,pointerEvents:'none'}}>$</span>
+                        <input
+                          type="number" min="0" step="0.01"
+                          style={{...IS,paddingLeft:22,paddingTop:7,paddingBottom:7,fontSize:13,width:'100%'}}
+                          value={f.grade_prices_usd[gn] !== undefined ? String(f.grade_prices_usd[gn]/100) : ''}
+                          placeholder={f.base_amount_usd || '0'}
+                          onChange={e => setGradePrice(gn,'usd',e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div style={{marginTop:18,marginBottom:4}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
           <label style={{display:'block',fontSize:12,fontWeight:600,color:'var(--m)',textTransform:'uppercase',letterSpacing:'.04em'}}>Allowed Grades *</label>
@@ -2635,7 +2780,18 @@ function ProgramFormModal({ initial, onClose, onSave }:{ initial:Row; onClose:()
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({ id: f.id, name: f.name, slug: f.slug, status: f.status, base_amount_inr: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null, base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0, currency: 'INR', allowed_grades: f.allowed_grades, email_trigger_enabled: f.email_trigger_enabled, whatsapp_trigger_enabled: f.whatsapp_trigger_enabled })}>{f.id?'Save Changes':'Create Program'}</button>
+        <button className="btn btn-primary" onClick={()=>onSave({
+          id: f.id, name: f.name, slug: f.slug, status: f.status,
+          base_amount_inr: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0,
+          base_amount_usd: f.base_amount_usd ? Math.round(Number(f.base_amount_usd)*100) : null,
+          base_amount: f.base_amount_inr ? Math.round(Number(f.base_amount_inr)*100) : 0,
+          currency: 'INR',
+          allowed_grades: f.allowed_grades,
+          email_trigger_enabled: f.email_trigger_enabled,
+          whatsapp_trigger_enabled: f.whatsapp_trigger_enabled,
+          grade_prices_inr: f.grade_specific_pricing ? f.grade_prices_inr : null,
+          grade_prices_usd: f.grade_specific_pricing ? f.grade_prices_usd : null,
+        })}>{f.id?'Save Changes':'Create Program'}</button>
       </div>
     </ModalShell>
   );

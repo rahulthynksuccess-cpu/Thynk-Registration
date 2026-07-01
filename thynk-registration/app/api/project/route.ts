@@ -1,7 +1,7 @@
 // app/api/project/route.ts
 // PUBLIC endpoint — no auth required
-// Returns minimal project info (name, slug, allowed_grades) by slug
-// Used by the standalone registration.html to show the program badge
+// Returns project info (name, slug, allowed_grades, grade_prices_inr, grade_prices_usd) by slug
+// Used by the standalone registration.html to show the program badge and grade-specific pricing
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('projects')
-    .select('id, name, slug, status, allowed_grades')
+    .select('id, name, slug, status, allowed_grades, base_amount_inr, base_amount_usd, grade_prices_inr, grade_prices_usd')
     .eq('slug', slug)
     .eq('status', 'active')
     .single();

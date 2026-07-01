@@ -28,7 +28,11 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
   const body = await req.json();
-  const { name, slug, base_amount_inr, base_amount_usd, status, allowed_grades, email_trigger_enabled, whatsapp_trigger_enabled } = body;
+  const {
+    name, slug, base_amount_inr, base_amount_usd, status, allowed_grades,
+    email_trigger_enabled, whatsapp_trigger_enabled,
+    grade_prices_inr, grade_prices_usd,
+  } = body;
   if (!name || !slug) return NextResponse.json({ error: 'name and slug required' }, { status: 400 });
   const inr = Math.round(Number(base_amount_inr || 0));
   const usd = base_amount_usd ? Math.round(Number(base_amount_usd)) : null;
@@ -43,6 +47,9 @@ export async function POST(req: NextRequest) {
     allowed_grades:           allowed_grades ?? [],
     email_trigger_enabled:    email_trigger_enabled !== false,
     whatsapp_trigger_enabled: whatsapp_trigger_enabled !== false,
+    // Grade-specific pricing — stored as JSONB { "Grade 1": 120000, "Grade 2": 150000, ... } (paise/cents)
+    grade_prices_inr:         grade_prices_inr ?? null,
+    grade_prices_usd:         grade_prices_usd ?? null,
   }).select().single();
   if (error) return NextResponse.json({ error: error.code === '23505' ? 'Slug already exists' : error.message }, { status: 400 });
   return NextResponse.json({ project: data }, { status: 201 });
@@ -52,7 +59,11 @@ export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const service = createServiceClient();
-  const { id, name, base_amount_inr, base_amount_usd, status, allowed_grades, email_trigger_enabled, whatsapp_trigger_enabled } = await req.json();
+  const {
+    id, name, base_amount_inr, base_amount_usd, status, allowed_grades,
+    email_trigger_enabled, whatsapp_trigger_enabled,
+    grade_prices_inr, grade_prices_usd,
+  } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
   const updates: Record<string, any> = {};
   if (name           !== undefined) updates.name           = name;
@@ -67,6 +78,10 @@ export async function PATCH(req: NextRequest) {
   if (base_amount_usd !== undefined) {
     updates.base_amount_usd = base_amount_usd ? Math.round(Number(base_amount_usd)) : null;
   }
+  // null means "clear grade pricing" (revert to flat rate); undefined means "don't touch"
+  if (grade_prices_inr !== undefined) updates.grade_prices_inr = grade_prices_inr;
+  if (grade_prices_usd !== undefined) updates.grade_prices_usd = grade_prices_usd;
+
   const { data, error } = await service.from('projects').update(updates).eq('id', id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ project: data });
