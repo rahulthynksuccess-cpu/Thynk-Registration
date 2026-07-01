@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Thynk Success — Registration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:      #f4f6ff;
+  --card:    #ffffff;
+  --bd:      #e4e9f2;
+  --acc:     #4f46e5;
+  --acc2:    #4338ca;
+  --acc3:    #eef2ff;
+  --green:   #10b981;
+  --green2:  #d1fae5;
+  --red:     #ef4444;
+  --red2:    #fee2e2;
+  --orange:  #f59e0b;
+  --orange2: #fef3c7;
+  --purple:  #8b5cf6;
+  --text:    #1e1b4b;
+  --m:       #6b7280;
+  --m2:      #9ca3af;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'DM Sans',sans-serif;
+  color:var(--text);
+  min-height:100vh;
+  background:var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 10%, rgba(79,70,229,.08) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 90%, rgba(139,92,246,.07) 0%, transparent 55%);
+}
+.reg-page{
+  min-height:100vh;
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  padding:32px 16px 48px;
+}
+.reg-wrap{width:100%;max-width:560px;}
+.card{
+  background:var(--card);
+  border-radius:28px;
+  box-shadow:0 8px 48px rgba(79,70,229,.12), 0 1px 3px rgba(0,0,0,.05);
+  overflow:hidden;
+  animation:slideUp .45s cubic-bezier(.22,.9,.36,1) both;
+}
+@keyframes slideUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+.card-header{
+  background:linear-gradient(135deg,#3730a3 0%,#4f46e5 45%,#7c3aed 100%);
+  padding:32px 36px 28px;
+  color:#fff;
+  position:relative;
+  overflow:hidden;
+}
+.card-header::before{
+  content:'';position:absolute;right:-40px;top:-40px;
+  width:180px;height:180px;
+  background:rgba(255,255,255,.05);border-radius:50%;
+}
+.card-header::after{
+  content:'';position:absolute;right:60px;bottom:-60px;
+  width:120px;height:120px;
+  background:rgba(255,255,255,.04);border-radius:50%;
+}
+.header-logo{
+  display:flex;align-items:center;gap:12px;margin-bottom:12px;
+}
+.header-icon{
+  width:48px;height:48px;
+  background:rgba(255,255,255,.15);
+  border-radius:16px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;
+  backdrop-filter:blur(4px);
+  border:1px solid rgba(255,255,255,.2);
+  flex-shrink:0;
+}
+.card-header h1{
+  font-family:'Sora',sans-serif;font-size:22px;font-weight:800;
+  line-height:1.2;
+}
+.card-header p{font-size:13px;color:rgba(255,255,255,.65);margin-top:5px;}
+.program-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.2);
+  border-radius:20px;
+  padding:5px 12px;
+  font-size:12px;font-weight:600;
+  margin-top:10px;
+  backdrop-filter:blur(4px);
+}
+.card-body{padding:32px 36px;}
+.steps{display:flex;align-items:center;margin-bottom:32px;}
+.step-item{display:flex;align-items:center;flex:1;}
+.step-item:last-child{flex:0;}
+.step-dot{
+  width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;
+  background:var(--bg);color:var(--m2);border:2px solid var(--bd);
+  transition:.25s;flex-shrink:0;position:relative;
+  cursor:default;
+}
+.step-dot.active{
+  background:var(--acc);color:#fff;border-color:var(--acc);
+  box-shadow:0 0 0 4px rgba(79,70,229,.15);
+}
+.step-dot.done{background:var(--green);color:#fff;border-color:var(--green);}
+.step-label{
+  font-size:11px;font-weight:600;color:var(--m2);
+  white-space:nowrap;margin-top:4px;text-align:center;
+  position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);
+}
+.step-dot.active .step-label,.step-dot.done .step-label{color:var(--acc);}
+.step-dot.done .step-label{color:var(--green);}
+.step-line{flex:1;height:2px;background:var(--bd);transition:.25s;margin:0 4px;}
+.step-line.done{background:var(--green);}
+.mode-title{
+  font-family:'Sora',sans-serif;
+  font-size:18px;font-weight:700;
+  margin-bottom:6px;
+}
+.mode-sub{font-size:13px;color:var(--m);margin-bottom:24px;line-height:1.5;}
+.mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px;}
+.mode-card{
+  position:relative;
+  border:2px solid var(--bd);
+  border-radius:20px;
+  padding:24px 20px;
+  cursor:pointer;
+  transition:.2s;
+  background:var(--card);
+  text-align:center;
+  overflow:hidden;
+}
+.mode-card:hover{border-color:var(--acc);transform:translateY(-3px);box-shadow:0 8px 24px rgba(79,70,229,.1);}
+.mode-card.selected{
+  border-color:var(--acc);
+  background:linear-gradient(135deg,var(--acc3) 0%,#f5f3ff 100%);
+  box-shadow:0 0 0 3px rgba(79,70,229,.12), 0 8px 24px rgba(79,70,229,.12);
+}
+.mode-card .mc-icon{
+  font-size:40px;margin-bottom:12px;display:block;
+  transition:transform .2s;
+}
+.mode-card:hover .mc-icon{transform:scale(1.1);}
+.mode-card .mc-title{
+  font-family:'Sora',sans-serif;font-size:14px;font-weight:700;
+  color:var(--text);margin-bottom:6px;
+}
+.mode-card .mc-badge{
+  display:inline-block;
+  background:rgba(239,68,68,.1);color:var(--red);
+  border:1px solid rgba(239,68,68,.2);
+  border-radius:6px;
+  font-size:10px;font-weight:700;
+  padding:3px 8px;margin-bottom:8px;
+  letter-spacing:.03em;
+}
+.mode-card .mc-sub{font-size:11px;color:var(--m);line-height:1.5;}
+.mode-card.selected .mc-title{color:var(--acc);}
+.mode-card input[type=radio]{position:absolute;opacity:0;pointer-events:none;}
+.mc-check{
+  position:absolute;top:12px;right:12px;
+  width:20px;height:20px;border-radius:50%;
+  border:2px solid var(--bd);
+  background:var(--card);
+  transition:.2s;
+}
+.mode-card.selected .mc-check{
+  background:var(--acc);border-color:var(--acc);
+}
+.mode-card.selected .mc-check::after{
+  content:'✓';
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:11px;font-weight:700;
+  width:100%;height:100%;
+}
+.btn-continue{
+  width:100%;padding:15px;
+  border:none;border-radius:16px;
+  background:linear-gradient(135deg,var(--acc),var(--purple));
+  color:#fff;
+  font-family:'Sora',sans-serif;font-size:15px;font-weight:700;
+  cursor:pointer;transition:.2s;
+  box-shadow:0 4px 18px rgba(79,70,229,.35);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn-continue:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(79,70,229,.45);}
+.btn-continue:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none;}
+.form-section-title{
+  font-family:'Sora',sans-serif;font-size:15px;font-weight:700;
+  color:var(--text);margin-bottom:4px;margin-top:4px;
+}
+.form-section-sub{font-size:12px;color:var(--m);margin-bottom:20px;}
+.field{margin-bottom:16px;}
+.field label{
+  display:block;font-size:11px;font-weight:700;
+  color:var(--m);margin-bottom:6px;
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.field label .req{color:var(--red);}
+.field input,
+.field select,
+.field textarea{
+  width:100%;
+  border:1.5px solid var(--bd);
+  border-radius:12px;
+  padding:12px 14px;
+  font-size:14px;
+  font-family:'DM Sans',sans-serif;
+  color:var(--text);
+  outline:none;
+  background:var(--card);
+  transition:.15s;
+  -webkit-appearance:none;
+  appearance:none;
+}
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:var(--acc);
+  box-shadow:0 0 0 3px rgba(79,70,229,.08);
+}
+.field input.err,.field select.err,.field textarea.err{
+  border-color:var(--red);background:#fff5f5;
+}
+.field textarea{resize:vertical;min-height:80px;}
+.select-wrap{position:relative;}
+.select-wrap::after{
+  content:'▾';position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  font-size:12px;color:var(--m);pointer-events:none;
+}
+.err-msg{
+  display:none;color:var(--red);font-size:11px;
+  margin-top:4px;font-weight:600;
+}
+.err-msg.show{display:block;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.field-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.dropdown-add{
+  display:flex;gap:8px;align-items:stretch;
+}
+.dropdown-add select{flex:1;}
+.btn-add-new{
+  padding:0 14px;
+  border:1.5px solid var(--acc);border-radius:12px;
+  background:var(--acc3);color:var(--acc);
+  font-weight:700;font-size:18px;cursor:pointer;
+  transition:.15px;white-space:nowrap;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.btn-add-new:hover{background:var(--acc);color:#fff;}
+.add-new-input{
+  display:none;
+  gap:8px;margin-top:8px;
+}
+.add-new-input.show{display:flex;}
+.add-new-input input{flex:1;border-radius:10px;}
+.btn-add-confirm{
+  padding:0 16px;border:none;border-radius:10px;
+  background:var(--green);color:#fff;font-weight:700;font-size:13px;
+  cursor:pointer;white-space:nowrap;
+}
+.form-nav{display:flex;gap:10px;margin-top:24px;}
+.btn-back{
+  padding:13px 22px;border:1.5px solid var(--bd);border-radius:14px;
+  background:transparent;color:var(--m);
+  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;
+  cursor:pointer;transition:.15s;
+}
+.btn-back:hover{border-color:var(--acc);color:var(--acc);}
+.btn-next{
+  flex:1;padding:14px;border:none;border-radius:14px;
+  background:linear-gradient(135deg,var(--acc),var(--purple));
+  color:#fff;
+  font-family:'Sora',sans-serif;font-size:14px;font-weight:700;
+  cursor:pointer;transition:.2s;
+  box-shadow:0 4px 16px rgba(79,70,229,.3);
+}
+.btn-next:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(79,70,229,.4);}
+.btn-next:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.info-box{
+  background:var(--acc3);border:1px solid rgba(79,70,229,.15);
+  border-radius:12px;padding:12px 16px;
+  font-size:12px;color:var(--acc);font-weight:600;
+  margin-bottom:20px;display:flex;gap:8px;align-items:flex-start;
+  line-height:1.5;
+}
+.info-box.warn{background:var(--orange2);border-color:rgba(245,158,11,.2);color:#92400e;}
+.info-box.err-box{background:var(--red2);border-color:rgba(239,68,68,.2);color:var(--red);}
+/* ── Grade-price badge shown on Payment screen ── */
+.grade-price-note{
+  display:inline-flex;align-items:center;gap:6px;
+  background:linear-gradient(90deg,rgba(79,70,229,.08),rgba(139,92,246,.06));
+  border:1px solid rgba(79,70,229,.18);
+  border-radius:8px;
+  padding:6px 12px;
+  font-size:12px;font-weight:700;color:var(--acc);
+  margin-bottom:12px;
+}
+.review-box{
+  background:var(--bg);border-radius:16px;padding:16px 20px;
+  margin-bottom:20px;border:1px solid var(--bd);
+}
+.review-row{
+  display:flex;justify-content:space-between;
+  padding:8px 0;border-bottom:1px solid var(--bd);gap:16px;
+}
+.review-row:last-child{border-bottom:none;}
+.rlbl{font-size:11px;color:var(--m);font-weight:600;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;}
+.rval{font-size:13px;font-weight:600;text-align:right;}
+.disc-row{display:flex;gap:8px;margin-bottom:14px;}
+.disc-input{
+  flex:1;border:1.5px solid var(--bd);border-radius:10px;
+  padding:11px 14px;font-size:13px;font-family:'DM Sans',sans-serif;
+  outline:none;color:var(--text);text-transform:uppercase;letter-spacing:.05em;
+  background:var(--card);transition:.15s;
+}
+.disc-input:focus{border-color:var(--acc);}
+.disc-input.ok{border-color:var(--green);background:#f0fdf4;}
+.disc-btn{
+  padding:11px 18px;border:none;border-radius:10px;
+  background:var(--acc3);color:var(--acc);font-weight:700;
+  font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;
+  white-space:nowrap;transition:.15s;
+}
+.disc-btn:hover{background:var(--acc);color:#fff;}
+.disc-msg{font-size:12px;font-weight:600;margin-bottom:12px;min-height:16px;}
+.disc-msg.ok{color:var(--green);}
+.disc-msg.err{color:var(--red);}
+.amount-box{
+  background:linear-gradient(135deg,var(--acc3),#f5f3ff);
+  border:1px solid rgba(79,70,229,.15);
+  border-radius:16px;padding:18px 20px;margin-bottom:20px;
+}
+.amount-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;}
+.amount-row.strike{color:var(--m);text-decoration:line-through;}
+.amount-row.disc-row-amt{color:var(--green);font-weight:600;}
+.amount-divider{height:1px;background:rgba(79,70,229,.12);margin:8px 0;}
+.amount-total{
+  display:flex;justify-content:space-between;align-items:center;
+  font-family:'Sora',sans-serif;font-size:20px;font-weight:800;color:var(--text);
+  padding-top:4px;
+}
+.amount-currency-note{font-size:11px;color:var(--m);margin-top:8px;}
+.gw-section{margin-bottom:20px;}
+.gw-label{
+  font-size:11px;font-weight:700;color:var(--m);
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;
+}
+.gw-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.gw-btn{
+  position:relative;
+  border:2px solid var(--bd);border-radius:14px;
+  padding:14px 12px;cursor:pointer;background:var(--card);
+  transition:.15s;text-align:center;
+}
+.gw-btn:hover{border-color:var(--acc);background:var(--acc3);}
+.gw-btn.sel{border-color:var(--acc);background:var(--acc3);box-shadow:0 0 0 2px rgba(79,70,229,.12);}
+.gw-btn.sel-rzp{border-color:#2563eb;background:#eff6ff;}
+.gw-btn.sel-cf{border-color:#06b6d4;background:#ecfeff;}
+.gw-btn.sel-eb{border-color:#f97316;background:#fff7ed;}
+.gw-btn.sel-pp{border-color:#003087;background:#f0f4ff;}
+.gw-name{font-size:13px;font-weight:700;color:var(--text);}
+.gw-sub{font-size:10px;color:var(--m);margin-top:3px;}
+.gw-logo{font-size:20px;display:block;margin-bottom:6px;}
+.gw-label-badge{
+  display:inline-block;
+  margin-top:5px;
+  padding:2px 8px;
+  border-radius:20px;
+  font-size:9px;font-weight:700;
+  letter-spacing:.05em;text-transform:uppercase;
+  background:rgba(79,70,229,.12);
+  color:var(--acc);
+  line-height:16px;
+}
+.loader{
+  display:none;position:fixed;inset:0;
+  background:rgba(255,255,255,.88);backdrop-filter:blur(6px);
+  z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px;
+}
+.loader.show{display:flex;}
+.spinner{
+  width:44px;height:44px;
+  border:3px solid var(--acc3);border-top-color:var(--acc);
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-text{font-size:14px;font-weight:600;color:var(--m);}
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);
+  opacity:0;background:var(--text);color:#fff;
+  padding:12px 24px;border-radius:40px;
+  font-size:13px;font-weight:600;z-index:9999;
+  transition:.3s;max-width:340px;text-align:center;
+  box-shadow:0 8px 24px rgba(0,0,0,.2);white-space:nowrap;
+}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+.toast.ok{background:var(--green);}
+.toast.err{background:var(--red);}
+.success-screen{display:none;text-align:center;animation:fadeUp .4s ease both;}
+.success-screen.show{display:block;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+.success-icon{
+  width:80px;height:80px;background:var(--green2);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:36px;margin:0 auto 20px;
+  animation:popIn .5s cubic-bezier(.22,.9,.36,1.4) both;
+}
+@keyframes popIn{from{transform:scale(0)}to{transform:scale(1)}}
+.success-screen h2{font-family:'Sora',sans-serif;font-size:22px;font-weight:800;margin-bottom:6px;}
+.success-screen p{color:var(--m);font-size:13px;margin-bottom:20px;line-height:1.5;}
+.success-ref{
+  background:var(--bg);border:1px solid var(--bd);border-radius:12px;
+  padding:14px 16px;margin-bottom:20px;text-align:left;
+}
+.srow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);gap:12px;}
+.srow:last-child{border-bottom:none;}
+.slbl{font-size:11px;color:var(--m);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.sval{font-size:13px;font-weight:700;text-align:right;}
+.blocked-screen{display:none;text-align:center;padding:20px 0;}
+.blocked-screen.show{display:block;}
+.blocked-icon{font-size:52px;margin-bottom:16px;}
+.blocked-screen h2{font-family:'Sora',sans-serif;font-size:19px;font-weight:800;margin-bottom:8px;}
+.blocked-screen p{color:var(--m);font-size:13px;line-height:1.6;}
+.prefill-banner{
+  background:linear-gradient(90deg,rgba(16,185,129,.1),rgba(79,70,229,.08));
+  border:1.5px solid rgba(16,185,129,.3);
+  border-radius:12px;padding:12px 16px;margin-bottom:20px;
+  font-size:12px;font-weight:600;color:#065f46;
+  display:flex;align-items:center;gap:8px;line-height:1.5;
+}
+@media(max-width:480px){
+  .card-body{padding:24px 20px;}
+  .card-header{padding:24px 20px 20px;}
+  .mode-cards{grid-template-columns:1fr;}
+  .field-row,.field-row-3{grid-template-columns:1fr;}
+  .gw-grid{grid-template-columns:1fr 1fr;}
+  .step-label{display:none;}
+}
+</style>
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="spinner"></div>
+  <div class="loader-text" id="loaderText">Please wait…</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="reg-page">
+  <div class="reg-wrap">
+    <div class="card">
+      <div class="card-header">
+        <div class="header-logo">
+          <div class="header-icon" id="schoolIcon">📚</div>
+          <div>
+            <div id="headerSchoolName" style="font-family:'Sora',sans-serif;font-size:17px;font-weight:800;">Thynk Success</div>
+            <div id="headerOrgName" style="font-size:12px;color:rgba(255,255,255,.6);margin-top:2px;">Registration Portal</div>
+          </div>
+        </div>
+        <div id="programBadge" class="program-badge" style="display:none;">
+          🎯 <span id="programBadgeText" style="font-size:15px;font-weight:800;letter-spacing:.01em;">Program</span>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="steps" id="stepsBar" style="display:none;margin-bottom:40px;">
+          <div style="position:relative;">
+            <div class="step-dot active" id="dot1">1<span class="step-label">Details</span></div>
+          </div>
+          <div class="step-line" id="line1"></div>
+          <div style="position:relative;">
+            <div class="step-dot" id="dot2">2<span class="step-label">Payment</span></div>
+          </div>
+          <div class="step-line" id="line2"></div>
+          <div style="position:relative;">
+            <div class="step-dot" id="dot3">3<span class="step-label">Done</span></div>
+          </div>
+        </div>
+
+        <div id="screenMode">
+          <div class="mode-title">Welcome to Registration</div>
+          <div class="mode-sub">Please select the type of registration to proceed.</div>
+          <div class="mode-cards">
+            <label class="mode-card" id="cardSchool" for="modeSchool">
+              <input type="radio" name="regMode" id="modeSchool" value="school"/>
+              <div class="mc-check" id="checkSchool"></div>
+              <span class="mc-icon">🏫</span>
+              <div class="mc-badge">Officials Only</div>
+              <div class="mc-title">School Registration</div>
+              <div class="mc-sub">To be filled by School Officials only<br><strong>Not for students</strong></div>
+            </label>
+            <label class="mode-card" id="cardStudent" for="modeStudent">
+              <input type="radio" name="regMode" id="modeStudent" value="student"/>
+              <div class="mc-check" id="checkStudent"></div>
+              <span class="mc-icon">🎓</span>
+              <div class="mc-title">Student Registration</div>
+              <div class="mc-sub">For student / parent registration only</div>
+            </label>
+          </div>
+          <div style="margin-top:20px;">
+            <button class="btn-continue" id="btnContinueMode" disabled>Continue <span>→</span></button>
+          </div>
+        </div>
+
+        <div id="screenSchoolForm" style="display:none;">
+          <div class="form-section-title">🏫 School Registration</div>
+          <div class="form-section-sub">Fill in your school details. A super admin will review and approve your registration.</div>
+          <div class="field"><label>School Name <span class="req">*</span></label><input type="text" id="sName" placeholder="Full school name"/><div class="err-msg" id="err-sName">Please enter the school name</div></div>
+          <div class="field"><label>Address <span class="req">*</span></label><textarea id="sAddress" rows="3" placeholder="Complete postal address of the school"></textarea><div class="err-msg" id="err-sAddress">Please enter the address</div></div>
+          <div class="field"><label>Country <span class="req">*</span></label><div class="select-wrap"><select id="sCountry"><option value="">Select Country</option></select></div><div class="err-msg" id="err-sCountry">Please select a country</div></div>
+          <div class="field-row">
+            <div class="field"><label>State / Region <span class="req">*</span></label><div class="select-wrap"><select id="sState"><option value="">Select State</option></select></div><div class="err-msg" id="err-sState">Please select a state</div></div>
+            <div class="field"><label>Pin Code <span class="req">*</span></label><input type="text" id="sPinCode" placeholder="PIN / ZIP code"/><div class="err-msg" id="err-sPinCode">Please enter pin code</div></div>
+          </div>
+          <div class="field"><label>City <span class="req">*</span></label><div class="dropdown-add"><div class="select-wrap" style="flex:1"><select id="sCity"><option value="">Select City</option></select></div><button class="btn-add-new" id="btnAddSCity" title="Add new city">+</button></div><div class="add-new-input" id="addNew-sCity"><input type="text" id="newVal-sCity" placeholder="Enter city name"/><button class="btn-add-confirm" id="btnConfirmSCity">Add</button></div><div class="err-msg" id="err-sCity">Please select or enter a city</div></div>
+          <div class="field-row">
+            <div class="field"><label>Contact Person Name <span class="req">*</span></label><input type="text" id="sContactName" placeholder="Full name"/><div class="err-msg" id="err-sContactName">Please enter contact name</div></div>
+            <div class="field"><label>Designation <span class="req">*</span></label><input type="text" id="sDesignation" placeholder="Principal / Coordinator"/><div class="err-msg" id="err-sDesignation">Please enter designation</div></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Mobile Number <span class="req">*</span></label><input type="tel" id="sMobile" placeholder="+91 98765 43210"/><div class="err-msg" id="err-sMobile">Please enter mobile number</div></div>
+            <div class="field"><label>Contact Email</label><input type="email" id="sEmail" placeholder="school@example.com"/></div>
+          </div>
+          <div class="form-nav">
+            <button class="btn-back" id="btnSchoolBack">← Back</button>
+            <button class="btn-next" id="btnSchoolSubmit">Submit Registration →</button>
+          </div>
+        </div>
+
+        <div id="screenSchoolSuccess" style="display:none;">
+          <div class="success-screen show">
+            <div class="success-icon">📋</div>
+            <h2>Registration Submitted!</h2>
+            <p>Your school has been registered. A super admin will review your details and activate your account shortly.</p>
+            <div class="info-box" style="text-align:left;">ℹ️ You will receive an email notification once your school is approved and a registration link is shared with you.</div>
+            <div class="success-ref" id="schoolSubmitRef"></div>
+          </div>
+        </div>
+
+        <div id="screenStudentForm" style="display:none;">
+          <div class="form-section-title">🎓 Student Registration</div>
+          <div class="form-section-sub">Complete all fields below to register for <strong id="studentProgramLabel">the program</strong>.</div>
+          <div id="schoolBlocked" style="display:none;">
+            <div class="blocked-screen show">
+              <div class="blocked-icon">🔒</div>
+              <h2>Registration Not Available</h2>
+              <p id="schoolBlockedMsg">This school's registration is not currently active.<br>Please contact your school coordinator for assistance.</p>
+            </div>
+          </div>
+          <div id="studentFormFields">
+            <div id="locationPickerSection">
+              <div class="field-row">
+                <div class="field"><label>Country <span class="req">*</span></label><div class="dropdown-add"><div class="select-wrap" style="flex:1"><select id="stCountry"><option value="">Select Country</option></select></div><button class="btn-add-new" id="btnAddStCountry" title="Add new country">+</button></div><div class="add-new-input" id="addNew-stCountry"><input type="text" id="newVal-stCountry" placeholder="Enter country name"/><button class="btn-add-confirm" id="btnConfirmStCountry">Add</button></div><div class="err-msg" id="err-stCountry">Please select a country</div></div>
+                <div class="field"><label>State / Region <span class="req">*</span></label><div class="dropdown-add"><div class="select-wrap" style="flex:1"><select id="stState" disabled><option value="">Select State</option></select></div><button class="btn-add-new" id="btnAddStState" title="Add new state">+</button></div><div class="add-new-input" id="addNew-stState"><input type="text" id="newVal-stState" placeholder="Enter state name"/><button class="btn-add-confirm" id="btnConfirmStState">Add</button></div><div class="err-msg" id="err-stState">Please select a state</div></div>
+              </div>
+              <div class="field"><label>City <span class="req">*</span></label><div class="dropdown-add"><div class="select-wrap" style="flex:1"><select id="stCity" disabled><option value="">Select City</option></select></div><button class="btn-add-new" id="btnAddStCity" title="Add new city">+</button></div><div class="add-new-input" id="addNew-stCity"><input type="text" id="newVal-stCity" placeholder="Enter city name"/><button class="btn-add-confirm" id="btnConfirmStCity">Add</button></div><div class="err-msg" id="err-stCity">Please select a city</div></div>
+              <div class="field" id="schoolPickerField" style="display:none;"><label>School <span class="req">*</span></label><div class="select-wrap"><select id="stSchoolPicker"><option value="">Select School</option></select></div><input type="text" id="stSchoolNameInput" placeholder="Enter your school name" style="display:none;margin-top:8px;width:100%;border:1.5px solid var(--bd);border-radius:12px;padding:12px 14px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;"/><div class="err-msg" id="err-stSchoolPicker">Please select a school</div></div>
+            </div>
+            <div id="schoolLockedCard" style="display:none;">
+              <div class="info-box" style="flex-direction:column;gap:6px;align-items:flex-start;">
+                <div style="font-weight:700;font-size:13px;">📍 Registered School</div>
+                <div id="schoolLockedDetails" style="font-size:13px;color:var(--text);line-height:1.7;"></div>
+              </div>
+            </div>
+            <div id="personalDetailsSection">
+              <div class="field" style="margin-top:8px;"><label>Student Name <span class="req">*</span></label><input type="text" id="stName" placeholder="Full name of the student"/><div class="err-msg" id="err-stName">Please enter student name</div></div>
+              <div class="field-row">
+                <div class="field"><label>Class / Grade <span class="req">*</span></label><div class="select-wrap"><select id="stGrade"><option value="">Select Grade</option></select></div><div class="err-msg" id="err-stGrade">Please select a grade</div></div>
+                <div class="field"><label>Gender <span class="req">*</span></label><div class="select-wrap"><select id="stGender"><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></select></div><div class="err-msg" id="err-stGender">Please select gender</div></div>
+              </div>
+              <div class="field"><label>Parent / Guardian Name</label><input type="text" id="stParent" placeholder="Full name of parent or guardian"/></div>
+              <div class="field-row">
+                <div class="field"><label>Contact Number <span class="req">*</span></label><input type="tel" id="stPhone" placeholder="Mobile number"/><div class="err-msg" id="err-stPhone">Please enter a contact number</div></div>
+                <div class="field"><label>Email Address <span class="req">*</span></label><input type="email" id="stEmail" placeholder="email@example.com"/><div class="err-msg" id="err-stEmail">Enter a valid email</div></div>
+              </div>
+            </div>
+            <div class="form-nav">
+              <button class="btn-back" id="btnStudentBack">← Back</button>
+              <button class="btn-next" id="btnStudentNext">Continue to Payment →</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="screenPayment" style="display:none;">
+          <div class="form-section-title">💳 Payment</div>
+          <div class="form-section-sub">Review your details and complete the payment to confirm registration.</div>
+          <!-- Grade-price notice injected here by JS when grade-specific pricing is active -->
+          <div id="gradePriceNotice" style="display:none;" class="grade-price-note"></div>
+          <div class="review-box" id="payReview"></div>
+          <div id="discountSection" style="display:none;margin-bottom:4px;">
+            <div class="gw-label">Have a discount code?</div>
+            <div class="disc-row">
+              <input type="text" class="disc-input" id="discCode" placeholder="Enter discount code"/>
+              <button class="disc-btn" id="btnApplyDiscount">Apply</button>
+            </div>
+            <div class="disc-msg" id="discMsg"></div>
+          </div>
+          <div class="amount-box">
+            <div class="amount-row" id="baseAmtRow"><span>Program fee</span><span id="baseAmtVal">—</span></div>
+            <div class="amount-row disc-row-amt" id="discAmtRow" style="display:none;"><span>Discount (<span id="discCodeLabel"></span>)</span><span id="discAmtVal"></span></div>
+            <div class="amount-divider"></div>
+            <div class="amount-total"><span>Total</span><span id="totalAmtVal" style="color:var(--acc);">—</span></div>
+            <div class="amount-currency-note" id="currencyNote"></div>
+          </div>
+          <div class="gw-section">
+            <div class="gw-label">Select Payment Method</div>
+            <div class="gw-grid" id="gwGrid"></div>
+          </div>
+          <div id="paypalContainer" style="margin-bottom:16px;display:none;"></div>
+          <div class="form-nav">
+            <button class="btn-back" id="btnPaymentBack">← Back</button>
+            <button class="btn-next" id="btnPay" disabled>Select a payment method</button>
+          </div>
+        </div>
+
+        <div id="screenSuccess" style="display:none;">
+          <div class="success-screen show">
+            <div class="success-icon">✅</div>
+            <h2>Registration Confirmed!</h2>
+            <p>Your registration is confirmed. A confirmation email will be sent shortly.</p>
+            <div class="success-ref" id="successRef"></div>
+            <div class="info-box" style="margin-top:4px;">ℹ️ Redirecting to success page in <span id="countdownVal">5</span>s…</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BACKEND        = 'https://thynk-registration.vercel.app';
+const PROGRAM_SLUG   = 'mentalmath2026';
+
+async function apiFetch(path, options = {}) {
+  const url = path.startsWith('http') ? path : `${BACKEND}${path}`;
+  return fetch(url, options);
+}
+
+const urlParts = location.pathname.split('/').filter(Boolean);
+const regIdx   = urlParts.findIndex(p => p === 'registration');
+const _urlProgram = regIdx >= 0 ? (urlParts[regIdx + 1] || '') : '';
+const _urlSchool  = urlParts[regIdx + 2] || new URLSearchParams(location.search).get('school') || '';
+const _slugPattern = /^[a-z0-9][a-z0-9-]{0,60}$/i;
+const PRODUCT_CODE = (_slugPattern.test(_urlProgram) ? _urlProgram : null) || PROGRAM_SLUG;
+const SCHOOL_CODE  = _slugPattern.test(_urlSchool)  ? _urlSchool  : '';
+const PAYMENT_ERR  = new URLSearchParams(location.search).get('paymentError') === '1';
+const CONSULTANT_CODE = new URLSearchParams(location.search).get('consultant') || '';
+
+const _qs             = new URLSearchParams(location.search);
+const PREFILL         = _qs.get('prefill') === '1' && !!SCHOOL_CODE;
+const PF              = {
+  name:   _qs.get('name')   || '',
+  phone:  _qs.get('phone')  || '',
+  email:  _qs.get('email')  || '',
+  grade:  _qs.get('class')  || '',
+  gender: _qs.get('gender') || '',
+  parent: _qs.get('parent') || '',
+};
+const PREFILL_COMPLETE = PREFILL && !!PF.name && !!PF.phone && !!PF.email && !!PF.grade && !!PF.gender;
+const AUTO_MODE = SCHOOL_CODE ? 'student' : '';
+
+let mode        = '';
+let schoolData  = null;
+let pricingData = null;
+let programData = null;  // full project row — includes grade_prices_inr / grade_prices_usd
+let studentForm = {};
+let isIndia     = true;
+let selGW       = '';
+let baseAmount  = 0;   // resolved amount in paise/cents for the selected grade
+let discAmt     = 0;
+let discApplied = false;
+let paypalRendered = false;
+let paymentId   = '';
+
+function detectIndia() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return tz === 'Asia/Calcutta' || tz === 'Asia/Kolkata';
+  } catch { return true; }
+}
+isIndia = detectIndia();
+
+// ── Grade-specific price resolution ────────────────────────────────
+// Returns amount in paise (INR) or cents (USD) for a given grade.
+// Falls back to school-level pricingData, then project-level base amount.
+function resolveGradeAmount(gradeName) {
+  // 1. Check school-level override pricing (existing behavior)
+  if (pricingData?.base_amount) return pricingData.base_amount;
+
+  // 2. Check project-level grade-specific pricing
+  if (programData) {
+    const priceMap = isIndia
+      ? (programData.grade_prices_inr || null)
+      : (programData.grade_prices_usd || null);
+
+    if (priceMap && gradeName && priceMap[gradeName] !== undefined) {
+      return priceMap[gradeName];
+    }
+    // 3. Fall back to project base price
+    const base = isIndia
+      ? (programData.base_amount_inr ?? 0)
+      : (programData.base_amount_usd ?? 0);
+    if (base) return base;
+  }
+  return 0;
+}
+
+// Returns true if this program has grade-specific pricing configured
+function hasGradeSpecificPricing() {
+  if (!programData) return false;
+  const map = isIndia ? programData.grade_prices_inr : programData.grade_prices_usd;
+  return !!(map && Object.keys(map).length > 0);
+}
+
+async function init() {
+  showScreen('screenMode');
+  g('stepsBar').style.display = 'none';
+  await loadLocations('school');
+  await loadLocations('student');
+  if (PRODUCT_CODE) await loadProgramBySlug(PRODUCT_CODE);
+  if (SCHOOL_CODE)  await loadSchoolByCode(SCHOOL_CODE);
+  if (PAYMENT_ERR) {
+    showToast('Previous payment was cancelled or failed. Please try again.', 'err');
+  }
+  if (AUTO_MODE === 'student') {
+    mode = 'student';
+    if (schoolData && schoolData.status && schoolData.status !== 'approved') {
+      showScreen('screenStudentForm');
+      g('schoolBlocked').style.display = 'block';
+      g('studentFormFields').style.display = 'none';
+      const statusMap = {
+        registered: 'This school has been registered but is pending admin approval.',
+        pending_approval: "This school's approval is in progress. Please check back soon.",
+      };
+      g('schoolBlockedMsg').textContent = statusMap[schoolData.status] || 'Registration is not active for this school.';
+    } else {
+      g('stepsBar').style.display = 'flex';
+      setStep(1);
+      if (pricingData) g('studentProgramLabel').textContent = pricingData.program_name || 'the program';
+      g('locationPickerSection').style.display = 'none';
+      g('schoolLockedCard').style.display = 'block';
+      g('schoolLockedDetails').innerHTML =
+        `<strong style="font-size:15px;">${schoolData?.name || '—'}</strong><br>` +
+        `<span style="font-size:12px;color:#6b7280;">${schoolData?.address || ''}</span><br>` +
+        `<span style="font-size:12px;color:#6b7280;">${[schoolData?.city, schoolData?.state, schoolData?.country].filter(Boolean).join(', ')}</span>`;
+      showScreen('screenStudentForm');
+      g('schoolBlocked').style.display = 'none';
+      g('studentFormFields').style.display = 'block';
+      if (PREFILL && PF.name) {
+        g('stName').value   = PF.name;
+        g('stPhone').value  = PF.phone;
+        g('stEmail').value  = PF.email;
+        g('stParent').value = PF.parent;
+        if (PF.grade) {
+          const gradeOpts = g('stGrade').options;
+          let gradeSet = false;
+          for (let i = 0; i < gradeOpts.length; i++) {
+            if (gradeOpts[i].value === PF.grade || gradeOpts[i].text === PF.grade) {
+              g('stGrade').selectedIndex = i; gradeSet = true; break;
+            }
+          }
+          if (!gradeSet) {
+            const opt = document.createElement('option');
+            opt.value = PF.grade; opt.textContent = PF.grade; opt.selected = true;
+            g('stGrade').appendChild(opt);
+          }
+        }
+        if (PF.gender) {
+          const genderOpts = g('stGender').options;
+          for (let i = 0; i < genderOpts.length; i++) {
+            if (genderOpts[i].value === PF.gender || genderOpts[i].text === PF.gender) {
+              g('stGender').selectedIndex = i; break;
+            }
+          }
+        }
+        if (PREFILL_COMPLETE) {
+          studentForm = {
+            studentName:  PF.name, classGrade: PF.grade, gender: PF.gender,
+            parentSchool: schoolData?.name || '', country: schoolData?.country || '',
+            state: schoolData?.state || '', city: schoolData?.city || '',
+            parentName: PF.parent, contactPhone: PF.phone, contactEmail: PF.email,
+          };
+          buildPaymentScreen();
+          if (!document.getElementById('prefillBanner')) {
+            const banner = document.createElement('div');
+            banner.id = 'prefillBanner'; banner.className = 'prefill-banner';
+            banner.innerHTML = '&#x2705; Details pre-filled from your registration record. Select a payment method and pay.';
+            const payTitle = g('screenPayment').querySelector('.form-section-title');
+            payTitle.parentNode.insertBefore(banner, payTitle.nextSibling);
+          }
+          showScreen('screenPayment'); setStep(2); return;
+        }
+      }
+    }
+  } else {
+    showScreen('screenMode');
+  }
+}
+
+async function loadProgramBySlug(slug) {
+  try {
+    // Use the public /api/project endpoint which now returns grade_prices_*
+    const res  = await apiFetch(`/api/project?slug=${encodeURIComponent(slug)}`);
+    const data = await res.json();
+    programData = data.project || null;
+    if (programData) {
+      g('programBadge').style.display = 'inline-flex';
+      g('programBadgeText').textContent = programData.name;
+    }
+  } catch(e) { console.warn('Could not load program:', e); }
+}
+
+async function loadSchoolByCode(code) {
+  try {
+    showLoader('Loading school…');
+    const res  = await apiFetch(`/api/school/${code}`);
+    const data = await res.json();
+    hideLoader();
+    if (!res.ok || !data.id) return;
+    schoolData  = data;
+    pricingData = (data.pricing || [])[0] || null;
+    g('headerSchoolName').textContent = schoolData.name || 'Registration';
+    g('headerOrgName').textContent    = schoolData.org_name || '';
+    const country = (schoolData.country || '').toLowerCase();
+    isIndia = country === 'india' || country === '';
+    if (pricingData?.program_name) {
+      g('programBadge').style.display = 'inline-flex';
+      g('programBadgeText').textContent = pricingData.program_name;
+    }
+    const grades = data.allowed_grades || pricingData?.allowed_grades || DEFAULT_GRADES;
+    populateGrades(grades);
+  } catch(e) { hideLoader(); console.warn('Could not load school:', e); }
+}
+
+const DEFAULT_GRADES = ['Nursery','KG','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12'];
+
+function populateGrades(grades) {
+  const sel = g('stGrade');
+  sel.innerHTML = '<option value="">Select Grade</option>';
+  grades.forEach(gr => {
+    const opt = document.createElement('option');
+    opt.value = gr; opt.textContent = gr; sel.appendChild(opt);
+  });
+}
+
+const LOCATION_DATA = {
+  countries: ["Bahrain","Bangladesh","Cambodia","India","Indonesia","Kuwait","Malaysia","Myanmar","Nepal","Oman","Pakistan","Philippines","Qatar","Saudi Arabia","Singapore","Sri Lanka","Thailand","United Arab Emirates","Vietnam"],
+  states: {
+    "India": ["Andaman & Nicobar","Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chandigarh","Chhattisgarh","Delhi","Goa","Gujarat","Haryana","Himachal Pradesh","Jammu & Kashmir","Jharkhand","Karnataka","Kerala","Ladakh","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Puducherry","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal"],
+  },
+  cities: {
+    "India:Haryana":["Ambala","Chandigarh","Faridabad","Gurugram","Hisar","Karnal"],
+    "India:Delhi":["New Delhi","Delhi"],
+    "India:Andhra Pradesh":["Visakhapatnam","Vijayawada","Guntur","Nellore","Tirupati"],
+    "India:Maharashtra":["Mumbai","Pune","Nagpur","Nashik","Aurangabad","Thane","Solapur"],
+    "India:Karnataka":["Bengaluru","Mysuru","Mangaluru","Hubli","Belagavi","Kalaburagi"],
+    "India:Tamil Nadu":["Chennai","Coimbatore","Madurai","Salem","Tiruchirappalli","Tirunelveli"],
+    "India:Gujarat":["Ahmedabad","Surat","Vadodara","Rajkot","Bhavnagar","Jamnagar"],
+    "India:Rajasthan":["Jaipur","Jodhpur","Udaipur","Kota","Ajmer","Bikaner"],
+    "India:Uttar Pradesh":["Lucknow","Kanpur","Agra","Varanasi","Prayagraj","Meerut","Ghaziabad","Noida"],
+    "India:West Bengal":["Kolkata","Howrah","Durgapur","Asansol","Siliguri","Kharagpur"],
+    "India:Telangana":["Hyderabad","Warangal","Nizamabad","Karimnagar","Khammam"],
+    "India:Kerala":["Thiruvananthapuram","Kochi","Kozhikode","Thrissur","Kollam","Kannur"],
+    "India:Punjab":["Ludhiana","Amritsar","Jalandhar","Patiala","Bathinda","Mohali"],
+    "India:Madhya Pradesh":["Bhopal","Indore","Gwalior","Jabalpur","Ujjain","Sagar"],
+    "India:Bihar":["Patna","Gaya","Muzaffarpur","Bhagalpur","Darbhanga"],
+    "India:Odisha":["Bhubaneswar","Cuttack","Berhampur","Rourkela","Sambalpur"],
+    "India:Assam":["Guwahati","Silchar","Dibrugarh","Jorhat","Nagaon"],
+    "India:Jharkhand":["Ranchi","Jamshedpur","Dhanbad","Bokaro","Hazaribagh"],
+    "India:Chhattisgarh":["Raipur","Bhilai","Bilaspur","Durg","Korba"],
+    "India:Uttarakhand":["Dehradun","Haridwar","Roorkee","Haldwani","Rudrapur"],
+    "India:Himachal Pradesh":["Shimla","Manali","Dharamshala","Solan","Mandi"],
+    "India:Goa":["Panaji","Margao","Vasco da Gama","Mapusa","Ponda"],
+    "India:Chandigarh":["Chandigarh"],
+    "India:Jammu & Kashmir":["Srinagar","Jammu","Anantnag","Baramulla","Sopore"],
+    "India:Ladakh":["Leh","Kargil"],
+    "India:Manipur":["Imphal","Thoubal","Bishnupur","Churachandpur"],
+    "India:Meghalaya":["Shillong","Tura","Jowai","Nongpoh"],
+    "India:Nagaland":["Kohima","Dimapur","Mokokchung","Tuensang"],
+    "India:Mizoram":["Aizawl","Lunglei","Saiha","Champhai"],
+    "India:Tripura":["Agartala","Udaipur","Dharmanagar","Kailashahar"],
+    "India:Sikkim":["Gangtok","Namchi","Mangan","Gyalshing"],
+    "India:Arunachal Pradesh":["Itanagar","Naharlagun","Pasighat","Tezpur"],
+    "India:Puducherry":["Puducherry","Karaikal","Yanam","Mahe"],
+    "India:Andaman & Nicobar":["Port Blair"],
+  }
+};
+
+const locationCache = {};
+async function fetchLocations(type, country = '', state = '') {
+  const key = `${type}:${country}:${state}`;
+  if (locationCache[key]) return locationCache[key];
+  if (type === 'countries') { locationCache[key] = LOCATION_DATA.countries; return LOCATION_DATA.countries; }
+  if (type === 'states' && LOCATION_DATA.states[country]) { locationCache[key] = LOCATION_DATA.states[country]; return LOCATION_DATA.states[country]; }
+  if (type === 'cities') {
+    const cityKey = `${country}:${state}`;
+    if (LOCATION_DATA.cities[cityKey]) { locationCache[key] = LOCATION_DATA.cities[cityKey]; return LOCATION_DATA.cities[cityKey]; }
+  }
+  try {
+    let path = `/api/admin/location?type=${type}`;
+    if (country) path += `&country=${encodeURIComponent(country)}`;
+    if (state)   path += `&state=${encodeURIComponent(state)}`;
+    const res  = await apiFetch(path);
+    const data = await res.json();
+    const result = data.countries || data.states || data.cities || [];
+    locationCache[key] = result;
+    return result;
+  } catch { return []; }
+}
+
+function fillSelect(sel, items, placeholder) {
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  items.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item; opt.textContent = item;
+    if (item === cur) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadLocations(context) {
+  const countrySelId = context === 'school' ? 'sCountry' : 'stCountry';
+  const countries = await fetchLocations('countries');
+  const sel = g(countrySelId);
+  if (!sel) return;
+  fillSelect(sel, [...countries, 'Other'], 'Select Country');
+}
+
+async function onSchoolCountryChange() {
+  const country = g('sCountry').value;
+  const states  = await fetchLocations('states', country);
+  fillSelect(g('sState'), states, 'Select State');
+  fillSelect(g('sCity'), [], 'Select City');
+}
+
+async function onSchoolStateChange() {
+  const country = g('sCountry').value;
+  const state   = g('sState').value;
+  const cities  = await fetchLocations('cities', country, state);
+  fillSelect(g('sCity'), cities, 'Select City');
+}
+
+async function onStudentCountryChange() {
+  const country = g('stCountry').value;
+  isIndia = country.toLowerCase() === 'india';
+  clearErr('stCountry');
+  g('stState').innerHTML = '<option value="">Select State</option>'; g('stState').disabled = true;
+  g('stCity').innerHTML  = '<option value="">Select City</option>';  g('stCity').disabled   = true;
+  g('schoolPickerField').style.display = 'none';
+  g('stSchoolPicker').innerHTML = '<option value="">Select School</option>'; g('stSchoolPicker').style.display = '';
+  const schoolNameField = g('stSchoolNameInput');
+  if (schoolNameField) { schoolNameField.style.display = 'none'; schoolNameField.value = ''; }
+  if (!country) return;
+  showLoader('Loading states…');
+  const states = await fetchLocations('states', country);
+  hideLoader();
+  fillSelect(g('stState'), states, 'Select State');
+  g('stState').disabled = false;
+}
+
+async function onStudentStateChange() {
+  const country = g('stCountry').value; const state = g('stState').value;
+  clearErr('stState');
+  g('stCity').innerHTML = '<option value="">Select City</option>'; g('stCity').disabled = true;
+  g('schoolPickerField').style.display = 'none';
+  g('stSchoolPicker').innerHTML = '<option value="">Select School</option>'; g('stSchoolPicker').style.display = '';
+  const schoolNameField = g('stSchoolNameInput');
+  if (schoolNameField) { schoolNameField.style.display = 'none'; schoolNameField.value = ''; }
+  if (!state) return;
+  showLoader('Loading cities…');
+  const cities = await fetchLocations('cities', country, state);
+  hideLoader();
+  fillSelect(g('stCity'), cities, 'Select City');
+  g('stCity').disabled = false;
+}
+
+async function onStudentCityChange() {
+  const city = g('stCity').value; const state = g('stState').value;
+  clearErr('stCity');
+  const schoolNameField = g('stSchoolNameInput');
+  if (schoolNameField) { schoolNameField.style.display = 'none'; schoolNameField.value = ''; }
+  const sel = g('stSchoolPicker');
+  sel.innerHTML = '<option value="">Select School</option>'; sel.style.display = ''; sel.disabled = false;
+  g('schoolPickerField').style.display = 'none';
+  schoolData = null; pricingData = null;
+  populateGrades(DEFAULT_GRADES);
+  if (!city) return;
+  const projectParam = PRODUCT_CODE ? `&project=${encodeURIComponent(PRODUCT_CODE)}` : '';
+  const CITY_ALIASES = {
+    'New Delhi': ['Delhi', 'New Delhi'], 'Delhi': ['Delhi', 'New Delhi'],
+    'Bengaluru': ['Bengaluru', 'Bangalore'], 'Bangalore': ['Bengaluru', 'Bangalore'],
+    'Mumbai': ['Mumbai', 'Bombay'], 'Chennai': ['Chennai', 'Madras'], 'Kolkata': ['Kolkata', 'Calcutta'],
+  };
+  const citiesToTry = CITY_ALIASES[city] ? [...new Set([city, ...CITY_ALIASES[city]])] : [city];
+  async function fetchSchoolsForCity(cityVal, withProject) {
+    const proj = withProject ? projectParam : '';
+    const path = `/api/school/list?city=${encodeURIComponent(cityVal)}&state=${encodeURIComponent(state)}${proj}`;
+    try {
+      const res = await apiFetch(path); const text = await res.text();
+      const data = JSON.parse(text); const all = data.schools || [];
+      return all.filter(s => {
+        const statusOk = !s.status || s.status === 'approved';
+        const activeOk = s.is_registration_active === undefined || s.is_registration_active === true || s.is_registration_active === 1;
+        return statusOk && activeOk;
+      });
+    } catch { return []; }
+  }
+  showLoader('Loading schools…');
+  let schools = [];
+  for (const cityVariant of citiesToTry) { const result = await fetchSchoolsForCity(cityVariant, true); if (result.length > 0) { schools = result; break; } }
+  if (schools.length === 0 && projectParam) {
+    for (const cityVariant of citiesToTry) { const result = await fetchSchoolsForCity(cityVariant, false); if (result.length > 0) { schools = result; break; } }
+  }
+  if (schools.length === 0) {
+    try {
+      const res = await apiFetch(`/api/school/list?state=${encodeURIComponent(state)}${projectParam}`);
+      const data = JSON.parse(await res.text());
+      schools = (data.schools || []).filter(s => { const statusOk = !s.status || s.status === 'approved'; const activeOk = s.is_registration_active === undefined || s.is_registration_active === true || s.is_registration_active === 1; return statusOk && activeOk; });
+    } catch {}
+  }
+  hideLoader();
+  if (schools.length === 0) {
+    sel.innerHTML = '<option value="">No registered schools found in ' + city + '</option>'; sel.disabled = true;
+    g('schoolPickerField').style.display = 'block'; showNotListedOption(city); return;
+  }
+  sel.innerHTML = '<option value="">— Select your school —</option>';
+  schools.forEach(s => {
+    const opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.name;
+    opt.dataset.schoolObj = JSON.stringify(s); sel.appendChild(opt);
+  });
+  const notListedOpt = document.createElement('option'); notListedOpt.value = '__not_listed__'; notListedOpt.textContent = '— My school is not listed —'; sel.appendChild(notListedOpt);
+  g('schoolPickerField').style.display = 'block';
+  const nb = g('schoolNotListedBox'); if (nb) nb.style.display = 'none';
+  if (schools.length === 1) { sel.value = schools[0].id; sel.disabled = true; await onSchoolPickerChange(); }
+}
+
+function showNotListedOption(city) {
+  let nb = g('schoolNotListedBox');
+  if (!nb) {
+    nb = document.createElement('div'); nb.id = 'schoolNotListedBox'; nb.className = 'info-box warn';
+    nb.style.cssText = 'margin-top:10px;flex-direction:column;gap:8px;align-items:flex-start;';
+    nb.innerHTML = `<div style="font-weight:700;">⚠️ School not found in ${city}?</div><div style="font-size:12px;line-height:1.5;">Your school may not be registered yet.</div><input type="text" id="stSchoolManual" placeholder="Type your school name…" style="width:100%;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;background:#fff;"/>`;
+    g('schoolPickerField').appendChild(nb);
+    nb.querySelector('#stSchoolManual').addEventListener('input', function() {
+      const val = this.value.trim();
+      if (val.length >= 2) { schoolData = schoolData || {}; schoolData.name = val; schoolData.id = '__manual__'; clearErr('stSchoolPicker'); }
+    });
+  } else { nb.style.display = 'block'; const heading = nb.querySelector('div'); if (heading) heading.textContent = '⚠️ School not found in ' + city + '?'; }
+}
+
+async function onSchoolPickerChange() {
+  clearErr('stSchoolPicker');
+  const sel = g('stSchoolPicker'); const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  if (opt.value === '__not_listed__') { const city = g('stCity').value; showNotListedOption(city); schoolData = null; pricingData = null; populateGrades(DEFAULT_GRADES); return; }
+  const nb = g('schoolNotListedBox'); if (nb) nb.style.display = 'none';
+  if (opt.dataset.schoolObj) {
+    try {
+      const s = JSON.parse(opt.dataset.schoolObj); schoolData = s;
+      pricingData = (s.pricing || [])[0] || null;
+      if (pricingData?.program_name) g('studentProgramLabel').textContent = pricingData.program_name;
+    } catch {}
+  }
+  await loadGradesForProject();
+}
+
+async function loadGradesForProject() {
+  if (!PRODUCT_CODE) { populateGrades(DEFAULT_GRADES); return; }
+  try {
+    const res = await apiFetch(`/api/grades?project=${encodeURIComponent(PRODUCT_CODE)}`);
+    const data = await res.json();
+    const grades = data.grades || [];
+    populateGrades(grades.length ? grades : DEFAULT_GRADES);
+  } catch { populateGrades(DEFAULT_GRADES); }
+}
+
+function toggleAddNew(fieldId) { const box = g('addNew-' + fieldId); box.classList.toggle('show'); if (box.classList.contains('show')) g('newVal-' + fieldId).focus(); }
+function confirmAddNew(fieldId) {
+  const inp = g('newVal-' + fieldId); const val = inp.value.trim(); if (!val) return;
+  const sel = g(fieldId); const existing = [...sel.options].map(o => o.value.toLowerCase());
+  if (!existing.includes(val.toLowerCase())) { const opt = document.createElement('option'); opt.value = val; opt.textContent = val; sel.appendChild(opt); }
+  sel.value = val; inp.value = ''; g('addNew-' + fieldId).classList.remove('show'); clearErr(fieldId);
+}
+
+function selectMode(m) {
+  mode = m;
+  g('cardSchool').classList.toggle('selected', m === 'school');
+  g('cardStudent').classList.toggle('selected', m === 'student');
+  g('checkSchool').innerHTML  = m === 'school' ? '✓' : '';
+  g('checkStudent').innerHTML = m === 'student' ? '✓' : '';
+  g('btnContinueMode').disabled = false;
+}
+
+function continueFromMode() {
+  if (!mode) return;
+  if (mode === 'school') {
+    showScreen('screenSchoolForm'); g('stepsBar').style.display = 'flex'; setStep(1);
+    g('dot2').innerHTML = '2<span class="step-label">Review</span>'; g('dot3').innerHTML = '3<span class="step-label">Done</span>';
+  } else {
+    g('locationPickerSection').style.display = 'block'; g('schoolLockedCard').style.display = 'none';
+    if (schoolData && schoolData.status && schoolData.status !== 'approved') {
+      showScreen('screenStudentForm'); g('schoolBlocked').style.display = 'block'; g('studentFormFields').style.display = 'none';
+      const statusMap = { registered: 'This school has been registered but is pending admin approval.', pending_approval: "This school's approval is in progress. Please check back soon." };
+      g('schoolBlockedMsg').textContent = statusMap[schoolData.status] || 'Registration is not active for this school.';
+    } else {
+      showScreen('screenStudentForm'); g('schoolBlocked').style.display = 'none'; g('studentFormFields').style.display = 'block';
+      if (pricingData) g('studentProgramLabel').textContent = pricingData.program_name || 'the program';
+      g('stepsBar').style.display = 'flex'; setStep(1); loadGradesForProject();
+    }
+  }
+}
+
+async function submitSchoolForm() {
+  const fields = { sName: v => v.trim().length >= 2, sAddress: v => v.trim().length >= 5, sCountry: v => !!v, sState: v => !!v, sCity: v => !!v, sPinCode: v => v.trim().length >= 3, sContactName: v => v.trim().length >= 2, sDesignation: v => v.trim().length >= 2, sMobile: v => v.trim().length >= 6 };
+  let ok = true;
+  for (const [id, rule] of Object.entries(fields)) { if (!rule(g(id).value)) { showErr(id); ok = false; } }
+  if (!ok) { showToast('Please fill all required fields.', 'err'); return; }
+  const body = { name: g('sName').value.trim(), address: g('sAddress').value.trim(), country: g('sCountry').value, state: g('sState').value, city: g('sCity').value, pin_code: g('sPinCode').value.trim(), contact_persons: [{ name: g('sContactName').value.trim(), designation: g('sDesignation').value.trim(), email: g('sEmail').value.trim(), mobile: g('sMobile').value.trim() }], project_slug: PRODUCT_CODE || (programData?.slug) || '', project_id: programData?.id || '', status: 'registered', ...(CONSULTANT_CODE ? { consultant_code: CONSULTANT_CODE } : {}) };
+  try {
+    showLoader('Submitting registration…');
+    const res = await apiFetch(`/api/school/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json(); hideLoader();
+    if (!res.ok) { showToast(data.error || 'Submission failed. Try again.', 'err'); return; }
+    g('stepsBar').style.display = 'none';
+    g('schoolSubmitRef').innerHTML = makeRows([['School', body.name], ['Location', [body.city, body.state, body.country].filter(Boolean).join(', ')], ['Contact', body.contact_persons[0].name + ' · ' + body.contact_persons[0].mobile], ['Status', 'Registered — Pending Approval']]);
+    showScreen('screenSchoolSuccess');
+  } catch { hideLoader(); showToast('Network error. Please try again.', 'err'); }
+}
+
+function proceedToPayment() {
+  let ok = true;
+  const personalRules = { stName: v => v.trim().length >= 2, stGrade: v => !!v, stGender: v => !!v, stPhone: v => v.trim().length >= 6, stEmail: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) };
+  for (const [id, rule] of Object.entries(personalRules)) { if (!rule(g(id).value)) { showErr(id); ok = false; } }
+  let resolvedSchoolName = '', resolvedCountry = '', resolvedState = '', resolvedCity = '';
+  if (AUTO_MODE === 'student' && SCHOOL_CODE) {
+    resolvedSchoolName = schoolData?.name || ''; resolvedCountry = schoolData?.country || ''; resolvedState = schoolData?.state || ''; resolvedCity = schoolData?.city || '';
+  } else {
+    if (!g('stCountry').value) { showErr('stCountry'); ok = false; }
+    if (!g('stState').value)   { showErr('stState');   ok = false; }
+    if (!g('stCity').value)    { showErr('stCity');     ok = false; }
+    resolvedCountry = g('stCountry').value; resolvedState = g('stState').value; resolvedCity = g('stCity').value;
+    const sel = g('stSchoolPicker'); const selVal = sel.value; const selOpt = sel.options[sel.selectedIndex];
+    const schoolFieldVisible = g('schoolPickerField').style.display !== 'none';
+    if (selVal === '__not_listed__' || (schoolData && schoolData.id === '__manual__')) {
+      const manualInput = g('stSchoolManual'); const manualName = manualInput ? manualInput.value.trim() : '';
+      if (manualName.length < 2) { showToast('Please enter your school name.', 'err'); if (manualInput) manualInput.style.borderColor = 'var(--red)'; ok = false; }
+      else { resolvedSchoolName = manualName; schoolData = { id: '__manual__', name: manualName }; pricingData = null; }
+    } else if (schoolFieldVisible && (!selVal || selVal === '')) { showErr('stSchoolPicker'); ok = false; }
+    else if (selVal && selOpt) {
+      resolvedSchoolName = selOpt.text || '';
+      if (selOpt.dataset?.schoolObj) { try { schoolData = JSON.parse(selOpt.dataset.schoolObj); const allPricing = schoolData.pricing || []; pricingData = allPricing.find(p => p.project_slug === PRODUCT_CODE || p.program_slug === PRODUCT_CODE) || allPricing[0] || null; } catch {} }
+    } else if (!schoolFieldVisible && g('stCity').value) { resolvedSchoolName = schoolData?.name || ''; }
+  }
+  if (!ok) { showToast('Please fill all required fields correctly.', 'err'); return; }
+  studentForm = { studentName: g('stName').value.trim(), classGrade: g('stGrade').value, gender: g('stGender').value, parentSchool: resolvedSchoolName, country: resolvedCountry, state: resolvedState, city: resolvedCity, parentName: g('stParent').value.trim(), contactPhone: g('stPhone').value.trim(), contactEmail: g('stEmail').value.trim() };
+  buildPaymentScreen(); showScreen('screenPayment'); setStep(2);
+}
+
+function buildPaymentScreen() {
+  const sym = isIndia ? '₹' : '$';
+  g('payReview').innerHTML = makeRows([
+    ['Student', studentForm.studentName + ' · ' + studentForm.classGrade],
+    ['Gender', studentForm.gender],
+    ['School', studentForm.parentSchool],
+    ['Location', [studentForm.city, studentForm.state, studentForm.country].filter(Boolean).join(', ')],
+    ['Parent', studentForm.parentName || '—'],
+    ['Phone', studentForm.contactPhone],
+    ['Email', studentForm.contactEmail],
+  ]);
+
+  // ── Resolve amount: grade-specific first, then school pricing, then base ──
+  // School-level pricingData.base_amount takes top priority (school has a custom price set)
+  if (pricingData?.base_amount) {
+    baseAmount = pricingData.base_amount;
+  } else {
+    // Use grade-specific pricing from the project if available
+    baseAmount = resolveGradeAmount(studentForm.classGrade);
+  }
+
+  discAmt = 0; discApplied = false; selGW = '';
+  g('baseAmtVal').textContent = sym + fmtAmt(baseAmount);
+  g('totalAmtVal').textContent = sym + fmtAmt(baseAmount);
+  g('discAmtRow').style.display = 'none';
+  g('currencyNote').textContent = isIndia
+    ? 'Charged in INR · Indian payment methods'
+    : 'Charged in USD · International payment';
+  g('discountSection').style.display = isIndia ? 'block' : 'none';
+
+  // ── Grade-price notice ──────────────────────────────────────────────
+  const notice = g('gradePriceNotice');
+  if (hasGradeSpecificPricing() && !pricingData?.base_amount) {
+    notice.textContent = `🏷️ Price for ${studentForm.classGrade}: ${sym}${fmtAmt(baseAmount)}`;
+    notice.style.display = 'inline-flex';
+  } else {
+    notice.style.display = 'none';
+  }
+
+  buildGatewayButtons();
+}
+
+const GW_META = {
+  razorpay: { name:'Razorpay',  logo:'💳', sub:'Cards, UPI, Net Banking', selClass:'sel-rzp' },
+  cashfree: { name:'Cashfree',  logo:'🏦', sub:'Cards, UPI, Net Banking', selClass:'sel-cf'  },
+  easebuzz: { name:'Easebuzz',  logo:'⚡', sub:'Cards, UPI, Net Banking', selClass:'sel-eb'  },
+  paypal:   { name:'PayPal',    logo:'🌐', sub:'International Cards',     selClass:'sel-pp'  },
+};
+
+function buildGatewayButtons() {
+  const pgConfig  = schoolData?.public_gateway_config || {};
+  const gwSeq = isIndia
+    ? (pgConfig.gateway_sequence?.length ? pgConfig.gateway_sequence : ['easebuzz','cashfree','razorpay'])
+    : ['paypal'];
+  const gwLabels  = pgConfig.gateway_labels || {};
+  const grid = g('gwGrid');
+  grid.innerHTML = '';
+  gwSeq.forEach(gw => {
+    const meta  = GW_META[gw] || { name: gw, logo: '💳', sub: '', selClass: '' };
+    const label = gwLabels[gw] || '';
+    const btn   = document.createElement('button');
+    btn.className = 'gw-btn';
+    btn.id = 'gw-' + gw;
+    btn.innerHTML = `
+      <span class="gw-logo">${meta.logo}</span>
+      <div class="gw-name">${meta.name}</div>
+      <div class="gw-sub">${meta.sub}</div>
+      ${label ? `<span class="gw-label-badge">${label}</span>` : ''}
+    `;
+    btn.onclick = () => selectGateway(gw);
+    grid.appendChild(btn);
+  });
+}
+
+function selectGateway(gw) {
+  selGW = gw;
+  document.querySelectorAll('.gw-btn').forEach(b => { b.className = 'gw-btn'; });
+  const meta = GW_META[gw] || {};
+  const btn = g('gw-' + gw);
+  if (btn) btn.className = 'gw-btn sel ' + (meta.selClass || '');
+  const sym = isIndia ? '₹' : '$';
+  const total = baseAmount - discAmt;
+  const payBtn = g('btnPay');
+  payBtn.disabled = false;
+  payBtn.textContent = `Pay ${sym}${fmtAmt(total)} via ${meta.name} →`;
+  g('paypalContainer').style.display = gw === 'paypal' ? 'block' : 'none';
+  paypalRendered = false;
+}
+
+async function applyDiscount() {
+  const code = g('discCode').value.trim();
+  if (!code) { setDiscMsg('Please enter a code.', 'err'); return; }
+  if (!schoolData?.id) { setDiscMsg('School data not loaded.', 'err'); return; }
+  showLoader('Validating discount code…');
+  try {
+    const res = await apiFetch(`/api/discount?code=${encodeURIComponent(code)}&schoolId=${schoolData.id}`);
+    const data = await res.json(); hideLoader();
+    const sym = isIndia ? '₹' : '$';
+    if (data.valid) {
+      discAmt = data.discount_amount || 0; discApplied = true;
+      g('discCode').classList.add('ok'); g('discCodeLabel').textContent = code;
+      g('discAmtVal').textContent = '− ' + sym + fmtAmt(discAmt); g('discAmtRow').style.display = 'flex';
+      g('totalAmtVal').textContent = sym + fmtAmt(baseAmount - discAmt);
+      setDiscMsg(`✅ Discount of ${sym}${fmtAmt(discAmt)} applied!`, 'ok'); showToast('Discount applied!', 'ok');
+      if (selGW) selectGateway(selGW);
+    } else {
+      discAmt = 0; discApplied = false; g('discCode').classList.remove('ok'); g('discAmtRow').style.display = 'none';
+      g('totalAmtVal').textContent = sym + fmtAmt(baseAmount);
+      setDiscMsg('❌ ' + (data.message || 'Invalid code'), 'err'); if (selGW) selectGateway(selGW);
+    }
+  } catch { hideLoader(); setDiscMsg('❌ Could not validate. Try again.', 'err'); }
+}
+function setDiscMsg(txt, cls) { const el = g('discMsg'); el.textContent = txt; el.className = 'disc-msg ' + cls; }
+
+async function startPayment() {
+  if (!selGW) { showToast('Please select a payment method.', 'err'); return; }
+  if (selGW === 'paypal') { renderPayPal(); return; }
+  showLoader('Preparing payment…');
+  try {
+    const body = { schoolId: schoolData?.id, pricingId: pricingData?.id, gateway: selGW, ...studentForm, discountCode: discApplied ? g('discCode').value.trim() : undefined };
+    const res = await apiFetch(`/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json(); hideLoader();
+    if (!res.ok) { showToast(data.error || 'Payment init failed', 'err'); return; }
+    paymentId = data.payment_id || '';
+    if (selGW === 'razorpay') launchRazorpay(data);
+    if (selGW === 'cashfree') launchCashfree(data);
+    if (selGW === 'easebuzz') launchEasebuzz(data);
+  } catch(e) { hideLoader(); showToast(e.message || 'Error starting payment', 'err'); }
+}
+
+async function launchRazorpay(data) {
+  await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+  const color = schoolData?.branding?.primaryColor || '#4f46e5';
+  new window.Razorpay({ key: data.key_id, amount: data.amount, currency: data.currency, order_id: data.order_id, name: schoolData?.org_name || 'Thynk Success', description: pricingData?.program_name || 'Registration', prefill: { name: studentForm.studentName, email: studentForm.contactEmail, contact: studentForm.contactPhone }, theme: { color },
+    handler: async (resp) => {
+      showLoader('Confirming payment…');
+      const vRes = await apiFetch(`/api/payment/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentId: data.payment_id, gateway: 'razorpay', gatewayTxnId: resp.razorpay_payment_id, razorpayOrderId: resp.razorpay_order_id, razorpaySignature: resp.razorpay_signature }) });
+      const vData = await vRes.json(); hideLoader();
+      if (!vRes.ok) { showToast('Could not reach server. Contact support with payment ID: ' + (resp.razorpay_payment_id || ''), 'err'); return; }
+      if (vData.status === 'failed') { showToast('Payment verification failed. Contact support with payment ID: ' + (resp.razorpay_payment_id || ''), 'err'); return; }
+      paymentId = resp.razorpay_payment_id; showSuccessScreen();
+    },
+    modal: { ondismiss: async () => { await apiFetch(`/api/payment/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentId: data.payment_id, gateway: 'razorpay', status: 'cancelled' }) }); showToast('Payment cancelled.', 'err'); } },
+  }).open();
+}
+
+async function launchCashfree(data) {
+  await loadScript('https://sdk.cashfree.com/js/v3/cashfree.js');
+  window.Cashfree({ mode: data.cf_mode || 'production' }).checkout({ paymentSessionId: data.payment_session_id, redirectTarget: '_self' });
+}
+
+function launchEasebuzz(data) {
+  loadScript('https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js').then(() => {
+    const env = (data.env === 'production' || data.env === 'live') ? 'prod' : 'test';
+    const eb = new window.EasebuzzCheckout(data.access_key, env);
+    eb.initiatePayment({ access_key: data.access_key, onResponse: async (r) => {
+      if (r.status === 'success') {
+        showLoader('Confirming payment…');
+        await apiFetch(`/api/payment/easebuzz-callback?paymentId=${data.payment_id}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ status: r.status||'', txnid: r.txnid||'', mihpayid: r.mihpayid||'', amount: r.amount||'', email: r.email||'', firstname: r.firstname||'', productinfo: r.productinfo||'', key: r.key||'', hash: r.hash||'', udf1:'',udf2:'',udf3:'',udf4:'',udf5:'' }).toString() }).catch(() => {});
+        hideLoader(); paymentId = r.mihpayid || r.txnid || data.payment_id; showSuccessScreen();
+      } else { showToast('Payment failed or cancelled. Please try again.', 'err'); }
+    }});
+  }).catch(() => showToast('Failed to load payment SDK. Check your connection.', 'err'));
+}
+
+const TEST_PAYPAL = false;
+
+async function handleTestPayPal() {
+  showLoader('Simulating PayPal payment…'); await new Promise(r => setTimeout(r, 1500));
+  const fakeOrderId = 'TEST-' + Date.now();
+  try {
+    const res = await apiFetch(`/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schoolId: schoolData?.id, pricingId: pricingData?.id, gateway: 'paypal', ...studentForm, paypalOrderId: fakeOrderId, paypalStatus: 'COMPLETED', currency: 'USD' }) });
+    const data = await res.json();
+    if (!res.ok) { hideLoader(); showToast('Registration failed: ' + (data.error || 'Unknown error'), 'err'); return; }
+    paymentId = data.payment_id || fakeOrderId;
+  } catch (e) { hideLoader(); showToast('Registration error: ' + (e.message || 'Network error'), 'err'); return; }
+  hideLoader(); showSuccessScreen();
+}
+
+async function renderPayPal() {
+  if (paypalRendered) return;
+  const container = g('paypalContainer'); container.innerHTML = ''; container.style.display = 'block';
+  if (TEST_PAYPAL) {
+    paypalRendered = true;
+    const sym = isIndia ? '₹' : '$'; const total = ((baseAmount - discAmt) / 100).toFixed(2);
+    container.innerHTML = `<div style="border:2px dashed #f59e0b;border-radius:12px;padding:16px;background:#fffbeb;text-align:center;"><div style="font-size:13px;color:#92400e;font-weight:600;margin-bottom:4px;">⚠️ TEST MODE — No real payment</div><div style="font-size:12px;color:#b45309;margin-bottom:12px;">Amount: ${sym}${total}</div><button onclick="handleTestPayPal()" style="background:#0070ba;color:#fff;border:none;border-radius:8px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;width:100%;">✅ Simulate PayPal Payment</button></div>`;
+    return;
+  }
+  let ppClientId = schoolData?.public_gateway_config?.pp_client_id;
+  if (!ppClientId && schoolData?.gateway_config) { try { const gc = typeof schoolData.gateway_config === 'string' ? JSON.parse(schoolData.gateway_config) : schoolData.gateway_config; ppClientId = gc?.pp_client_id || gc?.paypal_client_id; } catch {} }
+  if (!ppClientId) ppClientId = 'AZbRCrTRSO1_dAvLgOzVXKPL0S3Kb2ZiHS2dN6LwRHjoQnrXZ8JT8otYbEFQT3MRWNIIfemWFQaZPv1_';
+  showLoader('Loading PayPal…');
+  const stale = document.querySelector('script[src*="paypal.com/sdk/js"]'); if (stale) stale.remove();
+  if (window.paypal) { try { delete window.paypal; } catch {} }
+  try { await loadScript(`https://www.paypal.com/sdk/js?client-id=${ppClientId}&currency=USD&intent=capture&components=buttons`); } catch { hideLoader(); showToast('PayPal SDK failed to load.', 'err'); return; }
+  hideLoader();
+  if (!window.paypal || typeof window.paypal.Buttons !== 'function') { showToast('PayPal failed to initialize. Please reload and try again.', 'err'); return; }
+  paypalRendered = true;
+  window.paypal.Buttons({
+    style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay' },
+    createOrder: (_, actions) => actions.order.create({ purchase_units: [{ amount: { value: ((baseAmount - discAmt) / 100).toFixed(2), currency_code: 'USD' }, description: pricingData?.program_name || 'Registration' }] }),
+    onApprove: async (_, actions) => {
+      showLoader('Confirming PayPal payment…'); let order;
+      try { order = await actions.order.capture(); } catch (e) { hideLoader(); showToast('PayPal capture failed: ' + (e.message || 'Unknown error'), 'err'); paypalRendered = false; return; }
+      paymentId = order.id;
+      try {
+        const res = await apiFetch(`/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schoolId: schoolData?.id, pricingId: pricingData?.id, gateway: 'paypal', currency: 'USD', ...studentForm, paypalOrderId: order.id, paypalStatus: order.status }) });
+        const data = await res.json();
+        if (!res.ok) { hideLoader(); showToast('Registration failed: ' + (data.error || 'Server error'), 'err'); return; }
+        paymentId = data.payment_id || order.id;
+      } catch (e) { hideLoader(); showToast('Registration error: ' + (e.message || 'Network error'), 'err'); return; }
+      hideLoader(); showSuccessScreen();
+    },
+    onCancel: () => { paypalRendered = false; showToast('PayPal payment cancelled.', 'err'); },
+    onError:  (err) => { paypalRendered = false; showToast('PayPal error: ' + (err?.message || 'Unknown error'), 'err'); },
+  }).render('#paypalContainer');
+}
+
+function showSuccessScreen() {
+  const sym = isIndia ? '₹' : '$'; setStep(3);
+  g('successRef').innerHTML = makeRows([
+    ['Student', studentForm.studentName + ' · ' + studentForm.classGrade],
+    ['School', studentForm.parentSchool + ', ' + studentForm.city],
+    ['Amount Paid', sym + fmtAmt(baseAmount - discAmt)],
+    ['Gateway', GW_META[selGW]?.name || selGW],
+    ['Payment ID', paymentId || '—'],
+  ]);
+  showScreen('screenSuccess'); showToast('Registration confirmed! ✅', 'ok');
+  let count = 5;
+  const iv = setInterval(() => {
+    count--; const el = g('countdownVal'); if (el) el.textContent = count > 0 ? count : 0;
+    if (count <= 0) { clearInterval(iv); window.location.href = 'https://www.thynksuccess.com/registration/success'; }
+  }, 1000);
+}
+
+const SCREENS = ['screenMode','screenSchoolForm','screenSchoolSuccess','screenStudentForm','screenPayment','screenSuccess'];
+function showScreen(id) { SCREENS.forEach(s => { g(s).style.display = s === id ? 'block' : 'none'; }); if (id === 'screenMode') g('stepsBar').style.display = 'none'; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function setStep(n) { [1,2,3].forEach(i => { const dot = g('dot' + i); dot.classList.remove('active','done'); if (i < n) dot.classList.add('done'); if (i === n) dot.classList.add('active'); g('line' + i)?.classList.toggle('done', i < n); }); }
+
+function g(id) { return document.getElementById(id); }
+function showErr(id) { const el = g('err-' + id); if (el) el.classList.add('show'); const inp = g(id); if (inp) inp.classList.add('err'); }
+function clearErr(id) { const el = g('err-' + id); if (el) el.classList.remove('show'); const inp = g(id); if (inp) inp.classList.remove('err'); }
+let toastTimer;
+function showToast(txt, type = '') { const t = g('toast'); t.textContent = txt; t.className = 'toast show ' + type; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = 'toast'; }, 4000); }
+function showLoader(txt) { g('loader').classList.add('show'); g('loaderText').textContent = txt || 'Please wait…'; }
+function hideLoader() { g('loader').classList.remove('show'); }
+function fmtAmt(paise) { const v = paise / 100; return isNaN(v) ? '0' : v.toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+function makeRows(pairs) { return pairs.map(([l, v]) => `<div class="review-row srow"><span class="rlbl slbl">${l}</span><span class="rval sval">${v}</span></div>`).join(''); }
+async function loadScript(src) { return new Promise((resolve, reject) => { if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; } const s = document.createElement('script'); s.src = src; s.onload = () => resolve(); s.onerror = () => { s.remove(); reject(new Error('Failed to load: ' + src)); }; document.head.appendChild(s); }); }
+
+function wireEvents() {
+  g('cardSchool').addEventListener('click',   () => selectMode('school'));
+  g('cardStudent').addEventListener('click',  () => selectMode('student'));
+  g('btnContinueMode').addEventListener('click', continueFromMode);
+  g('sName').addEventListener('input',        () => clearErr('sName'));
+  g('sAddress').addEventListener('input',     () => clearErr('sAddress'));
+  g('sCountry').addEventListener('change',    () => { onSchoolCountryChange(); clearErr('sCountry'); });
+  g('sState').addEventListener('change',      () => { onSchoolStateChange();   clearErr('sState');   });
+  g('sCity').addEventListener('change',       () => clearErr('sCity'));
+  g('sPinCode').addEventListener('input',     () => clearErr('sPinCode'));
+  g('sContactName').addEventListener('input', () => clearErr('sContactName'));
+  g('sDesignation').addEventListener('input', () => clearErr('sDesignation'));
+  g('sMobile').addEventListener('input',      () => clearErr('sMobile'));
+  g('btnAddSCity').addEventListener('click',  () => toggleAddNew('sCity'));
+  g('btnConfirmSCity').addEventListener('click', () => confirmAddNew('sCity'));
+  g('btnSchoolBack').addEventListener('click',   () => showScreen('screenMode'));
+  g('btnSchoolSubmit').addEventListener('click', submitSchoolForm);
+  g('stName').addEventListener('input',    () => clearErr('stName'));
+  g('stGrade').addEventListener('change',  () => clearErr('stGrade'));
+  g('stGender').addEventListener('change', () => clearErr('stGender'));
+  g('stPhone').addEventListener('input',   () => clearErr('stPhone'));
+  g('stEmail').addEventListener('input',   () => clearErr('stEmail'));
+  g('stCountry').addEventListener('change', onStudentCountryChange);
+  g('stState').addEventListener('change',   onStudentStateChange);
+  g('stCity').addEventListener('change',    onStudentCityChange);
+  g('stSchoolPicker').addEventListener('change', onSchoolPickerChange);
+  g('btnAddStCountry').addEventListener('click', () => toggleAddNew('stCountry'));
+  g('btnConfirmStCountry').addEventListener('click', () => { confirmAddNew('stCountry'); g('stState').disabled = false; onStudentCountryChange(); });
+  g('btnAddStState').addEventListener('click', () => toggleAddNew('stState'));
+  g('btnConfirmStState').addEventListener('click', () => { confirmAddNew('stState'); g('stCity').disabled = false; onStudentStateChange(); });
+  g('btnAddStCity').addEventListener('click', () => toggleAddNew('stCity'));
+  g('btnConfirmStCity').addEventListener('click', () => { confirmAddNew('stCity'); onStudentCityChange(); });
+  g('btnStudentBack').addEventListener('click', () => showScreen('screenMode'));
+  g('btnStudentNext').addEventListener('click', proceedToPayment);
+  g('discCode').addEventListener('input', () => { g('discCode').value = g('discCode').value.toUpperCase(); });
+  g('btnApplyDiscount').addEventListener('click', applyDiscount);
+  g('btnPaymentBack').addEventListener('click',   () => showScreen('screenStudentForm'));
+  g('btnPay').addEventListener('click',           startPayment);
+}
+
+wireEvents();
+init();
+</script>
+</body>
+</html>
