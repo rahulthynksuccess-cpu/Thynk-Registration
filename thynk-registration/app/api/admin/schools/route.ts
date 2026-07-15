@@ -370,6 +370,27 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
+  // ── Guard: block deletion if the school has any student registrations or payments ──
+  const [{ count: regCount }, { count: paymentCount }] = await Promise.all([
+    service.from('registrations').select('id', { count: 'exact', head: true }).eq('school_id', id),
+    service.from('payments').select('id', { count: 'exact', head: true }).eq('school_id', id),
+  ]);
+
+  if ((regCount ?? 0) > 0 || (paymentCount ?? 0) > 0) {
+    const parts: string[] = [];
+    if ((regCount ?? 0) > 0) parts.push(`${regCount} student registration${regCount === 1 ? '' : 's'}`);
+    if ((paymentCount ?? 0) > 0) parts.push(`${paymentCount} payment record${paymentCount === 1 ? '' : 's'}`);
+    return NextResponse.json(
+      {
+        error: `Cannot delete this school — it has ${parts.join(' and ')} associated with it. Remove or reassign those records first.`,
+        blocked: true,
+        registration_count: regCount ?? 0,
+        payment_count: paymentCount ?? 0,
+      },
+      { status: 409 }
+    );
+  }
+
   const { error } = await service.from('schools').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
