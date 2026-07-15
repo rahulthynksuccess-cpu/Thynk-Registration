@@ -657,7 +657,7 @@ function ApprovedTab({ consultants, registrations, enrichedRows, canManage, auth
   setConsultantForm: (r: Row | null) => void;
 }) {
   const [search,             setSearch]             = useState('');
-  const [remarkFilter,       setRemarkFilter]        = useState(false);
+  const [remarkFilter,       setRemarkFilter]        = useState<'all' | 'updated' | 'not_updated'>('all');
   const [domainFilter, setDomainFilter] = useState<string[]>([]);
   const [expandedId,   setExpandedId]  = useState<string | null>(null);
   const [deleting,     setDeleting]    = useState<string | null>(null);
@@ -690,8 +690,10 @@ function ApprovedTab({ consultants, registrations, enrichedRows, canManage, auth
         return domainFilter.some(f => d.includes(f));
       });
     }
-    if (remarkFilter) {
+    if (remarkFilter === 'updated') {
       list = list.filter(c => c.internal_remark && c.internal_remark.trim() !== '');
+    } else if (remarkFilter === 'not_updated') {
+      list = list.filter(c => !c.internal_remark || c.internal_remark.trim() === '');
     }
     return list;
   }, [enriched, search, domainFilter, remarkFilter]);
@@ -725,28 +727,46 @@ function ApprovedTab({ consultants, registrations, enrichedRows, canManage, auth
           value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* ── Quick filter: Internal Remark Updated ── */}
-      <div style={{ marginBottom:10 }}>
+      {/* ── Quick filter: Internal Remark Updated / Not Updated ── */}
+      <div style={{ marginBottom:10, display:'flex', alignItems:'center', flexWrap:'wrap', gap:0 }}>
         <button
-          onClick={() => setRemarkFilter(prev => !prev)}
+          onClick={() => setRemarkFilter(prev => prev === 'updated' ? 'all' : 'updated')}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
             cursor: 'pointer', transition: 'all .15s', fontFamily: 'DM Sans,sans-serif',
-            border: `1.5px solid ${remarkFilter ? '#b45309' : 'var(--bd)'}`,
-            background: remarkFilter ? 'rgba(180,83,9,0.08)' : 'transparent',
-            color: remarkFilter ? '#b45309' : 'var(--m)',
+            border: `1.5px solid ${remarkFilter === 'updated' ? '#b45309' : 'var(--bd)'}`,
+            background: remarkFilter === 'updated' ? 'rgba(180,83,9,0.08)' : 'transparent',
+            color: remarkFilter === 'updated' ? '#b45309' : 'var(--m)',
+            marginRight: 8,
           }}>
           🔒 Internal Remark Updated
-          {remarkFilter && (
+          {remarkFilter === 'updated' && (
             <span style={{ fontSize:10, background:'#b45309', color:'#fff', borderRadius:20, padding:'1px 7px', fontWeight:800 }}>
               {filtered.length}
             </span>
           )}
         </button>
-        {remarkFilter && (
-          <button onClick={() => setRemarkFilter(false)}
-            style={{ marginLeft:6, padding:'4px 10px', borderRadius:20, border:'1.5px solid var(--bd)', fontSize:11, color:'var(--m)', background:'transparent', cursor:'pointer' }}>
+        <button
+          onClick={() => setRemarkFilter(prev => prev === 'not_updated' ? 'all' : 'not_updated')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', transition: 'all .15s', fontFamily: 'DM Sans,sans-serif',
+            border: `1.5px solid ${remarkFilter === 'not_updated' ? '#64748b' : 'var(--bd)'}`,
+            background: remarkFilter === 'not_updated' ? 'rgba(100,116,139,0.08)' : 'transparent',
+            color: remarkFilter === 'not_updated' ? '#64748b' : 'var(--m)',
+          }}>
+          🔓 Internal Remark Not Updated
+          {remarkFilter === 'not_updated' && (
+            <span style={{ fontSize:10, background:'#64748b', color:'#fff', borderRadius:20, padding:'1px 7px', fontWeight:800 }}>
+              {filtered.length}
+            </span>
+          )}
+        </button>
+        {remarkFilter !== 'all' && (
+          <button onClick={() => setRemarkFilter('all')}
+            style={{ marginLeft:8, padding:'4px 10px', borderRadius:20, border:'1.5px solid var(--bd)', fontSize:11, color:'var(--m)', background:'transparent', cursor:'pointer' }}>
             ✕ Clear
           </button>
         )}

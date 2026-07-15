@@ -199,7 +199,13 @@ export function ManageSchool({
   const [edits, setEdits] = useState<Record<string, { is_active: boolean; is_registration_active: boolean }>>({});
   const [saving, setSaving] = useState(false);
 
+  // ── Delete state
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [blockedInfo, setBlockedInfo] = useState<{ school: Row; message: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Row | null>(null);
+
   // ── Filters
+  const [schoolSearch, setSchoolSearch] = useState('');
   const [selCountries, setSelCountries] = useState<string[]>([]);
   const [selStates,    setSelStates]    = useState<string[]>([]);
   const [selCities,    setSelCities]    = useState<string[]>([]);
@@ -238,8 +244,17 @@ export function ManageSchool({
     if (selStates.length > 0)    base = base.filter(s => selStates.includes(s.state));
     if (selCities.length > 0)    base = base.filter(s => selCities.includes(s.city));
     if (selSchools.length > 0)   base = base.filter(s => selSchools.includes(s.name));
+    if (schoolSearch.trim()) {
+      const q = schoolSearch.trim().toLowerCase();
+      base = base.filter(s =>
+        s.name?.toLowerCase().includes(q) ||
+        s.org_name?.toLowerCase().includes(q) ||
+        s.school_code?.toLowerCase().includes(q) ||
+        s.city?.toLowerCase().includes(q)
+      );
+    }
     return base.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
-  }, [schools, selCountries, selStates, selCities, selSchools]);
+  }, [schools, selCountries, selStates, selCities, selSchools, schoolSearch]);
 
   // ── Helpers to get current value (edited or original)
   function getActive(s: Row): boolean {
@@ -334,6 +349,33 @@ export function ManageSchool({
     setEdits({});
   }
 
+  // ── Delete a school (blocked if it has student/payment records)
+  async function handleDeleteConfirmed(school: Row) {
+    setDeletingId(school.id);
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/schools`, {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id: school.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast(`🗑️ ${school.name} deleted`, '🗑️');
+        setEdits(prev => { const { [school.id]: _, ...rest } = prev; return rest; });
+        onRefresh();
+      } else if (res.status === 409 || data.blocked) {
+        setBlockedInfo({ school, message: data.error ?? 'This school cannot be deleted.' });
+      } else {
+        showToast(data.error ?? 'Failed to delete school', '❌');
+      }
+    } catch {
+      showToast('Failed to delete school', '❌');
+    } finally {
+      setDeletingId(null);
+      setConfirmDelete(null);
+    }
+  }
+
   // ── Stats for header
   const activeCount  = filtered.filter(s => getActive(s)).length;
   const regOpenCount = filtered.filter(s => getRegOpen(s)).length;
@@ -383,6 +425,18 @@ export function ManageSchool({
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--m)', textTransform: 'uppercase', letterSpacing: '1px', marginRight: 4 }}>
           Filter:
         </span>
+        <input
+          type="text"
+          placeholder="🔍 Search school name, code, city…"
+          value={schoolSearch}
+          onChange={e => setSchoolSearch(e.target.value)}
+          style={{
+            padding: '8px 14px', borderRadius: 10, minWidth: 220,
+            border: '1.5px solid var(--bd)', background: 'var(--card)',
+            fontSize: 13, color: 'var(--text)', fontFamily: 'DM Sans,sans-serif',
+            outline: 'none',
+          }}
+        />
         <CheckDropdown
           label="Country"
           options={allCountries}
@@ -407,9 +461,9 @@ export function ManageSchool({
           selected={selSchools}
           onChange={setSelSchools}
         />
-        {(selCountries.length > 0 || selStates.length > 0 || selCities.length > 0 || selSchools.length > 0) && (
+        {(selCountries.length > 0 || selStates.length > 0 || selCities.length > 0 || selSchools.length > 0 || schoolSearch.trim()) && (
           <button
-            onClick={() => { setSelCountries([]); setSelStates([]); setSelCities([]); setSelSchools([]); }}
+            onClick={() => { setSelCountries([]); setSelStates([]); setSelCities([]); setSelSchools([]); setSchoolSearch(''); }}
             style={{
               padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
               border: '1.5px solid #ef4444', background: 'rgba(239,68,68,.07)',
@@ -485,6 +539,7 @@ export function ManageSchool({
                 <th>Code</th>
                 <th style={{ textAlign: 'center', minWidth: 120 }}>Is Active</th>
                 <th style={{ textAlign: 'center', minWidth: 140 }}>Registration Open</th>
+                <th style={{ textAlign: 'center', minWidth: 80 }}>Delete</th>
               </tr>
             </thead>
             <tbody>
@@ -566,6 +621,23 @@ export function ManageSchool({
                         </div>
                       )}
                     </td>
+
+                    {/* Delete */}
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        onClick={() => setConfirmDelete(s)}
+                        disabled={deletingId === s.id}
+                        title="Delete school"
+                        style={{
+                          padding: '6px 10px', borderRadius: 8, fontSize: 13,
+                          border: '1.5px solid #ef4444', background: 'rgba(239,68,68,.06)',
+                          color: '#ef4444', cursor: deletingId === s.id ? 'not-allowed' : 'pointer',
+                          opacity: deletingId === s.id ? 0.5 : 1,
+                        }}
+                      >
+                        {deletingId === s.id ? '⏳' : '🗑️'}
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -607,6 +679,56 @@ export function ManageSchool({
           >
             {saving ? '⏳ Saving…' : `Save Changes (${pendingCount})`}
           </button>
+        </div>
+      )}
+
+      {/* ── Confirm Delete modal ─────────────────────────────────────── */}
+      {confirmDelete && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmDelete(null); }}
+        >
+          <div style={{ background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 18, padding: 28, maxWidth: 440, width: '100%' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, fontFamily: 'Sora,sans-serif' }}>🗑️ Delete School</h3>
+            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, marginBottom: 20 }}>
+              Are you sure you want to delete <strong>{confirmDelete.name}</strong> ({confirmDelete.school_code})? This cannot be undone.
+              If any student registrations or payments exist for this school, deletion will be blocked.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDelete(null)}
+                style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid var(--bd)', background: 'transparent', fontSize: 13, cursor: 'pointer', color: 'var(--text)' }}>
+                Cancel
+              </button>
+              <button onClick={() => handleDeleteConfirmed(confirmDelete)}
+                disabled={deletingId === confirmDelete.id}
+                style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {deletingId === confirmDelete.id ? '⏳ Deleting…' : '🗑️ Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Blocked-delete info modal ────────────────────────────────── */}
+      {blockedInfo && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setBlockedInfo(null); }}
+        >
+          <div style={{ background: 'var(--card)', border: '1.5px solid var(--bd)', borderRadius: 18, padding: 28, maxWidth: 460, width: '100%' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, fontFamily: 'Sora,sans-serif', color: '#b45309' }}>
+              ⚠️ Cannot Delete School
+            </h3>
+            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, marginBottom: 20 }}>
+              {blockedInfo.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setBlockedInfo(null)}
+                style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: 'var(--acc)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Got it
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
