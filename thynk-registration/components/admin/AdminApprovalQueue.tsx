@@ -3,6 +3,7 @@
 // Approval queue with: filters, delete, bulk approve/reject/delete
 
 import React, { useState, useMemo } from 'react';
+import SchoolFormDetailsModal from '@/components/admin/SchoolFormDetailsModal';
 
 type Row = Record<string, any>;
 
@@ -138,6 +139,7 @@ export default function AdminApprovalQueue({
   pendingSchools, programs, BACKEND, authHeaders, onRefresh, showToast,
 }: ApprovalQueueProps) {
   const [approveTarget, setApproveTarget] = useState<Row | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<Row | null>(null);
 
   // ── Filters
   const [search,        setSearch]        = useState('');
@@ -308,6 +310,9 @@ export default function AdminApprovalQueue({
         <ApproveModal school={approveTarget} programs={programs}
           onClose={() => setApproveTarget(null)} onApprove={handleApprove} />
       )}
+      {detailsTarget && (
+        <SchoolFormDetailsModal school={detailsTarget} programs={programs} onClose={() => setDetailsTarget(null)} />
+      )}
 
       {/* Stats */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
@@ -437,6 +442,11 @@ export default function AdminApprovalQueue({
                     <td><span className={`badge ${statusColor}`}>{statusLabel}</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        <button
+                          className="btn"
+                          style={{ fontSize: 11, padding: '5px 10px', background: 'rgba(79,70,229,0.08)', color: 'var(--acc)', border: '1.5px solid var(--acc)' }}
+                          onClick={() => setDetailsTarget(s)}
+                        >📋 Details</button>
                         <button
                           className="btn btn-primary"
                           style={{ fontSize: 11, padding: '5px 10px', background: '#10b981', borderColor: '#10b981' }}

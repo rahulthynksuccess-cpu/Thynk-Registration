@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
+import SchoolFormDetailsModal from '@/components/admin/SchoolFormDetailsModal';
 import { authFetch } from '@/lib/supabase/client';
 
 type Row = Record<string, any>;
@@ -508,6 +509,7 @@ export function SchoolsPageWithApproval({
 }) {
   const [tab, setTab] = useState<'analytics' | 'queue' | 'approved'>('approved');
   const [schoolModal, setSchoolModal] = useState<Row | null>(null);
+  const [detailsSchool, setDetailsSchool] = useState<Row | null>(null);
 
   const pendingSchools  = schools.filter(s => s.status && s.status !== 'approved');
   const approvedSchools = schools.filter(s => s.status === 'approved' || !s.status);
@@ -566,6 +568,7 @@ export function SchoolsPageWithApproval({
         <SchoolsTableWithStatus
           schools={approvedSchools} programs={programs}
           isSuperAdmin={isSuperAdmin} onEdit={onEdit}
+          onShowDetails={s => setDetailsSchool(s)}
           onRowClick={s => {
             const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
             setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
@@ -576,16 +579,19 @@ export function SchoolsPageWithApproval({
       {schoolModal && (
         <SchoolDetailModal school={schoolModal} onClose={() => setSchoolModal(null)} showToast={showToast} />
       )}
+      {detailsSchool && (
+        <SchoolFormDetailsModal school={detailsSchool} programs={programs} onClose={() => setDetailsSchool(null)} />
+      )}
     </>
   );
 }
 
 // ── Schools Table With Status ────────────────────────────────────────────────
 export function SchoolsTableWithStatus({
-  schools, programs, isSuperAdmin, onEdit, onRowClick,
+  schools, programs, isSuperAdmin, onEdit, onRowClick, onShowDetails,
 }: {
   schools: Row[]; programs: Row[]; isSuperAdmin: boolean;
-  onEdit: (s: Row) => void; onRowClick?: (s: Row) => void;
+  onEdit: (s: Row) => void; onRowClick?: (s: Row) => void; onShowDetails?: (s: Row) => void;
 }) {
   const [filterPrograms,  setFilterPrograms]  = useState<string[]>([]);
   const [filterCountries, setFilterCountries] = useState<string[]>([]);
@@ -672,13 +678,13 @@ export function SchoolsTableWithStatus({
             <tr>
               <th>Code</th><th>School Name</th><th>Location</th><th>Program</th>
               <th>Price</th><th>Discount Code</th><th>Registration URL</th>
-              <th>Reg Active</th><th>Status</th><th>Dashboard</th>
+              <th>Reg Active</th><th>Status</th><th>Dashboard</th><th>Details</th>
               {isSuperAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0
-              ? <tr><td colSpan={11} className="table-empty">No schools match the selected filters.</td></tr>
+              ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
               : filtered.map(s => {
                   const prog = programs.find(p => p.id === s.project_id) ?? programs.find(p => p.slug === s.project_slug);
                   // Always use ?school= format — works for all schools on WordPress
@@ -709,6 +715,20 @@ export function SchoolsTableWithStatus({
                       <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>
                       <td onClick={e => e.stopPropagation()}>
                         <DashboardLinkButton schoolId={s.id} />
+                      </td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => onShowDetails?.(s)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '5px 12px', borderRadius: 7,
+                            background: 'transparent', border: '1.5px solid var(--acc)',
+                            color: 'var(--acc)', fontSize: 11, fontWeight: 700,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          📋 School Details
+                        </button>
                       </td>
                       {isSuperAdmin && (
                         <td>
