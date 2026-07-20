@@ -1511,18 +1511,23 @@ export default function AdminDashboard() {
                   // Hide section if no items are visible for sub_admin
                   const anyVisible = sectionItems.some(si => {
                     if ((si as any).action) return true; // actions always show
-                    if ('href' in si) return false; // href items hidden for sub_admin
+                    // href items (Integrations, Message Triggers, Settings) map to the
+                    // matching '_' prefixed page id in ALL_PAGES — visible if granted.
+                    if ('href' in si) return (si as any).id && subAdminPages.includes((si as any).id);
                     return si.id && subAdminPages.includes(si.id);
                   });
                   if (!anyVisible) return null;
                 }
                 return <div key={i} className="sb-section">{(item as any).section}</div>;
               }
-              // Sub-admin: hide pages not in their allowed list AND hide all href/external links
+              // Sub-admin: hide pages/links not explicitly granted in their allowed list
               if (isSubAdmin && subAdminPages) {
-                if ('href' in item) return null; // hide Integrations, Settings, etc.
+                if ('href' in item) {
+                  // Integrations, Message Triggers, Settings — only visible if granted
+                  if (!(item as any).id || !subAdminPages.includes((item as any).id)) return null;
+                }
                 // 'consultants' nav item is visible if sub-admin has either 'consultants' OR 'consultant_registrations'
-                if (item.id === 'consultants') {
+                else if (item.id === 'consultants') {
                   if (!subAdminPages.includes('consultants') && !subAdminPages.includes('consultant_registrations')) return null;
                 } else if (item.id && !item.action && !subAdminPages.includes(item.id)) return null;
               }
@@ -2409,7 +2414,9 @@ export default function AdminDashboard() {
           headers:{...authHeaders()},
           body:JSON.stringify({
             user_id:(userForm as any).user_id,
+            role:data.role,
             display_name:data.display_name,
+            school_id:data.school_id,
             all_schools:data.all_schools,
             allowed_school_ids:data.allowed_school_ids,
             allowed_pages:data.allowed_pages,
@@ -3664,33 +3671,36 @@ function ResetPasswordModal({ user, BACKEND, authHeaders, onClose, showToast }: 
 
 // ── User Form ───────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
-// Page IDs that can be granted to sub-admins (mirrors the NAV array)
+// Page IDs that can be granted to sub-admins (mirrors the NAV array).
+// IMPORTANT: this must stay in sync with every selectable item in NAV so that
+// every component/page in the admin panel can be allocated to a sub-admin.
 const ALL_PAGES = [
-  { id:'overview',                label:'Overview Dashboard',        section:'Analytics'  },
-  { id:'reporting',               label:'Reporting',                 section:'Analytics'  },
-  { id:'students',                label:'Students',                  section:'Analytics'  },
-  { id:'trends',                  label:'Trends',                    section:'Analytics'  },
-  { id:'followup',                label:'Follow-Up',                 section:'Actions'    },
-  { id:'comms',                   label:'Communications',            section:'Actions'    },
-  { id:'leads',                   label:'Lead Database',             section:'Actions'    },
-  { id:'heatmap',                 label:'City Heatmap',              section:'Actions'    },
-  { id:'recent',                  label:'Recent Activity',           section:'Actions'    },
-  { id:'programs',                label:'Programs',                  section:'Management' },
-  { id:'schools',                 label:'Schools',                   section:'Management' },
-  { id:'manage_school',           label:'Manage Schools',            section:'Management' },
-  { id:'discounts',               label:'Discount Codes',            section:'Management' },
-  { id:'users',                   label:'Admin Users',               section:'Management' },
-  { id:'consultants',             label:'Consultants',               section:'Consultants'},
-  { id:'consultant_registrations',label:'Pending Consultant Signups',section:'Consultants'},
-  { id:'comms',                   label:'Communications',            section:'Actions'    },
-  { id:'leads',                   label:'Lead Database',             section:'Actions'    },
-  { id:'documents',               label:'Document Upload',           section:'Portal'     },
-  { id:'notifications',           label:'Notifications',             section:'Portal'     },
-  { id:'letters',                 label:'Letter Generator',          section:'Portal'     },
-  { id:'logs_schools',            label:'School Logs',               section:'Logs'       },
-  { id:'logs_students',           label:'Student Logs',              section:'Logs'       },
-  { id:'logs_email',              label:'Email Logs',                section:'Logs'       },
-  { id:'logs_whatsapp',           label:'WhatsApp Logs',             section:'Logs'       },
+  { id:'overview',                label:'Overview Dashboard',        section:'Analytics'    },
+  { id:'reporting',               label:'Reporting',                 section:'Analytics'    },
+  { id:'students',                label:'Students',                  section:'Analytics'    },
+  { id:'trends',                  label:'Trends',                    section:'Analytics'    },
+  { id:'followup',                label:'Follow-Up',                 section:'Actions'      },
+  { id:'comms',                   label:'Communications',            section:'Actions'      },
+  { id:'leads',                   label:'Lead Database',             section:'Actions'      },
+  { id:'heatmap',                 label:'City Heatmap',              section:'Actions'      },
+  { id:'recent',                  label:'Recent Activity',           section:'Actions'      },
+  { id:'programs',                label:'Programs',                  section:'Management'   },
+  { id:'schools',                 label:'Schools',                   section:'Management'   },
+  { id:'manage_school',           label:'Manage Schools',            section:'Management'   },
+  { id:'discounts',               label:'Discount Codes',            section:'Management'   },
+  { id:'users',                   label:'Admin Users',               section:'Management'   },
+  { id:'consultants',             label:'Consultants',               section:'Consultants'  },
+  { id:'consultant_registrations',label:'Pending Consultant Signups',section:'Consultants'  },
+  { id:'documents',               label:'Document Upload',           section:'Portal'       },
+  { id:'notifications',           label:'Notifications',             section:'Portal'       },
+  { id:'letters',                 label:'Letter Generator',          section:'Portal'       },
+  { id:'_integrations',           label:'Payment & Email',           section:'Integrations' },
+  { id:'_triggers',               label:'Message Triggers',          section:'Integrations' },
+  { id:'logs_schools',            label:'School Logs',               section:'Logs'         },
+  { id:'logs_students',           label:'Student Logs',              section:'Logs'         },
+  { id:'logs_email',              label:'Email Logs',                section:'Logs'         },
+  { id:'logs_whatsapp',           label:'WhatsApp Logs',             section:'Logs'         },
+  { id:'_settings',               label:'Settings & Locations',      section:'Settings'     },
 ];
 
 function UserFormModal({ schools, initial, onClose, onSave }: {
@@ -3764,18 +3774,19 @@ function UserFormModal({ schools, initial, onClose, onSave }: {
             <input style={IS} value={f.display_name} onChange={e=>set('display_name',e.target.value)} placeholder="e.g. City Coordinator — Delhi"/>
           </Field>
 
-          {/* Role picker — always visible */}
+          {/* Role picker — editable on create; editable on edit too so a sub-admin
+              can be promoted to Super Admin (or otherwise have their role changed) */}
           <Field label="Role *">
-            {isEdit
-              ? <div style={{...IS, background:'var(--bg)', color:'var(--m)', cursor:'not-allowed'}}>
-                  {f.role === 'sub_admin' ? 'Sub Admin (restricted access)' : f.role === 'super_admin' ? 'Super Admin (full access)' : 'School Admin (single school)'}
-                </div>
-              : <select style={SS} value={f.role} onChange={e=>set('role',e.target.value)}>
-                  <option value="sub_admin">Sub Admin — assign specific schools &amp; pages</option>
-                  <option value="school_admin">School Admin — single school (legacy)</option>
-                  <option value="super_admin">Super Admin — full access</option>
-                </select>
-            }
+            <select style={SS} value={f.role} onChange={e=>set('role',e.target.value)}>
+              <option value="sub_admin">Sub Admin — assign specific schools &amp; pages</option>
+              <option value="school_admin">School Admin — single school (legacy)</option>
+              <option value="super_admin">Super Admin — full access</option>
+            </select>
+            {isEdit && f.role !== (initial?.role ?? 'sub_admin') && (
+              <div style={{fontSize:11,color:'var(--orange, #f59e0b)',marginTop:5,fontWeight:600}}>
+                ⚠️ Role will change from {initial?.role === 'super_admin' ? 'Super Admin' : initial?.role === 'school_admin' ? 'School Admin' : 'Sub Admin'} to {f.role === 'super_admin' ? 'Super Admin' : f.role === 'school_admin' ? 'School Admin' : 'Sub Admin'} on save.
+              </div>
+            )}
           </Field>
 
           {/* ── School Admin (legacy): single school dropdown ── */}

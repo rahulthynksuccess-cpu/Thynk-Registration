@@ -174,32 +174,59 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true, user_id: uid }, { status: 201 });
 }
 
-// ── PATCH — edit sub_admin permissions ────────────────────────────
+// ── PATCH — edit an admin user's role and/or sub_admin permissions ─
 export async function PATCH(req: NextRequest) {
   const user = await requireSuperAdmin(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
-  const { user_id, display_name, all_schools = false, allowed_school_ids = [], allowed_pages = [] } = await req.json();
+  const {
+    user_id, role, display_name, school_id,
+    all_schools = false, allowed_school_ids = [], allowed_pages = [],
+  } = await req.json();
 
   if (!user_id) return NextResponse.json({ error: 'user_id required' }, { status: 400 });
+  if (role === 'sub_admin' && allowed_pages.length === 0)
+    return NextResponse.json({ error: 'sub_admin requires at least one allowed page' }, { status: 400 });
+  if (role === 'school_admin' && !school_id)
+    return NextResponse.json({ error: 'school_id required for school_admin' }, { status: 400 });
 
-  // Replace all existing sub_admin rows for this user
-  await service.from('admin_roles').delete().eq('user_id', user_id).eq('role', 'sub_admin');
+  // Wipe out this user's existing sub_admin/super_admin/school_admin rows (these
+  // three are mutually exclusive), then re-insert based on the (possibly changed)
+  // role. This lets a sub_admin be promoted to super_admin (or vice versa) from
+  // the same edit form, not just have permissions tweaked. A separate
+  // 'consultant' role row (if any) for this user is intentionally left alone.
+  await service.from('admin_roles').delete().eq('user_id', user_id)
+    .in('role', ['sub_admin', 'super_admin', 'school_admin']);
 
-  if (all_schools || allowed_school_ids.length === 0) {
-    // all_schools=true OR no specific schools → single row with school_id=null
-    await service.from('admin_roles').insert({
-      user_id, role: 'sub_admin', school_id: null,
-      all_schools: !!all_schools, allowed_pages, display_name: display_name || null,
+  if (role === 'super_admin') {
+    const { error: insErr } = await service.from('admin_roles').insert({
+      user_id, role: 'super_admin', school_id: null, display_name: display_name || null,
     });
+    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+  } else if (role === 'school_admin') {
+    const { error: insErr } = await service.from('admin_roles').insert({
+      user_id, role: 'school_admin', school_id, display_name: display_name || null,
+    });
+    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
   } else {
-    await service.from('admin_roles').insert(
-      allowed_school_ids.map((sid: string) => ({
-        user_id, role: 'sub_admin', school_id: sid,
-        all_schools: false, allowed_pages, display_name: display_name || null,
-      }))
-    );
+    // sub_admin (default — also covers requests that omit `role` for backward compatibility)
+    if (all_schools || allowed_school_ids.length === 0) {
+      // all_schools=true OR no specific schools → single row with school_id=null
+      const { error: insErr } = await service.from('admin_roles').insert({
+        user_id, role: 'sub_admin', school_id: null,
+        all_schools: !!all_schools, allowed_pages, display_name: display_name || null,
+      });
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    } else {
+      const { error: insErr } = await service.from('admin_roles').insert(
+        allowed_school_ids.map((sid: string) => ({
+          user_id, role: 'sub_admin', school_id: sid,
+          all_schools: false, allowed_pages, display_name: display_name || null,
+        }))
+      );
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ success: true });

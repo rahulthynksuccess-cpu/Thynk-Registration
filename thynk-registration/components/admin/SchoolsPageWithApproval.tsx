@@ -678,13 +678,14 @@ export function SchoolsTableWithStatus({
             <tr>
               <th>Code</th><th>School Name</th><th>Location</th><th>Program</th>
               <th>Price</th><th>Discount Code</th><th>Registration URL</th>
+              <th>Created</th>
               <th>Reg Active</th><th>Status</th><th>Dashboard</th><th>Details</th>
               {isSuperAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0
-              ? <tr><td colSpan={12} className="table-empty">No schools match the selected filters.</td></tr>
+              ? <tr><td colSpan={13} className="table-empty">No schools match the selected filters.</td></tr>
               : filtered.map(s => {
                   const prog = programs.find(p => p.id === s.project_id) ?? programs.find(p => p.slug === s.project_slug);
                   // Always use ?school= format — works for all schools on WordPress
@@ -710,6 +711,9 @@ export function SchoolsTableWithStatus({
                         <a href={regUrl} target="_blank" rel="noreferrer" style={{ color:'var(--acc)', fontSize:11, textDecoration:'none' }} onClick={e => e.stopPropagation()}>
                           🔗 {regUrl.replace('https://','').slice(0,36)}
                         </a>
+                      </td>
+                      <td style={{ fontSize:11, color:'var(--m)', whiteSpace:'nowrap' }}>
+                        {s.created_at ? new Date(s.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
                       </td>
                       <td><span className={`badge ${s.is_registration_active ? 'badge-paid' : 'badge-cancelled'}`}>{s.is_registration_active ? 'Open' : 'Closed'}</span></td>
                       <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>

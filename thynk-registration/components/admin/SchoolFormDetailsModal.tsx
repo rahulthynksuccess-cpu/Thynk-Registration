@@ -86,12 +86,18 @@ export default function SchoolFormDetailsModal({ school, programs, onClose }: {
             </span>
           </div>
 
+          {/* Created date — shown prominently up top */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 18, fontSize: 12, color: 'var(--m)' }}>
+            <span>📅</span>
+            <span>School created on <strong style={{ color: 'var(--text)' }}>{fmtDate(school.created_at)}</strong></span>
+          </div>
+
           {/* Basic Info */}
           <Section title="🏫 Basic Information">
             <Row_ label="School Name" value={school.name} />
             <Row_ label="Organisation Name" value={school.org_name} />
             <Row_ label="School Code" value={school.school_code} mono />
-            <Row_ label="Submitted On" value={fmtDate(school.created_at)} />
+            <Row_ label="Created On" value={fmtDate(school.created_at)} />
             {school.approved_at && <Row_ label="Approved On" value={fmtDate(school.approved_at)} />}
           </Section>
 
