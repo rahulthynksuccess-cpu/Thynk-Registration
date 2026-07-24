@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
       is_active, is_registration_active, status, approved_at, approved_by,
       city, state, country, address, pin_code, contact_persons,
       project_id, project_slug, discount_code, created_at, consultant_id,
-      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)
+      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active, grade_prices_inr, grade_prices_usd)
     `)
     .order('created_at', { ascending: false });
 
@@ -111,6 +111,12 @@ export async function POST(req: NextRequest) {
     primary_color, accent_color,
     is_active, is_registration_active,
     consultant_id: bodyConsultantId,
+    // Class/grade-wise pricing for this school (see migration 009).
+    // grade_specific_pricing: true  → grade_prices_inr/usd are stored & used at checkout.
+    // grade_specific_pricing: false/omitted → school uses flat school_price for every grade.
+    grade_specific_pricing,
+    grade_prices_inr: bodyGradePricesInr,
+    grade_prices_usd: bodyGradePricesUsd,
   } = body;
 
   if (!school_code || !name || !org_name || !project_id || !school_price)
@@ -121,7 +127,7 @@ export async function POST(req: NextRequest) {
 
   const { data: program } = await service
     .from('projects')
-    .select('slug, name, base_url')
+    .select('slug, name, base_url, grade_prices_inr, grade_prices_usd')
     .eq('id', project_id)
     .single();
   if (!program) return NextResponse.json({ error: 'Program not found' }, { status: 400 });
@@ -170,6 +176,16 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
 
+  // ── Class/grade-wise pricing ────────────────────────────────────────────
+  // Only persist a grade_prices map when the program actually has grade-specific
+  // pricing configured AND the admin has enabled it for this school. Otherwise
+  // this school uses flat `school_price` for every grade (existing behavior).
+  const programHasGradePricing = resolvedCurrency === 'INR'
+    ? !!(program.grade_prices_inr && Object.keys(program.grade_prices_inr).length)
+    : !!(program.grade_prices_usd && Object.keys(program.grade_prices_usd).length);
+
+  const useGradePricing = !!grade_specific_pricing && programHasGradePricing;
+
   await service.from('pricing').insert({
     school_id:        school.id,
     program_name:     program.name,
@@ -179,6 +195,8 @@ export async function POST(req: NextRequest) {
       ? ['cashfree', 'razorpay', 'easebuzz']
       : ['paypal', 'razorpay'],
     is_active: true,
+    grade_prices_inr: useGradePricing && resolvedCurrency === 'INR' ? (bodyGradePricesInr ?? null) : null,
+    grade_prices_usd: useGradePricing && resolvedCurrency === 'USD' ? (bodyGradePricesUsd ?? null) : null,
   });
 
   void service.from('discount_codes').insert({
@@ -288,6 +306,11 @@ export async function PATCH(req: NextRequest) {
     address, pin_code, contact_persons,
     is_registration_active,
     consultant_id: patchConsultantId,
+    // Class/grade-wise pricing — these live on the `pricing` table, not `schools`,
+    // so pull them out of `rest` before it gets spread into the schools update.
+    grade_specific_pricing,
+    grade_prices_inr: bodyGradePricesInr,
+    grade_prices_usd: bodyGradePricesUsd,
     ...rest
   } = await req.json();
 
@@ -349,6 +372,19 @@ export async function PATCH(req: NextRequest) {
   if (school_price !== undefined) {
     await service.from('pricing')
       .update({ base_amount: Math.round(Number(school_price)), currency: resolvedCurrency })
+      .eq('school_id', id)
+      .eq('is_active', true);
+  }
+
+  // grade_specific_pricing === false  → explicitly clear grade prices (revert to flat)
+  // grade_specific_pricing === true   → save whatever grade_prices_inr/usd were sent
+  // grade_specific_pricing === undefined → don't touch grade pricing at all
+  if (grade_specific_pricing !== undefined) {
+    await service.from('pricing')
+      .update({
+        grade_prices_inr: grade_specific_pricing ? (bodyGradePricesInr ?? null) : null,
+        grade_prices_usd: grade_specific_pricing ? (bodyGradePricesUsd ?? null) : null,
+      })
       .eq('school_id', id)
       .eq('is_active', true);
   }

@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
   // ── Fetch school + check approval ────────────────────────────────────────────
   const { data: school } = await supabase
     .from('schools')
-    .select('id, name, status, is_active, is_registration_active, branding, org_name')
+    .select('id, name, status, is_active, is_registration_active, branding, org_name, project_id')
     .eq('id', schoolId)
     .single();
 
@@ -222,6 +222,20 @@ export async function POST(req: NextRequest) {
 
   const currency = pricing.currency || clientCurrency || 'INR';
 
+  // ── Resolve the effective base amount for the selected grade ─────────────────
+  // SECURITY: this must be computed server-side from the school's own pricing
+  // row — never trust an amount sent by the client. If the school has
+  // class/grade-wise pricing enabled (pricing.grade_prices_inr / _usd) and the
+  // submitted classGrade has an entry in that map, use it. Otherwise fall back
+  // to the school's flat base_amount (existing behavior, unchanged).
+  const gradePriceMap: Record<string, number> | null =
+    (currency.toUpperCase() === 'INR' ? pricing.grade_prices_inr : pricing.grade_prices_usd) ?? null;
+
+  const effectiveBaseAmount =
+    gradePriceMap && classGrade && gradePriceMap[classGrade] !== undefined
+      ? Number(gradePriceMap[classGrade])
+      : pricing.base_amount;
+
   // ── Duplicate registration guard ─────────────────────────────────────────────
   const { data: existingReg } = await supabase
     .from('registrations')
@@ -242,26 +256,31 @@ export async function POST(req: NextRequest) {
   // ── Resolve discount ─────────────────────────────────────────────────────────
   let discountAmount = 0;
   if (discountCode && isIndiaCurrency(currency)) {
-    const { data: dc } = await supabase
+    // A discount code can be scoped to one specific school (school_id) OR to an
+    // entire program across all its schools (project_id). Check both; if a
+    // school has its own code with this name AND the program also has one,
+    // the school-specific one wins (more specific match).
+    const { data: matches } = await supabase
       .from('discount_codes')
       .select('*')
-      .eq('school_id', schoolId)
       .eq('code', discountCode.toUpperCase())
       .eq('is_active', true)
-      .single();
+      .or(`school_id.eq.${schoolId},project_id.eq.${school.project_id}`);
+
+    const dc = matches?.find(m => m.school_id === schoolId) ?? matches?.find(m => m.project_id === school.project_id);
 
     if (dc) {
       const notExpired   = !dc.expires_at || new Date(dc.expires_at) > new Date();
       const notExhausted = dc.max_uses === null || dc.used_count < dc.max_uses;
       if (notExpired && notExhausted) {
         discountAmount = dc.discount_type === 'percent'
-          ? Math.round((dc.discount_value / 100) * pricing.base_amount)
+          ? Math.round((dc.discount_value / 100) * effectiveBaseAmount)
           : (dc.discount_amount || 0);
       }
     }
   }
 
-  const finalAmount = Math.max(0, pricing.base_amount - discountAmount);
+  const finalAmount = Math.max(0, effectiveBaseAmount - discountAmount);
 
   // ── Load integration config for the requested gateway ────────────────────────
   const gwConfig = await getGatewayConfig(supabase, schoolId, gateway);
@@ -338,7 +357,7 @@ export async function POST(req: NextRequest) {
         school_id:       schoolId,
         gateway:         'paypal',
         gateway_txn_id:  paypalOrderId,
-        base_amount:     pricing.base_amount,
+        base_amount:     effectiveBaseAmount,
         discount_amount: discountAmount,
         final_amount:    finalAmount,
         discount_code:   discountCode?.toUpperCase() ?? null,
@@ -396,7 +415,7 @@ export async function POST(req: NextRequest) {
       registration_id: registration.id,
       school_id:       schoolId,
       gateway,
-      base_amount:     pricing.base_amount,
+      base_amount:     effectiveBaseAmount,
       discount_amount: discountAmount,
       final_amount:    finalAmount,
       discount_code:   discountCode?.toUpperCase() ?? null,

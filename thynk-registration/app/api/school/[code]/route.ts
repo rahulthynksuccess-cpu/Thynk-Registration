@@ -26,7 +26,7 @@ export async function GET(
     .select(`
       id, school_code, name, org_name, logo_url, branding, gateway_config, is_active, is_registration_active, project_slug,
       country, city, state, status,
-      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active, valid_from, valid_until)
+      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active, valid_from, valid_until, grade_prices_inr, grade_prices_usd)
     `)
     .eq('school_code', params.code.toLowerCase())
     .eq('is_active', true);

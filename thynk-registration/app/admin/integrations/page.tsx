@@ -376,6 +376,13 @@ interface SmtpConfig {
   smtpUser:   string;
   smtpPass:   string;
   enabled:    boolean;
+  // Auth method: 'smtp' (default, username+password) or 'graph' (Microsoft Graph
+  // API / OAuth — recommended for Office 365, since Microsoft disabled SMTP Basic
+  // Auth on most tenants). Only relevant when provider === 'outlook'.
+  authMethod?:   'smtp' | 'graph';
+  tenantId?:     string;
+  clientId?:     string;
+  clientSecret?: string;
 }
 
 function newSmtp(overrides: Partial<SmtpConfig> = {}): SmtpConfig {
@@ -393,6 +400,10 @@ function newSmtp(overrides: Partial<SmtpConfig> = {}): SmtpConfig {
     smtpUser:   '',
     smtpPass:   '',
     enabled:    true,
+    authMethod:   'smtp',
+    tenantId:     '',
+    clientId:     '',
+    clientSecret: '',
     ...overrides,
   };
 }
@@ -418,7 +429,9 @@ function SmtpCard({
   const isDefault = cfg.program_id === '';
   const prog = programs.find(p => p.id === cfg.program_id);
   const meta = EMAIL_PROVIDERS[cfg.provider as EmailProvider] || EMAIL_PROVIDERS.custom;
-  const isConfigured = !!(cfg.smtpUser && cfg.smtpPass);
+  const isConfigured = cfg.authMethod === 'graph'
+    ? !!(cfg.tenantId && cfg.clientId && cfg.clientSecret && cfg.fromEmail)
+    : !!(cfg.smtpUser && cfg.smtpPass);
   const PROVIDERS = Object.entries(EMAIL_PROVIDERS) as [EmailProvider, ProviderMeta][];
 
   const switchProvider = (p: EmailProvider) => {
@@ -575,6 +588,59 @@ function SmtpCard({
               </div>
             )}
 
+            {/* Outlook auth method: SMTP vs Microsoft Graph */}
+            {cfg.provider === 'outlook' && (
+              <div style={{gridColumn:'1/-1'}}>
+                <label style={lbl}>Authentication Method</label>
+                <div style={{display:'flex',gap:8,marginBottom:8}}>
+                  <button onClick={()=>onChange({authMethod:'smtp'})}
+                    style={{flex:1,padding:'9px 14px',borderRadius:9,border:`1.5px solid ${(cfg.authMethod??'smtp')==='smtp'?meta.color:'var(--bd)'}`,background:(cfg.authMethod??'smtp')==='smtp'?meta.bg:'var(--bg)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:(cfg.authMethod??'smtp')==='smtp'?meta.color:'var(--m)',textAlign:'left' as const}}>
+                    Password (SMTP)
+                    <div style={{fontSize:10,opacity:0.7,marginTop:2}}>Often blocked by Microsoft — see note below</div>
+                  </button>
+                  <button onClick={()=>onChange({authMethod:'graph'})}
+                    style={{flex:1,padding:'9px 14px',borderRadius:9,border:`1.5px solid ${cfg.authMethod==='graph'?meta.color:'var(--bd)'}`,background:cfg.authMethod==='graph'?meta.bg:'var(--bg)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontSize:12,fontWeight:600,color:cfg.authMethod==='graph'?meta.color:'var(--m)',textAlign:'left' as const}}>
+                    Microsoft Graph API (Recommended)
+                    <div style={{fontSize:10,opacity:0.7,marginTop:2}}>OAuth — works even if SMTP is disabled</div>
+                  </button>
+                </div>
+                {(cfg.authMethod??'smtp') === 'smtp' && (
+                  <p style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'#b45309',background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:8,padding:'8px 10px',margin:0}}>
+                    ⚠ Microsoft has disabled SMTP Basic Auth (username/password) on most 365 tenants. If testing fails
+                    here even though the same account works fine in the Outlook desktop app — that's this restriction,
+                    not a wrong password. Switch to <b>Microsoft Graph API</b> above to fix it permanently.
+                  </p>
+                )}
+                {cfg.authMethod === 'graph' && (
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginTop:6}}>
+                    <div style={{gridColumn:'1/-1'}}>
+                      <p style={{fontFamily:'DM Sans,sans-serif',fontSize:11,color:'var(--m)',margin:'0 0 8px'}}>
+                        Requires a one-time Azure AD App Registration (Azure Portal → Azure Active Directory → App
+                        registrations → New registration → grant it the <b>Mail.Send</b> Application permission →
+                        <b> Grant admin consent</b>). Paste the three values from that app below.
+                      </p>
+                    </div>
+                    <div>
+                      <label style={lbl}>Tenant ID *</label>
+                      <input value={cfg.tenantId ?? ''} onChange={e=>onChange({tenantId:e.target.value})} placeholder="Directory (tenant) ID" style={inp}/>
+                    </div>
+                    <div>
+                      <label style={lbl}>Client ID *</label>
+                      <input value={cfg.clientId ?? ''} onChange={e=>onChange({clientId:e.target.value})} placeholder="Application (client) ID" style={inp}/>
+                    </div>
+                    <div style={{gridColumn:'1/-1'}}>
+                      <label style={lbl}>Client Secret *</label>
+                      <div style={{position:'relative'}}>
+                        <input type={showPass?'text':'password'} value={cfg.clientSecret ?? ''} onChange={e=>onChange({clientSecret:e.target.value})} placeholder="Client secret VALUE (not the secret ID)" style={{...inp,paddingRight:40,fontFamily:showPass?'monospace':'DM Sans,sans-serif'}}/>
+                        <button type="button" onClick={()=>setShowPass(s=>!s)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--m)',fontSize:14}}>{showPass?'🙈':'👁️'}</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+
             {/* Zoho region selector */}
             {cfg.provider === 'zoho' && (
               <div style={{gridColumn:'1/-1'}}>
@@ -596,13 +662,16 @@ function SmtpCard({
             )}
 
             {/* SMTP Username */}
+            {!(cfg.provider === 'outlook' && cfg.authMethod === 'graph') && (
             <div>
               <label style={lbl}>{cfg.provider === 'brevo' ? 'Brevo SMTP Login' : 'SMTP Username'}</label>
               <input value={cfg.smtpUser} onChange={e=>onChange({smtpUser:e.target.value})} placeholder={meta.userHint} style={inp}/>
               <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{meta.userHint}</p>
             </div>
+            )}
 
             {/* Password */}
+            {!(cfg.provider === 'outlook' && cfg.authMethod === 'graph') && (
             <div>
               <label style={lbl}>{meta.passLabel}</label>
               <div style={{position:'relative'}}>
@@ -611,10 +680,11 @@ function SmtpCard({
               </div>
               <p style={{fontFamily:'DM Sans,sans-serif',fontSize:10,color:'var(--m)',margin:'4px 0 0'}}>{meta.passHint}</p>
             </div>
+            )}
           </div>
 
           {/* Server details read-only for preset providers */}
-          {cfg.provider !== 'custom' && (
+          {cfg.provider !== 'custom' && !(cfg.provider === 'outlook' && cfg.authMethod === 'graph') && (
             <div style={{marginTop:14,padding:'10px 14px',background:'var(--bg)',borderRadius:9,border:'1.5px solid var(--bd)',display:'flex',gap:20,flexWrap:'wrap'}}>
               <div style={{fontFamily:'monospace',fontSize:11,color:'var(--m)'}}>Host: <span style={{color:'var(--text)',fontWeight:600}}>{cfg.smtpHost}</span></div>
               <div style={{fontFamily:'monospace',fontSize:11,color:'var(--m)'}}>Port: <span style={{color:'var(--text)',fontWeight:600}}>{cfg.smtpPort}</span></div>
@@ -721,20 +791,27 @@ function EmailTab({showToast}:{showToast:(m:string)=>void}) {
   };
 
   const testSmtp = async (cfg: SmtpConfig, to: string) => {
-    if (!to.trim())            { showToast('❌ Enter a test recipient'); return; }
-    if (!cfg.smtpUser || !cfg.smtpPass) { showToast('❌ Fill SMTP credentials first'); return; }
+    if (!to.trim()) { showToast('❌ Enter a test recipient'); return; }
+    const isGraph = cfg.provider === 'outlook' && cfg.authMethod === 'graph';
+    if (isGraph) {
+      if (!cfg.tenantId || !cfg.clientId || !cfg.clientSecret || !cfg.fromEmail) { showToast('❌ Fill Tenant ID, Client ID, Client Secret and From Email first'); return; }
+    } else if (!cfg.smtpUser || !cfg.smtpPass) {
+      showToast('❌ Fill SMTP credentials first'); return;
+    }
     setTestingId(cfg.id);
     setTestResults(p=>({...p,[cfg.id]:null}));
     try {
       const res = await authFetch(`${BACKEND}/api/admin/settings/test`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ to, smtpHost:cfg.smtpHost, smtpPort:cfg.smtpPort, smtpUser:cfg.smtpUser, smtpPass:cfg.smtpPass, fromName:cfg.fromName, fromEmail:cfg.fromEmail }),
+        body: JSON.stringify(isGraph
+          ? { to, authMethod:'graph', tenantId:cfg.tenantId, clientId:cfg.clientId, clientSecret:cfg.clientSecret, fromName:cfg.fromName, fromEmail:cfg.fromEmail }
+          : { to, smtpHost:cfg.smtpHost, smtpPort:cfg.smtpPort, smtpUser:cfg.smtpUser, smtpPass:cfg.smtpPass, fromName:cfg.fromName, fromEmail:cfg.fromEmail }),
       });
       const d = await res.json();
       const result = {ok:!!d.success, msg: d.message||d.error||'Unknown'};
       setTestResults(p=>({...p,[cfg.id]:result}));
-      showToast(d.success?'✅ Test email sent!':'❌ SMTP test failed');
+      showToast(d.success?'✅ Test email sent!':'❌ Email test failed');
     } catch(e:any) {
       setTestResults(p=>({...p,[cfg.id]:{ok:false,msg:e.message}}));
     }

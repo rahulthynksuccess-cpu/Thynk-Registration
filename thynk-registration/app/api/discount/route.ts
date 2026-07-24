@@ -13,15 +13,18 @@ export async function GET(req: NextRequest) {
   const supabase = createServiceClient();
   const now = new Date().toISOString();
 
-  const { data, error } = await supabase
+  const { data: school } = await supabase.from('schools').select('project_id').eq('id', schoolId).single();
+
+  const { data: matches } = await supabase
     .from('discount_codes')
     .select('*')
-    .eq('school_id', schoolId)
     .eq('code', code)
     .eq('is_active', true)
-    .single();
+    .or(`school_id.eq.${schoolId}${school?.project_id ? `,project_id.eq.${school.project_id}` : ''}`);
 
-  if (error || !data) {
+  const data = matches?.find(m => m.school_id === schoolId) ?? matches?.find(m => m.project_id === school?.project_id);
+
+  if (!data) {
     return NextResponse.json({ valid: false, message: 'Invalid or expired discount code.' });
   }
 

@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       id, school_code, name, city, state, country,
       status, is_active, is_registration_active, project_slug,
       branding, gateway_config,
-      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)
+      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active, grade_prices_inr, grade_prices_usd)
     `)
     .eq('status', 'approved')
     .eq('is_active', true)

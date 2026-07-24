@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
 import { deduplicateRegistrations } from '@/lib/dedup';
+import { maskEmail, maskPhone } from '@/lib/mask';
 
 async function getConsultantUser(req: NextRequest) {
   const user = await getUserFromRequest(req);
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
       id: r.id, created_at: r.created_at, school_id: r.school_id ?? null,
       school_name: (r.schools as any)?.name ?? null,
       student_name: r.student_name, class_grade: r.class_grade, gender: r.gender,
-      parent_name: r.parent_name, contact_phone: r.contact_phone, contact_email: r.contact_email,
+      parent_name: r.parent_name, contact_phone: maskPhone(r.contact_phone), contact_email: maskEmail(r.contact_email),
       program_name: (r.pricing as any)?.program_name ?? null,
       final_amount: pay.final_amount ?? 0,
       payment_status: pay.status ?? null, paid_at: pay.paid_at ?? null,

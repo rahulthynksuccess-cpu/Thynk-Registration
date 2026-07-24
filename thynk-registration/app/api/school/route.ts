@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       is_active, is_registration_active, status, approved_at, approved_by,
       city, state, country, address, pin_code, contact_persons,
       project_id, project_slug, discount_code, created_at,
-      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active)
+      pricing (id, program_name, base_amount, currency, gateway_sequence, is_active, grade_prices_inr, grade_prices_usd)
     `)
     .order('created_at', { ascending: false });
 

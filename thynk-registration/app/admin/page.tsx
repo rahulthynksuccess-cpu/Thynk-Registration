@@ -1996,15 +1996,19 @@ export default function AdminDashboard() {
               <div className="topbar-left"><h1>Discount <span>Codes</span></h1><p>{discounts.filter(d=>d.is_active).length} active codes</p></div>
               <div className="topbar-right"><button className="btn btn-primary" onClick={()=>setDiscountForm({})}>+ New Code</button></div>
             </div>
-            <p style={{fontSize:12,color:'var(--m)',marginBottom:16,padding:'0 4px'}}>💡 By default each school's code is its discount code. You can create additional codes below.</p>
+            <p style={{fontSize:12,color:'var(--m)',marginBottom:16,padding:'0 4px'}}>💡 By default each school's code is its discount code. Create a code for a whole <b>Program</b> to let it work across every school running that program, or for one specific <b>School</b> only.</p>
             <div className="tbl-wrap"><table>
-              <thead><tr><th>School</th><th>Code</th><th>Discount (₹)</th><th>Used / Max</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Scope</th><th>Code</th><th>Discount (₹)</th><th>Used / Max</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {discounts.length===0
                   ? <tr><td colSpan={7} className="table-empty">No discount codes yet.</td></tr>
                   : discounts.map(d=>(
                     <tr key={d.id}>
-                      <td style={{fontSize:12}}>{d.schools?.name??d.school_id}</td>
+                      <td style={{fontSize:12}}>
+                        {d.project_id
+                          ? <><span style={{fontWeight:700}}>🌐 {d.projects?.name??'Program'}</span><div style={{fontSize:10,color:'var(--m)'}}>All schools in this program</div></>
+                          : <>{d.schools?.name??d.school_id}</>}
+                      </td>
                       <td><code style={{background:'var(--orange2)',color:'var(--orange)',padding:'2px 8px',borderRadius:6,fontSize:12,fontWeight:700}}>{d.code}</code></td>
                       <td><span style={{color:'var(--green)',fontWeight:700}}>₹{fmtR(d.discount_amount)}</span></td>
                       <td style={{fontSize:12}}>{d.used_count} / {d.max_uses??'∞'}</td>
@@ -2400,7 +2404,7 @@ export default function AdminDashboard() {
       {resetPasswordUser!==null&&<ResetPasswordModal user={resetPasswordUser} BACKEND={BACKEND} authHeaders={authHeaders} onClose={()=>setResetPasswordUser(null)} showToast={showToast} />}
       {programForm!==null&&<ProgramFormModal initial={programForm} onClose={()=>setProgramForm(null)} onSave={async(data)=>{await saveForm('/api/admin/projects',data,()=>{setProgramForm(null);loadPrograms();},data.id?'Program updated!':'Program created!');}} />}
       {schoolForm!==null&&<SchoolFormModal initial={schoolForm} programs={programs} consultants={consultants} onClose={()=>setSchoolForm(null)} onSave={async(data)=>{await saveForm('/api/admin/schools',data,()=>{setSchoolForm(null);setSchools([]);loadSchools();},data.id?'School updated!':'School created!');}} />}
-      {discountForm!==null&&<DiscountFormModal initial={discountForm} schools={schools} onClose={()=>setDiscountForm(null)} onSave={async(data)=>{await saveForm('/api/admin/discounts',data,()=>{setDiscountForm(null);loadDiscounts();},data.id?'Code updated!':'Code created!');}} />}
+      {discountForm!==null&&<DiscountFormModal initial={discountForm} schools={schools} programs={programs} onClose={()=>setDiscountForm(null)} onSave={async(data)=>{await saveForm('/api/admin/discounts',data,()=>{setDiscountForm(null);loadDiscounts();},data.id?'Code updated!':'Code created!');}} />}
       {userForm!==null&&<UserFormModal
   schools={schools}
   initial={userForm && (userForm as any).user_id ? userForm : undefined}
@@ -2832,6 +2836,50 @@ function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ i
   const removeContact = (idx:number) => { if (contacts.length > 1) setContacts(p=>p.filter((_,i)=>i!==idx)); };
   const selProgram = programs.find(p=>p.id===f.project_id);
 
+  // ── Class/grade-wise pricing state ─────────────────────────────────
+  const existingPricing: any = initial.pricing?.[0];
+  const DEFAULT_GRADE_LIST = ['Nursery','KG','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12'];
+  const [gradeWiseOn, setGradeWiseOn] = useState<boolean>(
+    !!(existingPricing?.grade_prices_inr && Object.keys(existingPricing.grade_prices_inr).length) ||
+    !!(existingPricing?.grade_prices_usd && Object.keys(existingPricing.grade_prices_usd).length)
+  );
+  // Per-grade prices, kept as display strings (major units, e.g. rupees) keyed by grade name
+  const [gradePrices, setGradePrices] = useState<Record<string,string>>(() => {
+    const src = (existingPricing?.grade_prices_inr && Object.keys(existingPricing.grade_prices_inr).length)
+      ? existingPricing.grade_prices_inr
+      : (existingPricing?.grade_prices_usd || {});
+    const out: Record<string,string> = {};
+    Object.entries(src || {}).forEach(([g, v]: [string, any]) => { out[g] = String(Number(v) / 100); });
+    return out;
+  });
+  const programGradeMap: Record<string, number> | null = selProgram
+    ? (f.currency === 'INR' ? selProgram.grade_prices_inr : selProgram.grade_prices_usd)
+    : null;
+  const programHasGradePricing = !!(programGradeMap && Object.keys(programGradeMap).length > 0);
+  const gradeList: string[] = (selProgram?.allowed_grades && selProgram.allowed_grades.length) ? selProgram.allowed_grades : DEFAULT_GRADE_LIST;
+
+  // When class-wise pricing is switched on (or the program/currency changes while it's on),
+  // seed any grade that doesn't have a value yet: program's own grade price → program base fee → school_price.
+  useEffect(() => {
+    if (!gradeWiseOn) return;
+    setGradePrices(prev => {
+      const next = { ...prev };
+      gradeList.forEach(g => {
+        if (next[g] !== undefined && next[g] !== '') return;
+        const programGradeAmt = programGradeMap?.[g];
+        if (programGradeAmt !== undefined) { next[g] = String(programGradeAmt / 100); return; }
+        if (basePriceDisplay?.raw) { next[g] = basePriceDisplay.raw; return; }
+        if (f.school_price) next[g] = f.school_price;
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gradeWiseOn, f.project_id, f.currency]);
+
+  const setGradePrice = (grade: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setGradePrices(p => ({ ...p, [grade]: e.target.value }));
+  };
+
   // ── Dynamic location data from DB ────────────────────────────────
   const [locCountries, setLocCountries] = useState<string[]>([]);
   const [locStates,    setLocStates]    = useState<string[]>([]);
@@ -2910,6 +2958,34 @@ function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ i
           <Field label={`School Pricing (${f.currency}) *`}><input style={IS} type="number" value={f.school_price} onChange={set('school_price')} placeholder={basePriceDisplay ? `Base: ${basePriceDisplay.label}` : 'Enter amount'}/></Field>
           <Field label="Currency"><select style={SS} value={f.currency} onChange={set('currency')}><option value="INR">INR (₹) — India</option><option value="USD">USD ($) — International</option></select></Field>
         </div>
+        {programHasGradePricing && (
+          <div style={{marginTop:12,paddingTop:12,borderTop:'1px dashed var(--bd)'}}>
+            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:gradeWiseOn?10:0}}>
+              <input type="checkbox" checked={gradeWiseOn} onChange={e=>setGradeWiseOn(e.target.checked)} />
+              <span style={{fontSize:13,fontWeight:700}}>🏷️ Enable class-wise pricing for this school</span>
+            </label>
+            <div style={{fontSize:11,color:'var(--m)',marginBottom:gradeWiseOn?10:0}}>
+              This program has class-wise pricing configured. Turn this on to set a specific fee per grade
+              for this school — each grade defaults to the program's fee (editable below), and any grade
+              left blank will use the flat "School Pricing" amount above.
+            </div>
+            {gradeWiseOn && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px 12px',background:'var(--acc3)',borderRadius:8,padding:'10px 12px'}}>
+                {gradeList.map(g => (
+                  <Field key={g} label={g}>
+                    <input
+                      style={IS}
+                      type="number"
+                      value={gradePrices[g] ?? ''}
+                      onChange={setGradePrice(g)}
+                      placeholder={basePriceDisplay ? basePriceDisplay.raw : '0'}
+                    />
+                  </Field>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div style={{background:'var(--orange2,rgba(245,158,11,0.08))',border:'1px solid rgba(245,158,11,0.2)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:'var(--orange,#f59e0b)',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>🏷️ Discount Code</div>
@@ -2937,7 +3013,23 @@ function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ i
       </div>
       <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
         <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={()=>onSave({...f, school_price:Math.round(Number(f.school_price)*100), contact_persons:contacts, address:f.address, pin_code:f.pin_code, is_registration_active:f.is_registration_active})}>{f.id?'Save Changes':'Create School'}</button>
+        <button className="btn btn-primary" onClick={()=>{
+          const gradePricesMinor: Record<string, number> = {};
+          Object.entries(gradePrices).forEach(([g, v]) => {
+            if (v !== '' && v !== undefined && !Number.isNaN(Number(v))) gradePricesMinor[g] = Math.round(Number(v) * 100);
+          });
+          onSave({
+            ...f,
+            school_price: Math.round(Number(f.school_price)*100),
+            contact_persons: contacts,
+            address: f.address,
+            pin_code: f.pin_code,
+            is_registration_active: f.is_registration_active,
+            grade_specific_pricing: gradeWiseOn,
+            grade_prices_inr: gradeWiseOn && f.currency === 'INR' ? gradePricesMinor : null,
+            grade_prices_usd: gradeWiseOn && f.currency === 'USD' ? gradePricesMinor : null,
+          });
+        }}>{f.id?'Save Changes':'Create School'}</button>
       </div>
     </ModalShell>
   );
@@ -3540,13 +3632,43 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
 }
 
 
-function DiscountFormModal({ initial, schools, onClose, onSave }:{ initial:Row; schools:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
-  const [f,setF] = useState({ id:initial.id??'', school_id:initial.school_id??'', code:initial.code??'', discount_amount:initial.discount_amount?String(initial.discount_amount/100):'', max_uses:initial.max_uses??'', expires_at:initial.expires_at?.slice(0,10)??'', is_active:initial.is_active!==false });
+function DiscountFormModal({ initial, schools, programs, onClose, onSave }:{ initial:Row; schools:Row[]; programs:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
+  const [f,setF] = useState({
+    id: initial.id??'',
+    scope: initial.id ? (initial.project_id ? 'project' : 'school') : 'project',
+    school_id: initial.school_id??'',
+    project_id: initial.project_id??'',
+    code: initial.code??'',
+    discount_amount: initial.discount_amount?String(initial.discount_amount/100):'',
+    max_uses: initial.max_uses??'',
+    expires_at: initial.expires_at?.slice(0,10)??'',
+    is_active: initial.is_active!==false,
+  });
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => setF(p=>({...p,[k]:e.target.type==='checkbox'?(e.target as HTMLInputElement).checked:e.target.value}));
   return (
     <ModalShell title={f.id?'Edit Discount Code':'New Discount Code'} onClose={onClose}>
+      {!f.id && (
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:11,fontWeight:700,color:'var(--m)',textTransform:'uppercase',letterSpacing:'0.4px',display:'block',marginBottom:6}}>Applies to</label>
+          <div style={{display:'flex',gap:8}}>
+            <button type="button" onClick={()=>setF(p=>({...p,scope:'project'}))}
+              style={{flex:1,padding:'10px 14px',borderRadius:9,border:`1.5px solid ${f.scope==='project'?'var(--acc)':'var(--bd)'}`,background:f.scope==='project'?'var(--acc3)':'var(--bg)',cursor:'pointer',textAlign:'left',fontSize:12,fontWeight:600}}>
+              🌐 Entire Program
+              <div style={{fontSize:10,fontWeight:400,color:'var(--m)',marginTop:2}}>Works at every school running this program</div>
+            </button>
+            <button type="button" onClick={()=>setF(p=>({...p,scope:'school'}))}
+              style={{flex:1,padding:'10px 14px',borderRadius:9,border:`1.5px solid ${f.scope==='school'?'var(--acc)':'var(--bd)'}`,background:f.scope==='school'?'var(--acc3)':'var(--bg)',cursor:'pointer',textAlign:'left',fontSize:12,fontWeight:600}}>
+              🏫 One Specific School
+              <div style={{fontSize:10,fontWeight:400,color:'var(--m)',marginTop:2}}>Only valid for a single school</div>
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="School *"><select style={SS} value={f.school_id} onChange={set('school_id')} disabled={!!f.id}><option value="">Select school</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+        {f.scope==='project'
+          ? <Field label="Program *"><select style={SS} value={f.project_id} onChange={set('project_id')} disabled={!!f.id}><option value="">Select program</option>{programs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+          : <Field label="School *"><select style={SS} value={f.school_id} onChange={set('school_id')} disabled={!!f.id}><option value="">Select school</option>{schools.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+        }
         <Field label="Code *"><input style={{...IS,textTransform:'uppercase'}} value={f.code} onChange={set('code')} placeholder="EARLY200" disabled={!!f.id}/></Field>
         <Field label="Discount Amount (₹) *"><input style={IS} type="number" value={f.discount_amount} onChange={set('discount_amount')} placeholder="200"/></Field>
         <Field label="Max Uses (blank = unlimited)"><input style={IS} type="number" value={f.max_uses} onChange={set('max_uses')} placeholder="100"/></Field>
