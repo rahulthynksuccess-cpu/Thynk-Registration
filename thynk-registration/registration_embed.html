@@ -695,12 +695,26 @@ isIndia = detectIndia();
 
 // ── Grade-specific price resolution ────────────────────────────────
 // Returns amount in paise (INR) or cents (USD) for a given grade.
-// Falls back to school-level pricingData, then project-level base amount.
+// Priority (highest first):
+//   1. School-level class-wise override (pricingData.grade_prices_inr / _usd)
+//   2. Project/program-level class-wise pricing (programData.grade_prices_inr / _usd)
+//   3. School's flat price (pricingData.base_amount)
+//   4. Project's flat base price
+// NOTE: previously the school's flat base_amount (step 3) was checked FIRST,
+// which meant class-wise pricing could never actually apply to a real school,
+// since every school always has a flat pricing row. Fixed to check grade-level
+// overrides first.
 function resolveGradeAmount(gradeName) {
-  // 1. Check school-level override pricing (existing behavior)
-  if (pricingData?.base_amount) return pricingData.base_amount;
+  // 1. School-level per-grade override (set in Admin → Schools → this school)
+  const schoolMap = pricingData
+    ? (isIndia ? pricingData.grade_prices_inr : pricingData.grade_prices_usd)
+    : null;
+  if (schoolMap && gradeName && schoolMap[gradeName] !== undefined) {
+    return schoolMap[gradeName];
+  }
 
-  // 2. Check project-level grade-specific pricing
+  // 2. Project-level per-grade pricing (program default, used when the school
+  //    hasn't been given its own override for this grade)
   if (programData) {
     const priceMap = isIndia
       ? (programData.grade_prices_inr || null)
@@ -709,7 +723,13 @@ function resolveGradeAmount(gradeName) {
     if (priceMap && gradeName && priceMap[gradeName] !== undefined) {
       return priceMap[gradeName];
     }
-    // 3. Fall back to project base price
+  }
+
+  // 3. School's flat price (existing default for schools without class-wise pricing)
+  if (pricingData?.base_amount) return pricingData.base_amount;
+
+  // 4. Fall back to project's flat base price
+  if (programData) {
     const base = isIndia
       ? (programData.base_amount_inr ?? 0)
       : (programData.base_amount_usd ?? 0);
@@ -718,8 +738,14 @@ function resolveGradeAmount(gradeName) {
   return 0;
 }
 
-// Returns true if this program has grade-specific pricing configured
+// Returns true if class-wise pricing is active — either at school level
+// (this school has its own per-grade prices) or at project level (program default).
 function hasGradeSpecificPricing() {
+  const schoolMap = pricingData
+    ? (isIndia ? pricingData.grade_prices_inr : pricingData.grade_prices_usd)
+    : null;
+  if (schoolMap && Object.keys(schoolMap).length > 0) return true;
+
   if (!programData) return false;
   const map = isIndia ? programData.grade_prices_inr : programData.grade_prices_usd;
   return !!(map && Object.keys(map).length > 0);
@@ -1182,14 +1208,8 @@ function buildPaymentScreen() {
     ['Email', studentForm.contactEmail],
   ]);
 
-  // ── Resolve amount: grade-specific first, then school pricing, then base ──
-  // School-level pricingData.base_amount takes top priority (school has a custom price set)
-  if (pricingData?.base_amount) {
-    baseAmount = pricingData.base_amount;
-  } else {
-    // Use grade-specific pricing from the project if available
-    baseAmount = resolveGradeAmount(studentForm.classGrade);
-  }
+  // ── Resolve amount: school-level grade price → project grade price → school flat → project flat ──
+  baseAmount = resolveGradeAmount(studentForm.classGrade);
 
   discAmt = 0; discApplied = false; selGW = '';
   g('baseAmtVal').textContent = sym + fmtAmt(baseAmount);
@@ -1202,7 +1222,7 @@ function buildPaymentScreen() {
 
   // ── Grade-price notice ──────────────────────────────────────────────
   const notice = g('gradePriceNotice');
-  if (hasGradeSpecificPricing() && !pricingData?.base_amount) {
+  if (hasGradeSpecificPricing()) {
     notice.textContent = `🏷️ Price for ${studentForm.classGrade}: ${sym}${fmtAmt(baseAmount)}`;
     notice.style.display = 'inline-flex';
   } else {

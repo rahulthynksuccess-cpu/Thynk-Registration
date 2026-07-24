@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/server';
 import type { TriggerEvent, TemplateVars } from '@/lib/types';
+import { sendViaMicrosoftGraph } from '@/lib/msgraph-email';
 
 /**
  * IMPORTANT: Always AWAIT this function. Do NOT use `void fireTriggers(...)`.
@@ -479,32 +480,35 @@ async function sendEmail(template: any, vars: TemplateVars, schoolId: string): P
 
     console.log(`[sendEmail] selected smtp=${smtpCfg?.smtpHost ?? 'none'} user=${smtpCfg?.smtpUser ?? 'none'}`);
 
-    if (smtpCfg?.smtpHost && smtpCfg?.smtpUser && smtpCfg?.smtpPass) {
-      await sendViaSMTP(smtpCfg, { to, subject, body });
-      return `smtp:${smtpCfg.name || smtpCfg.smtpUser}`;
+    if (smtpCfg?.authMethod === 'graph' ? (smtpCfg?.tenantId && smtpCfg?.clientId && smtpCfg?.clientSecret && smtpCfg?.fromEmail)
+      : (smtpCfg?.smtpHost && smtpCfg?.smtpUser && smtpCfg?.smtpPass)) {
+      await sendEmailWithConfig(smtpCfg, { to, subject, body });
+      return `${smtpCfg.authMethod === 'graph' ? 'graph' : 'smtp'}:${smtpCfg.name || smtpCfg.smtpUser || smtpCfg.fromEmail}`;
     }
-    console.warn(`[sendEmail] smtp_configs exist but none have host+user+pass`);
+    console.warn(`[sendEmail] smtp_configs exist but none have valid credentials for their auth method`);
   }
 
   const emailCfg = platformRow?.config?.email_settings;
-  if (emailCfg?.smtpHost && emailCfg?.smtpUser) {
-    console.log(`[sendEmail] using legacy email_settings smtp=${emailCfg.smtpHost}`);
-    await sendViaSMTP(emailCfg, { to, subject, body });
-    return 'smtp';
+  if (emailCfg?.authMethod === 'graph' ? (emailCfg?.tenantId && emailCfg?.clientId && emailCfg?.clientSecret && emailCfg?.fromEmail)
+    : (emailCfg?.smtpHost && emailCfg?.smtpUser)) {
+    console.log(`[sendEmail] using legacy email_settings, authMethod=${emailCfg.authMethod ?? 'smtp'}`);
+    await sendEmailWithConfig(emailCfg, { to, subject, body });
+    return emailCfg.authMethod === 'graph' ? 'graph' : 'smtp';
   }
 
   const { data: configs } = await supabase
     .from('integration_configs').select('provider, config')
     .or(`school_id.eq.${schoolId},school_id.is.null`)
-    .in('provider', ['smtp', 'sendgrid', 'aws_ses'])
+    .in('provider', ['smtp', 'sendgrid', 'aws_ses', 'microsoft_graph'])
     .eq('is_active', true)
     .order('school_id', { nullsFirst: false })
     .order('priority', { ascending: true }).limit(1);
 
   const cfg = configs?.[0];
-  if (cfg?.provider === 'sendgrid') { await sendViaSendGrid(cfg.config, { to, subject, body }); return 'sendgrid'; }
-  if (cfg?.provider === 'aws_ses')  { await sendViaSES(cfg.config, { to, subject, body });      return 'aws_ses'; }
-  if (cfg?.provider === 'smtp')     { await sendViaSMTP(cfg.config, { to, subject, body });     return 'smtp'; }
+  if (cfg?.provider === 'sendgrid')        { await sendViaSendGrid(cfg.config, { to, subject, body }); return 'sendgrid'; }
+  if (cfg?.provider === 'aws_ses')         { await sendViaSES(cfg.config, { to, subject, body });      return 'aws_ses'; }
+  if (cfg?.provider === 'smtp')            { await sendViaSMTP(cfg.config, { to, subject, body });     return 'smtp'; }
+  if (cfg?.provider === 'microsoft_graph') { await sendEmailWithConfig({ ...cfg.config, authMethod: 'graph' }, { to, subject, body }); return 'graph'; }
 
   if (process.env.SMTP_HOST && process.env.SMTP_USER) {
     await sendViaSMTP({}, { to, subject, body });
@@ -659,6 +663,20 @@ async function sendWhatsApp(template: any, vars: TemplateVars, schoolId: string)
 }
 
 // ── Transport helpers ─────────────────────────────────────────────────────────
+
+// Routes to Microsoft Graph API when a config has authMethod:'graph' configured
+// (recommended for Office 365 — see lib/msgraph-email.ts for why), otherwise
+// falls back to the existing SMTP path unchanged.
+async function sendEmailWithConfig(config: any, { to, subject, body }: { to: string; subject: string; body: string }) {
+  if (config?.authMethod === 'graph' && config?.tenantId && config?.clientId && config?.clientSecret && config?.fromEmail) {
+    await sendViaMicrosoftGraph(
+      { tenantId: config.tenantId, clientId: config.clientId, clientSecret: config.clientSecret, fromEmail: config.fromEmail },
+      { to, subject, html: body, fromName: config.fromName }
+    );
+    return;
+  }
+  await sendViaSMTP(config, { to, subject, body });
+}
 
 async function sendViaSMTP(config: any, { to, subject, body }: { to: string; subject: string; body: string }) {
   const nodemailer = await import('nodemailer');

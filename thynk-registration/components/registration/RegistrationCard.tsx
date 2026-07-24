@@ -61,9 +61,22 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
   const toastTimer = useRef<NodeJS.Timeout>();
   const paypalRendered = useRef(false);
 
-  const baseAmount  = pricing.base_amount;       // paise (INR) or cents (USD)
-  const finalAmount = baseAmount - discAmt;
+  // ── Resolve amount for the selected grade ──────────────────────────────────
+  // Mirrors the server-side resolution in /api/register/route.ts:
+  //   1. pricing.grade_prices_inr / _usd[selectedGrade]  (school-level class-wise override)
+  //   2. pricing.base_amount                              (flat school fee, fallback)
+  // NOTE: this is for display only — the actual charge is always recomputed
+  // server-side from the same pricing row, so the amount shown here can never
+  // be spoofed into a lower charge by editing the client.
   const currency    = isIndia ? 'INR' : 'USD';
+  const gradePriceMap: Record<string, number> | null | undefined =
+    currency === 'INR' ? (pricing as any).grade_prices_inr : (pricing as any).grade_prices_usd;
+  const hasGradePricing = !!(gradePriceMap && Object.keys(gradePriceMap).length > 0);
+  const baseAmount =
+    hasGradePricing && fd.classGrade && gradePriceMap![fd.classGrade] !== undefined
+      ? gradePriceMap![fd.classGrade]
+      : pricing.base_amount;       // paise (INR) or cents (USD)
+  const finalAmount = baseAmount - discAmt;
   const symbol      = isIndia ? '₹' : '$';
 
   // Grades: use project's allowed_grades; fallback to default list
@@ -460,6 +473,11 @@ export default function RegistrationCard({ school, pricing, paymentError }: Prop
 
               {/* Amount */}
               <div className="amount-box">
+                {hasGradePricing && fd.classGrade && gradePriceMap?.[fd.classGrade] !== undefined && (
+                  <div style={{ fontSize: 11, color: 'var(--acc)', fontWeight: 700, marginBottom: 6 }}>
+                    🏷️ Class-wise price for {fd.classGrade}
+                  </div>
+                )}
                 <div className="amount-row">
                   <span>Program fee</span>
                   <span>{symbol}{formatAmount(baseAmount)}</span>

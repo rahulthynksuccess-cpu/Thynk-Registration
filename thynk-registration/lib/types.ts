@@ -40,6 +40,11 @@ export interface Pricing {
   currency: string;
   gateway_sequence: GatewayKey[];
   is_active: boolean;
+  // School-specific class/grade-wise pricing overrides (see migration 009).
+  // Keys = grade name, values = amount in paise (INR) / cents (USD).
+  // NULL/empty = flat pricing via base_amount for every grade.
+  grade_prices_inr?: Record<string, number> | null;
+  grade_prices_usd?: Record<string, number> | null;
 }
 
 export interface SchoolWithPricing extends School {
