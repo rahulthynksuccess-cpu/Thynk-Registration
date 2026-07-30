@@ -83,42 +83,97 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get('type') ?? 'all';   // approved | pending | all
 
   // ── Fetch schools ─────────────────────────────────────────────────────────
-  const { data: allSchools } = await service
+  // NOTE: this must only select columns that actually exist on the `schools`
+  // table (see app/api/admin/schools/route.ts for the authoritative list).
+  // Selecting non-existent columns (principal_name, contact_email, program_name,
+  // pan_number, gst_number, consultant_code, final_amount, payment_status, …)
+  // makes PostgREST reject the whole query, which is why this report used to
+  // come back completely empty for both Approved and Pending.
+  const { data: allSchools, error: schoolsErr } = await service
     .from('schools')
     .select(`
-      id, name, school_code, status, city, state, country,
-      contact_email, contact_phone, principal_name,
-      address, board, school_type, student_count,
-      project_slug, program_name,
-      pan_number, gst_number,
-      consultant_id, consultant_code,
-      final_amount, payment_status, payment_date,
-      created_at, updated_at, approved_at,
-      registration_number, website
+      id, name, school_code, org_name, status, city, state, country,
+      address, pin_code, contact_persons,
+      project_id, project_slug, discount_code,
+      consultant_id,
+      created_at, updated_at, approved_at, approved_by,
+      is_active, is_registration_active,
+      pricing ( program_name, base_amount, currency )
     `)
     .order('created_at', { ascending: false });
 
+  if (schoolsErr) {
+    return NextResponse.json({ error: `Failed to load schools: ${schoolsErr.message}` }, { status: 500 });
+  }
+
   const schools = allSchools ?? [];
 
-  // Fetch programs for name lookup
+  // Fetch programs for name lookup (real table is `projects`, not `programs`)
   const { data: programs } = await service
-    .from('programs')
+    .from('projects')
     .select('id, name, slug');
   const progMap: Record<string, string> = {};
   (programs ?? []).forEach((p: any) => { progMap[p.slug] = p.name; progMap[p.id] = p.name; });
 
-  // Fetch consultant names
+  // Fetch consultant names — consultant_profiles.user_id is the FK, not consultant_code
   const { data: consultantProfiles } = await service
     .from('consultant_profiles')
-    .select('user_id, consultant_code, full_name');
+    .select('user_id, consultant_code, full_name, mobile_number, contact_number');
   const consMap: Record<string, string> = {};
+  const consCodeMap: Record<string, string> = {};
   (consultantProfiles ?? []).forEach((c: any) => {
-    if (c.consultant_code) consMap[c.consultant_code] = c.full_name ?? c.consultant_code;
-    if (c.user_id) consMap[c.user_id] = c.full_name ?? c.consultant_code ?? c.user_id;
+    const label = c.full_name ?? c.consultant_code ?? c.user_id;
+    if (c.user_id) consMap[c.user_id] = label;
+    if (c.user_id) consCodeMap[c.user_id] = c.consultant_code ?? '—';
   });
 
-  const approvedList = schools.filter(s => s.status === 'approved' || !s.status);
-  const pendingList  = schools.filter(s => s.status && s.status !== 'approved');
+  // Fetch payments to compute per-school amount / payment status / date
+  const schoolIds = schools.map((s: any) => s.id);
+  const { data: paymentsRows } = schoolIds.length
+    ? await service
+        .from('payments')
+        .select('school_id, final_amount, status, paid_at, created_at')
+        .in('school_id', schoolIds)
+    : { data: [] as any[] };
+
+  type PayInfo = { amount: number; status: string; date: string | null };
+  const payMap: Record<string, PayInfo> = {};
+  (paymentsRows ?? []).forEach((p: any) => {
+    const existing = payMap[p.school_id];
+    // Prefer the paid record; otherwise keep the most recent
+    if (!existing || p.status === 'paid' || (existing.status !== 'paid' && p.created_at > (existing as any).__created)) {
+      payMap[p.school_id] = { amount: p.final_amount ?? 0, status: p.status ?? '—', date: p.paid_at ?? p.created_at };
+      (payMap[p.school_id] as any).__created = p.created_at;
+    }
+  });
+
+  // Enrich schools with derived fields used throughout the sheet-building code below
+  const enrichedSchools = schools.map((s: any) => {
+    const contact = Array.isArray(s.contact_persons) ? s.contact_persons[0] : null;
+    const pay     = payMap[s.id];
+    const prog    = Array.isArray(s.pricing) ? s.pricing[0] : s.pricing;
+    return {
+      ...s,
+      principal_name:      contact?.name ?? null,
+      contact_email:       contact?.email ?? null,
+      contact_phone:       contact?.mobile ?? null,
+      program_name:        prog?.program_name ?? null,
+      consultant_code:     s.consultant_id ? (consCodeMap[s.consultant_id] ?? null) : null,
+      final_amount:        pay?.amount ?? null,
+      payment_status:      pay?.status ?? null,
+      payment_date:        pay?.date ?? null,
+      board:               null,
+      school_type:         null,
+      student_count:       null,
+      pan_number:          null,
+      gst_number:          null,
+      registration_number: null,
+      website:             null,
+    };
+  });
+
+  const approvedList = enrichedSchools.filter(s => s.status === 'approved' || !s.status);
+  const pendingList  = enrichedSchools.filter(s => s.status && s.status !== 'approved');
 
   const reportDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -268,7 +323,7 @@ export async function GET(req: NextRequest) {
       row.height = 36;
       const rf   = ri % 2 === 0 ? C.white : C.greyLite;
       const prog = progMap[s.project_slug] ?? progMap[(s as any).project_id] ?? s.program_name ?? '—';
-      const cons = consMap[s.consultant_code] ?? consMap[s.consultant_id] ?? '—';
+      const cons = consMap[s.consultant_id] ?? '—';
       const pStat = s.payment_status ?? '—';
       const pStatColor = pStat === 'paid' ? C.green : pStat === 'pending' ? C.amber : C.greyMid;
 
@@ -367,7 +422,7 @@ export async function GET(req: NextRequest) {
       const days = daysSince(s.created_at);
       const prio = days >= 5 ? '🔴 Urgent' : days >= 2 ? '🟡 Medium' : '🟢 New';
       const prog = progMap[s.project_slug] ?? progMap[(s as any).project_id] ?? s.program_name ?? '—';
-      const cons = consMap[s.consultant_code] ?? consMap[s.consultant_id] ?? '—';
+      const cons = consMap[s.consultant_id] ?? '—';
 
       const vals: any[] = [
         ri + 1, s.name ?? '—', prog,

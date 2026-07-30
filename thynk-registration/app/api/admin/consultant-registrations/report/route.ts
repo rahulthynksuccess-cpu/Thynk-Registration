@@ -89,16 +89,35 @@ export async function GET(req: NextRequest) {
   const service = createServiceClient();
 
   // ── 1. Fetch approved consultants ──────────────────────────────────────────
-  const { data: profiles } = await service
+  // NOTE: there is no foreign-key relationship between consultant_profiles and
+  // admin_roles (both independently reference auth.users), so the previous
+  // `admin_roles!inner(role)` embedded select was rejected by PostgREST every
+  // single time — which is why the "Approved Consultants" sheet always came
+  // back empty. We fetch consultant_profiles on its own, then cross-check
+  // against admin_roles separately in JS.
+  const { data: profilesRaw } = await service
     .from('consultant_profiles')
     .select(`
       user_id, consultant_code, mobile_number, pan_number, is_default_consultant,
       full_name, contact_email, contact_number, location, total_exp_years,
       domain_expertise, locations_worked, has_edu_connections, has_b2b_exp, has_b2c_exp,
-      detailed_intro, experience_summary, registration_source, created_at,
-      admin_roles!inner(role)
+      detailed_intro, experience_summary, registration_source, created_at
     `)
     .order('created_at', { ascending: false });
+
+  const profileUserIds = (profilesRaw ?? []).map((p: any) => p.user_id).filter(Boolean);
+  const { data: consultantRoleRows } = profileUserIds.length
+    ? await service
+        .from('admin_roles')
+        .select('user_id')
+        .eq('role', 'consultant')
+        .in('user_id', profileUserIds)
+    : { data: [] as any[] };
+  const consultantUserIdSet = new Set((consultantRoleRows ?? []).map((r: any) => r.user_id));
+
+  // Only keep profiles that are actually still active consultants (have the
+  // 'consultant' admin_roles row) — mirrors the old !inner(role) filter.
+  const profiles = (profilesRaw ?? []).filter((p: any) => consultantUserIdSet.has(p.user_id));
 
   // fetch auth user emails for name fallback
   const { data: authList } = await service.auth.admin.listUsers({ perPage: 1000 });

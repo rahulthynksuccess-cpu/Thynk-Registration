@@ -15,6 +15,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { authFetch } from '@/lib/supabase/client';
+import { ConsultantDocumentUploadPanel } from './ConsultantDocumentUploadPanel';
+import { ConsultantLetterGeneratorPanel } from './ConsultantLetterGeneratorPanel';
 
 type Row = Record<string, any>;
 
@@ -91,7 +93,7 @@ export function ConsultantHub({
   const canSeeApproved = isSuperAdmin || subAdminPages === null || subAdminPages.includes('consultants');
 
   const defaultTab = canSeePending ? 'pending' : 'approved';
-  const [tab, setTab] = useState<'pending'|'approved'|'analytics'|'communicate'>(defaultTab);
+  const [tab, setTab] = useState<'pending'|'approved'|'analytics'|'communicate'|'documents'|'letters'>(defaultTab);
   const [pendingRegs, setPendingRegs] = useState<Row[]>([]);
   const [approvedRegs, setApprovedRegs] = useState<Row[]>([]);
   const [regsLoading, setRegsLoading] = useState(false);
@@ -126,6 +128,8 @@ export function ConsultantHub({
     ...(canSeeApproved ? [{ id: 'approved'    as const, label: '👥 Approved Consultants' }] : []),
     ...(canSeeApproved ? [{ id: 'analytics'   as const, label: '📊 Analytics' }] : []),
     ...(canSeeApproved ? [{ id: 'communicate' as const, label: '💬 Communicate' }] : []),
+    ...(canSeeApproved ? [{ id: 'documents'   as const, label: '📁 Documents' }] : []),
+    ...(canSeeApproved ? [{ id: 'letters'     as const, label: '📨 Letters' }] : []),
   ];
 
   return (
@@ -193,6 +197,7 @@ export function ConsultantHub({
           consultants={consultants}
           registrations={approvedRegs}
           enrichedRows={enrichedRows}
+          programs={programs}
           canManage={isSuperAdmin || subAdminPages === null || subAdminPages.includes('consultants')}
           authHeaders={authHeaders}
           onReload={onReload}
@@ -213,6 +218,16 @@ export function ConsultantHub({
           authHeaders={authHeaders}
           showToast={showToast}
         />
+      )}
+
+      {/* ── Documents Tab ── */}
+      {tab === 'documents' && (
+        <ConsultantDocumentUploadPanel showToast={showToast} />
+      )}
+
+      {/* ── Letters Tab ── */}
+      {tab === 'letters' && (
+        <ConsultantLetterGeneratorPanel showToast={showToast} />
       )}
     </div>
   );
@@ -646,10 +661,11 @@ function RegistrationCard({ reg, expanded, selected, onSelect, onToggle, onAppro
 // ═════════════════════════════════════════════════════════════════════════════
 // TAB 2: APPROVED CONSULTANTS — full profile view
 // ═════════════════════════════════════════════════════════════════════════════
-function ApprovedTab({ consultants, registrations, enrichedRows, canManage, authHeaders, onReload, showToast, setConsultantForm }: {
+function ApprovedTab({ consultants, registrations, enrichedRows, programs, canManage, authHeaders, onReload, showToast, setConsultantForm }: {
   consultants:       Row[];
   registrations:     Row[];
   enrichedRows:      Row[];
+  programs:          Row[];
   canManage:         boolean;
   authHeaders:       () => HeadersInit;
   onReload:          () => void;
@@ -912,7 +928,7 @@ function ApprovedTab({ consultants, registrations, enrichedRows, canManage, auth
       </div>
 
       {regLinksFor && (
-        <RegistrationLinksModal consultant={regLinksFor} programs={[]} BACKEND={BACKEND} onClose={() => setRegLinksFor(null)} showToast={showToast} />
+        <RegistrationLinksModal consultant={regLinksFor} programs={programs} BACKEND={BACKEND} onClose={() => setRegLinksFor(null)} showToast={showToast} />
       )}
     </div>
   );
