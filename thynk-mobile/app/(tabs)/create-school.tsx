@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, TextInput, TouchableOpacity,
   SafeAreaView, Alert, ActivityIndicator, Modal, Switch,
@@ -444,10 +444,14 @@ export default function CreateSchoolScreen() {
     <SafeAreaView style={styles.root}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Create School</Text>
           <Text style={styles.subtitle}>Add a new school to the platform</Text>
         </View>
+        <TouchableOpacity style={headerLinkStyles.btn} onPress={() => router.push('/(tabs)')}>
+          <Ionicons name="list-outline" size={16} color={Colors.primary} />
+          <Text style={headerLinkStyles.txt}>View Schools</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -632,6 +636,11 @@ export default function CreateSchoolScreen() {
     </SafeAreaView>
   );
 }
+
+const headerLinkStyles = StyleSheet.create({
+  btn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.primary, backgroundColor: Colors.primaryBg },
+  txt: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+});
 
 const styles = StyleSheet.create({
   root:    { flex: 1, backgroundColor: Colors.bg },

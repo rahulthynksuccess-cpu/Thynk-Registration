@@ -36,7 +36,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index"          options={{ title: 'Schools',    tabBarIcon: ({ color, size }) => <Ionicons name="school-outline"    size={size} color={color} /> }} />
       <Tabs.Screen name="create-school"  options={{ title: 'Add School',  tabBarIcon: ({ color, size }) => <Ionicons name="add-circle-outline" size={size} color={color} /> }} />
-      <Tabs.Screen name="add-consultant" options={isSuperAdmin ? { title: 'Consultant', tabBarIcon: ({ color, size }) => <Ionicons name="person-add-outline" size={size} color={color} /> } : { href: null }} />
+      <Tabs.Screen name="add-consultant" options={isSuperAdmin ? { title: 'Consultants', tabBarIcon: ({ color, size }) => <Ionicons name="people-circle-outline" size={size} color={color} /> } : { href: null }} />
       <Tabs.Screen name="students"       options={isConsultant ? { href: null } : { title: 'Students', tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} /> }} />
       <Tabs.Screen name="payments"       options={isConsultant ? { href: null } : { title: 'Payments', tabBarIcon: ({ color, size }) => <Ionicons name="card-outline"    size={size} color={color} /> }} />
       <Tabs.Screen name="dashboard"      options={{ title: 'Reports',    tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} /> }} />

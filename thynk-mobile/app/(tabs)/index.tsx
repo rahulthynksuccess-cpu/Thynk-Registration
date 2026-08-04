@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  RefreshControl, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator,
+  RefreshControl, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { authFetch, fmtDate, fmtAmount } from '@/lib/api';
@@ -51,6 +51,9 @@ function SchoolModal({ school, visible, onClose, onAction }: {
   school: any; visible: boolean; onClose: () => void; onAction: (a: 'approve'|'reject'|'toggle') => void;
 }) {
   if (!school) return null;
+  const primaryContact = Array.isArray(school.contact_persons) && school.contact_persons.length > 0
+    ? school.contact_persons[0] : null;
+  const phone = (primaryContact?.mobile ?? '').replace(/[^\d+]/g, '');
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -59,6 +62,25 @@ function SchoolModal({ school, visible, onClose, onAction }: {
           <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={Colors.textMuted} /></TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{ padding: Spacing.xl }}>
+          {/* Quick actions: Call / WhatsApp */}
+          {primaryContact && (
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: Spacing.lg }}>
+              <TouchableOpacity
+                disabled={!phone}
+                onPress={() => Linking.openURL(`tel:${phone}`)}
+                style={[modalActionStyles.btn, { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)' }, !phone && { opacity: 0.4 }]}>
+                <Ionicons name="call" size={16} color={Colors.danger} />
+                <Text style={[modalActionStyles.txt, { color: Colors.danger }]}>Call {primaryContact.name ? `(${primaryContact.name})` : ''}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={!phone}
+                onPress={() => Linking.openURL(`https://wa.me/${phone.replace(/^\+/, '')}`)}
+                style={[modalActionStyles.btn, { backgroundColor: 'rgba(26,184,168,0.1)', borderColor: 'rgba(26,184,168,0.3)' }, !phone && { opacity: 0.4 }]}>
+                <Ionicons name="logo-whatsapp" size={16} color="#1ab8a8" />
+                <Text style={[modalActionStyles.txt, { color: '#1ab8a8' }]}>WhatsApp</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <SectionHeader title="School Info" />
           <Card>
             <RowItem label="School Code"  value={school.school_code} mono />
@@ -66,6 +88,9 @@ function SchoolModal({ school, visible, onClose, onAction }: {
             <RowItem label="City"         value={school.city} />
             <RowItem label="Country"      value={school.country ?? 'India'} />
             <RowItem label="Registered"   value={fmtDate(school.created_at)} />
+            {primaryContact?.name   && <RowItem label="Contact Person" value={primaryContact.name} />}
+            {primaryContact?.mobile && <RowItem label="Contact Mobile" value={primaryContact.mobile} mono />}
+            {primaryContact?.email  && <RowItem label="Contact Email"  value={primaryContact.email} />}
           </Card>
           <SectionHeader title="Actions" />
           {school.status === 'pending' && (
@@ -163,6 +188,11 @@ export default function SchoolsScreen() {
     </SafeAreaView>
   );
 }
+
+const modalActionStyles = StyleSheet.create({
+  btn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: Radius.md, borderWidth: 1.5, paddingVertical: 12 },
+  txt: { fontSize: 13, fontWeight: '700' },
+});
 
 const styles = StyleSheet.create({
   pageTitle: { fontSize: 22, fontWeight: '800', color: Colors.text, letterSpacing: -0.3 },
