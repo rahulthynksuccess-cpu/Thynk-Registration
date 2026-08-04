@@ -53,11 +53,14 @@ async function requireSuperAdminOrSubAdminWithConsultants(req: NextRequest) {
 }
 
 // GET /api/admin/consultants
+// Optional ?associated=true | ?associated=false filters the result by
+// association_status ('associated' / 'not_associated').
 export async function GET(req: NextRequest) {
   const user = await requireSuperAdminOrSubAdminWithConsultants(req);
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
+  const associatedParam = req.nextUrl.searchParams.get('associated'); // 'true' | 'false' | null
 
   const { data: roleRows, error } = await service
     .from('admin_roles')
@@ -83,7 +86,7 @@ export async function GET(req: NextRequest) {
   // Extra profile fields from consultant_profiles
   const { data: profiles } = await service
     .from('consultant_profiles')
-    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark')
+    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status')
     .in('user_id', userIds);
 
   const profileMap: Record<string, any> = {};
@@ -100,7 +103,7 @@ export async function GET(req: NextRequest) {
     if (s.consultant_id) schoolCounts[s.consultant_id] = (schoolCounts[s.consultant_id] ?? 0) + 1;
   }
 
-  const consultants = roleRows.map(r => ({
+  let consultants = roleRows.map(r => ({
     id:                    r.user_id,
     role_id:               r.id,
     email:                 userDetails[r.user_id]?.email ?? '—',
@@ -112,7 +115,15 @@ export async function GET(req: NextRequest) {
     pan_number:            profileMap[r.user_id]?.pan_number            ?? null,
     is_default_consultant: profileMap[r.user_id]?.is_default_consultant ?? false,
     internal_remark:       profileMap[r.user_id]?.internal_remark       ?? null,
+    // Defaults to 'not_associated' for every consultant until explicitly set.
+    association_status:    profileMap[r.user_id]?.association_status    ?? 'not_associated',
   }));
+
+  if (associatedParam === 'true') {
+    consultants = consultants.filter(c => c.association_status === 'associated');
+  } else if (associatedParam === 'false') {
+    consultants = consultants.filter(c => c.association_status !== 'associated');
+  }
 
   return NextResponse.json({ consultants });
 }
@@ -123,7 +134,10 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const service = createServiceClient();
-  const { name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant } = await req.json();
+  const { name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, association_status } = await req.json();
+
+  // Every consultant is 'not_associated' by default until explicitly marked otherwise.
+  const assocStatus = association_status === 'associated' ? 'associated' : 'not_associated';
 
   if (!name?.trim() || !email?.trim() || !password?.trim())
     return NextResponse.json({ error: 'name, email and password are required' }, { status: 400 });
@@ -211,6 +225,7 @@ export async function POST(req: NextRequest) {
     mobile_number:         mobile_number?.trim() || null,
     pan_number:            pan_number?.trim()    || null,
     is_default_consultant: !!is_default_consultant,
+    association_status:    assocStatus,
   });
   if (profileErr) {
     await service.from('admin_roles').delete().eq('user_id', consultantUserId).eq('role', 'consultant');
@@ -227,6 +242,7 @@ export async function POST(req: NextRequest) {
       mobile_number:         mobile_number?.trim() || null,
       pan_number:            pan_number?.trim()    || null,
       is_default_consultant: !!is_default_consultant,
+      association_status:    assocStatus,
     }
   }, { status: 201 });
 }
@@ -265,14 +281,25 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark } = body;
+  const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  // Sub-admins may only update internal_remark — use update (not upsert) to avoid INSERT path
+  // Sub-admins may only update internal_remark + association_status —
+  // use update (not upsert) to avoid the INSERT path.
   if (!isSuperAdmin) {
+    const subUpdate: Record<string, any> = {};
+    if (internal_remark !== undefined) subUpdate.internal_remark = internal_remark?.trim() || null;
+    if (association_status !== undefined) {
+      if (association_status !== 'associated' && association_status !== 'not_associated') {
+        return NextResponse.json({ error: 'association_status must be "associated" or "not_associated"' }, { status: 400 });
+      }
+      subUpdate.association_status = association_status;
+    }
+    if (Object.keys(subUpdate).length === 0) return NextResponse.json({ success: true });
+
     const { error: remarkErr } = await service
       .from('consultant_profiles')
-      .update({ internal_remark: internal_remark?.trim() || null })
+      .update(subUpdate)
       .eq('user_id', id);
     if (remarkErr) return NextResponse.json({ error: remarkErr.message }, { status: 400 });
 
@@ -302,6 +329,12 @@ export async function PATCH(req: NextRequest) {
   if (mobile_number         !== undefined) profileUpdate.mobile_number         = mobile_number?.trim()  || null;
   if (pan_number            !== undefined) profileUpdate.pan_number            = pan_number?.trim()     || null;
   if (internal_remark       !== undefined) profileUpdate.internal_remark       = internal_remark?.trim() || null;
+  if (association_status    !== undefined) {
+    if (association_status !== 'associated' && association_status !== 'not_associated') {
+      return NextResponse.json({ error: 'association_status must be "associated" or "not_associated"' }, { status: 400 });
+    }
+    profileUpdate.association_status = association_status;
+  }
   if (is_default_consultant !== undefined) {
     profileUpdate.is_default_consultant = !!is_default_consultant;
     if (is_default_consultant) {

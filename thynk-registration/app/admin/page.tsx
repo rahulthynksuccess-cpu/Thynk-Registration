@@ -3428,6 +3428,7 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
   const [mobile,        setMobile]       = React.useState(initial.mobile_number     ?? '');
   const [pan,           setPan]          = React.useState(initial.pan_number        ?? '');
   const [isDefault,     setIsDefault]    = React.useState(!!initial.is_default_consultant);
+  const [associationStatus, setAssociationStatus] = React.useState<'associated'|'not_associated'>(initial.association_status === 'associated' ? 'associated' : 'not_associated');
   const [internalRemark, setInternalRemark] = React.useState(initial.internal_remark ?? '');
   // Extended profile fields (all optional)
   const [location,      setLocation]     = React.useState(initial.location          ?? '');
@@ -3468,8 +3469,8 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
         experience_summary:  expSummary.trim() || null,
       };
       const body = isEdit
-        ? { id:initial.id, name, email:email.trim()||undefined, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, internal_remark:internalRemark.trim()||null, ...extFields }
-        : { name, email, password, consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, ...extFields };
+        ? { id:initial.id, name, email:email.trim()||undefined, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, association_status:associationStatus, internal_remark:internalRemark.trim()||null, ...extFields }
+        : { name, email, password, consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, association_status:associationStatus, ...extFields };
       const res  = await fetch(`${BACKEND}/api/admin/consultants`, { method, headers:{...(authHeaders() as any),'Content-Type':'application/json'}, body:JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? 'Failed'); setSaving(false); return; }
@@ -3548,6 +3549,22 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
             ⭐ Set as Default Consultant
             <span style={{display:'block',fontSize:11,fontWeight:400,color:'var(--m)'}}>Schools from the generic link will be tagged to this consultant</span>
           </label>
+        </div>
+
+        <div style={{marginBottom:14}}>
+          <label style={LB}>Association Status</label>
+          <div style={{display:'flex',gap:8}}>
+            {(['associated','not_associated'] as const).map(v=>(
+              <button key={v} type="button" onClick={()=>setAssociationStatus(v)}
+                style={{padding:'8px 16px',borderRadius:9,border:'1.5px solid',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'DM Sans,sans-serif',
+                  borderColor: associationStatus===v ? (v==='associated'?'#059669':'#64748b') : 'var(--bd)',
+                  background:  associationStatus===v ? (v==='associated'?'rgba(5,150,105,.1)':'rgba(100,116,139,.1)') : 'transparent',
+                  color:       associationStatus===v ? (v==='associated'?'#059669':'#64748b') : 'var(--m)'}}>
+                {v==='associated' ? '🟢 Associated' : '⚪ Not Associated'}
+              </button>
+            ))}
+          </div>
+          <div style={{fontSize:10,color:'var(--m)',marginTop:4}}>New consultants default to Not Associated until confirmed.</div>
         </div>
 
         {/* ── Extended profile (collapsible) ── */}
