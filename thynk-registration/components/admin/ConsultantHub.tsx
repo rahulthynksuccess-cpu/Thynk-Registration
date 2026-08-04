@@ -674,10 +674,12 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
 }) {
   const [search,             setSearch]             = useState('');
   const [remarkFilter,       setRemarkFilter]        = useState<'all' | 'updated' | 'not_updated'>('all');
+  const [associationFilter,  setAssociationFilter]   = useState<'all' | 'associated' | 'not_associated'>('all');
   const [domainFilter, setDomainFilter] = useState<string[]>([]);
   const [expandedId,   setExpandedId]  = useState<string | null>(null);
   const [deleting,     setDeleting]    = useState<string | null>(null);
   const [regLinksFor,  setRegLinksFor] = useState<Row | null>(null);
+  const [togglingAssoc, setTogglingAssoc] = useState<string | null>(null);
 
   // Merge auth-based consultants with extra profile fields from registrations
   const regByEmail: Record<string, Row> = {};
@@ -711,8 +713,27 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
     } else if (remarkFilter === 'not_updated') {
       list = list.filter(c => !c.internal_remark || c.internal_remark.trim() === '');
     }
+    if (associationFilter === 'associated') {
+      list = list.filter(c => c.association_status === 'associated');
+    } else if (associationFilter === 'not_associated') {
+      list = list.filter(c => (c.association_status ?? 'not_associated') !== 'associated');
+    }
     return list;
-  }, [enriched, search, domainFilter, remarkFilter]);
+  }, [enriched, search, domainFilter, remarkFilter, associationFilter]);
+
+  async function handleToggleAssociation(c: Row) {
+    const next = c.association_status === 'associated' ? 'not_associated' : 'associated';
+    setTogglingAssoc(c.id);
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/consultants`, {
+        method: 'PATCH',
+        headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, association_status: next }),
+      });
+      if (res.ok) { showToast(next === 'associated' ? 'Marked Associated' : 'Marked Not Associated', next === 'associated' ? '🟢' : '⚪'); onReload(); }
+      else { const d = await res.json(); showToast(d.error ?? 'Failed to update status', '❌'); }
+    } finally { setTogglingAssoc(null); }
+  }
 
   async function handleDelete(id: string) {
     if (!confirm('Remove this consultant? Their schools will remain but become unassigned.')) return;
@@ -788,6 +809,51 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
         )}
       </div>
 
+      {/* ── Quick filter: Associated / Not Associated ── */}
+      <div style={{ marginBottom:10, display:'flex', alignItems:'center', flexWrap:'wrap', gap:0 }}>
+        <button
+          onClick={() => setAssociationFilter(prev => prev === 'associated' ? 'all' : 'associated')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', transition: 'all .15s', fontFamily: 'DM Sans,sans-serif',
+            border: `1.5px solid ${associationFilter === 'associated' ? '#059669' : 'var(--bd)'}`,
+            background: associationFilter === 'associated' ? 'rgba(5,150,105,0.08)' : 'transparent',
+            color: associationFilter === 'associated' ? '#059669' : 'var(--m)',
+            marginRight: 8,
+          }}>
+          🟢 Associated
+          {associationFilter === 'associated' && (
+            <span style={{ fontSize:10, background:'#059669', color:'#fff', borderRadius:20, padding:'1px 7px', fontWeight:800 }}>
+              {filtered.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setAssociationFilter(prev => prev === 'not_associated' ? 'all' : 'not_associated')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', transition: 'all .15s', fontFamily: 'DM Sans,sans-serif',
+            border: `1.5px solid ${associationFilter === 'not_associated' ? '#64748b' : 'var(--bd)'}`,
+            background: associationFilter === 'not_associated' ? 'rgba(100,116,139,0.08)' : 'transparent',
+            color: associationFilter === 'not_associated' ? '#64748b' : 'var(--m)',
+          }}>
+          ⚪ Not Associated
+          {associationFilter === 'not_associated' && (
+            <span style={{ fontSize:10, background:'#64748b', color:'#fff', borderRadius:20, padding:'1px 7px', fontWeight:800 }}>
+              {filtered.length}
+            </span>
+          )}
+        </button>
+        {associationFilter !== 'all' && (
+          <button onClick={() => setAssociationFilter('all')}
+            style={{ marginLeft:8, padding:'4px 10px', borderRadius:20, border:'1.5px solid var(--bd)', fontSize:11, color:'var(--m)', background:'transparent', cursor:'pointer' }}>
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
       {/* ── Domain filter pills ── */}
       <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:14 }}>
         <span style={{ fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase', letterSpacing:'.05em' }}>Domain:</span>
@@ -835,15 +901,36 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
                       <code style={{ fontSize:10, background:'rgba(79,70,229,.1)', color:'#4f46e5', padding:'2px 8px', borderRadius:20, fontWeight:800 }}>{c.consultant_code}</code>
                     )}
                     {c.is_default_consultant && <span title="Default consultant" style={{ fontSize:14 }}>⭐</span>}
-                    <span style={{ fontSize:10, background:'#d1fae5', color:'#065f46', borderRadius:20, padding:'2px 8px', fontWeight:700 }}>✅ Active</span>
+                    <button
+                      onClick={() => canManage && handleToggleAssociation(c)}
+                      disabled={!canManage || togglingAssoc === c.id}
+                      title={canManage ? 'Click to toggle' : undefined}
+                      style={{ fontSize:10, borderRadius:20, padding:'2px 8px', fontWeight:700, border:'none', cursor:canManage?'pointer':'default',
+                        background: c.association_status === 'associated' ? '#d1fae5' : '#f1f5f9',
+                        color:      c.association_status === 'associated' ? '#065f46' : '#475569',
+                        opacity: togglingAssoc === c.id ? 0.6 : 1,
+                      }}>
+                      {c.association_status === 'associated' ? '🟢 Associated' : '⚪ Not Associated'}
+                    </button>
                     {domains.slice(0,2).map((d: string) => (
                       <span key={d} style={{ fontSize:9, fontWeight:700, background:'rgba(79,70,229,.08)', color:'#4f46e5', border:'1px solid rgba(79,70,229,.2)', borderRadius:20, padding:'1px 7px' }}>{d}</span>
                     ))}
                     {domains.length > 2 && <span style={{ fontSize:9, fontWeight:700, color:'var(--m)', background:'var(--bg)', border:'1px solid var(--bd)', borderRadius:20, padding:'1px 7px' }}>+{domains.length-2}</span>}
                   </div>
-                  <div style={{ fontSize:12, color:'var(--m)', display:'flex', gap:12, flexWrap:'wrap' }}>
+                  <div style={{ fontSize:12, color:'var(--m)', display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
                     <span>📧 {c.email}</span>
-                    {(c.mobile_number || c.contact_number) && <span>📱 {c.mobile_number || c.contact_number}</span>}
+                    {(c.mobile_number || c.contact_number) && (() => {
+                      const num = String(c.mobile_number || c.contact_number).replace(/[^\d+]/g, '');
+                      return (
+                        <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+                          📱 {c.mobile_number || c.contact_number}
+                          <a href={`tel:${num}`} title="Call" onClick={e => e.stopPropagation()}
+                            style={{ color:'#dc2626', textDecoration:'none' }}>📞</a>
+                          <a href={`https://wa.me/${num.replace(/^\+/, '')}`} target="_blank" rel="noreferrer" title="WhatsApp" onClick={e => e.stopPropagation()}
+                            style={{ color:'#0e8a7d', textDecoration:'none' }}>💬</a>
+                        </span>
+                      );
+                    })()}
                     {c.location && <span>📍 {c.location}</span>}
                   </div>
                 </div>
