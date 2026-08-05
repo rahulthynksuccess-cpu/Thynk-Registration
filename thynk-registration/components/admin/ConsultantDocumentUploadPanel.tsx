@@ -40,7 +40,7 @@ function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-interface Consultant { id: string; name: string; consultant_code: string; email?: string; }
+interface Consultant { id: string; name: string; consultant_code: string; email?: string; association_status?: string; }
 interface Document {
   id: string; consultant_id: string; file_name: string; file_type: string;
   file_size: number; category: Category; description: string | null;
@@ -57,6 +57,7 @@ export function ConsultantDocumentUploadPanel({ showToast }: { showToast: (m: st
   const [selectedConsultants, setSelectedConsultants] = useState<string[]>([]);
   const [consultantDropOpen, setConsultantDropOpen] = useState(false);
   const [consultantSearch, setConsultantSearch] = useState('');
+  const [pickerAssocFilter, setPickerAssocFilter] = useState<'all'|'associated'|'not_associated'>('all');
   const [category, setCategory] = useState<Category>('general');
   const [description, setDescription] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -71,7 +72,7 @@ export function ConsultantDocumentUploadPanel({ showToast }: { showToast: (m: st
   useEffect(() => {
     authFetch(`${BACKEND}/api/admin/consultants`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => setConsultants((d?.consultants ?? []).map((c: any) => ({ id: c.id, name: c.name || c.email, consultant_code: c.consultant_code || '—', email: c.email }))))
+      .then(d => setConsultants((d?.consultants ?? []).map((c: any) => ({ id: c.id, name: c.name || c.email, consultant_code: c.consultant_code || '—', email: c.email, association_status: c.association_status || 'not_associated' }))))
       .catch(() => {});
   }, []);
 
@@ -103,10 +104,14 @@ export function ConsultantDocumentUploadPanel({ showToast }: { showToast: (m: st
     setSelectedConsultants(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
   };
 
-  const filteredConsultantOptions = consultants.filter(c =>
-    !consultantSearch || c.name.toLowerCase().includes(consultantSearch.toLowerCase()) ||
-    c.consultant_code.toLowerCase().includes(consultantSearch.toLowerCase())
-  );
+  const filteredConsultantOptions = consultants.filter(c => {
+    const matchesSearch = !consultantSearch || c.name.toLowerCase().includes(consultantSearch.toLowerCase()) ||
+      c.consultant_code.toLowerCase().includes(consultantSearch.toLowerCase());
+    if (!matchesSearch) return false;
+    if (pickerAssocFilter === 'associated')     return c.association_status === 'associated';
+    if (pickerAssocFilter === 'not_associated') return (c.association_status ?? 'not_associated') !== 'associated';
+    return true;
+  });
 
   const handleFiles = (files: FileList | File[]) => {
     setPendingFiles(prev => [...prev, ...Array.from(files)]);
@@ -238,9 +243,21 @@ export function ConsultantDocumentUploadPanel({ showToast }: { showToast: (m: st
                     />
                   </div>
                   <div style={{ display: 'flex', gap: 6, padding: '8px 12px', borderBottom: '1px solid #f1f5f9' }}>
-                    <button onClick={() => setSelectedConsultants(consultants.map(c => c.id))}
+                    {(['all','associated','not_associated'] as const).map(f => (
+                      <button key={f} onClick={e => { e.stopPropagation(); setPickerAssocFilter(f); }}
+                        style={{ flex: 1, padding: '5px 0', borderRadius: 7, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                          border: `1.5px solid ${pickerAssocFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'#6366f1') : '#e2e8f0'}`,
+                          background: pickerAssocFilter===f ? (f==='associated'?'#ecfdf5':f==='not_associated'?'#f1f5f9':'#eef2ff') : '#f8fafc',
+                          color: pickerAssocFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'#6366f1') : '#64748b',
+                        }}>
+                        {f==='all' ? 'All' : f==='associated' ? '🟢 Associated' : '⚪ Not Associated'}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, padding: '8px 12px', borderBottom: '1px solid #f1f5f9' }}>
+                    <button onClick={() => setSelectedConsultants(filteredConsultantOptions.map(c => c.id))}
                       style={{ flex: 1, padding: '5px 0', borderRadius: 7, border: '1.5px solid #6366f1', background: '#eef2ff', color: '#6366f1', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                      Select All
+                      Select All ({filteredConsultantOptions.length})
                     </button>
                     <button onClick={() => setSelectedConsultants([])}
                       style={{ flex: 1, padding: '5px 0', borderRadius: 7, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#64748b', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
@@ -270,6 +287,10 @@ export function ConsultantDocumentUploadPanel({ showToast }: { showToast: (m: st
                             <div style={{ fontSize: 13, fontWeight: selected ? 700 : 500, color: '#0f172a' }}>{c.name}</div>
                             <div style={{ fontSize: 10, color: '#94a3b8' }}>{c.consultant_code}</div>
                           </div>
+                          {c.association_status === 'associated'
+                            ? <span style={{ fontSize: 9, fontWeight: 700, background: '#d1fae5', color: '#065f46', borderRadius: 20, padding: '1px 7px' }}>🟢</span>
+                            : <span style={{ fontSize: 9, fontWeight: 700, background: '#f1f5f9', color: '#475569', borderRadius: 20, padding: '1px 7px' }}>⚪</span>
+                          }
                         </label>
                       );
                     })}

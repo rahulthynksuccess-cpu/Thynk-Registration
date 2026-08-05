@@ -27,7 +27,7 @@ interface Template {
   download_url: string | null;
   projects: { name: string };
 }
-interface Consultant { id: string; name: string; consultant_code: string; email?: string; }
+interface Consultant { id: string; name: string; consultant_code: string; email?: string; association_status?: string; }
 interface LetterLog {
   id: string; consultant_id: string; project_id: string;
   status: 'pending'|'processing'|'done'|'error';
@@ -69,6 +69,7 @@ function ColorField({ label, hint, value, onChange }: { label: string; hint: str
 function ConsultantMultiSelect({ consultants, selected, onChange }: { consultants: Consultant[]; selected: string[]; onChange: (ids: string[]) => void }) {
   const [open, setOpen]     = useState(false);
   const [search, setSearch] = useState('');
+  const [assocFilter, setAssocFilter] = useState<'all'|'associated'|'not_associated'>('all');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,7 +78,12 @@ function ConsultantMultiSelect({ consultants, selected, onChange }: { consultant
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const filtered = consultants.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.consultant_code.toLowerCase().includes(search.toLowerCase()));
+  const byAssoc = consultants.filter(c => {
+    if (assocFilter === 'associated')     return c.association_status === 'associated';
+    if (assocFilter === 'not_associated') return (c.association_status ?? 'not_associated') !== 'associated';
+    return true;
+  });
+  const filtered = byAssoc.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.consultant_code.toLowerCase().includes(search.toLowerCase()));
   const toggle   = (id: string) => onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
   const names    = selected.map(id => consultants.find(c => c.id === id)?.name ?? '').filter(Boolean);
 
@@ -104,10 +110,23 @@ function ConsultantMultiSelect({ consultants, selected, onChange }: { consultant
             <input autoFocus placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} onClick={e => e.stopPropagation()}
               style={{ width:'100%', border:'1.5px solid #e2e8f0', borderRadius:8, padding:'7px 10px', fontSize:13, outline:'none', boxSizing:'border-box' }} />
           </div>
+          {/* Associated / Not Associated / All filter */}
           <div style={{ display:'flex', gap:6, padding:'8px 12px', borderBottom:'1px solid #f1f5f9' }}>
-            <button onClick={e => { e.stopPropagation(); onChange(consultants.map(c => c.id)); }}
+            {(['all','associated','not_associated'] as const).map(f => (
+              <button key={f} onClick={e => { e.stopPropagation(); setAssocFilter(f); }}
+                style={{ flex:1, padding:'5px 0', borderRadius:7, fontSize:10.5, fontWeight:700, cursor:'pointer',
+                  border: `1.5px solid ${assocFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'#6366f1') : '#e2e8f0'}`,
+                  background: assocFilter===f ? (f==='associated'?'#ecfdf5':f==='not_associated'?'#f1f5f9':'#eef2ff') : '#f8fafc',
+                  color: assocFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'#6366f1') : '#64748b',
+                }}>
+                {f==='all' ? 'All' : f==='associated' ? '🟢 Associated' : '⚪ Not Associated'}
+              </button>
+            ))}
+          </div>
+          <div style={{ display:'flex', gap:6, padding:'8px 12px', borderBottom:'1px solid #f1f5f9' }}>
+            <button onClick={e => { e.stopPropagation(); onChange(filtered.map(c => c.id)); }}
               style={{ flex:1, padding:'5px 0', borderRadius:7, border:'1.5px solid #6366f1', background:'#eef2ff', color:'#6366f1', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-              Select All ({consultants.length})
+              Select All ({filtered.length})
             </button>
             <button onClick={e => { e.stopPropagation(); onChange([]); }}
               style={{ flex:1, padding:'5px 0', borderRadius:7, border:'1.5px solid #e2e8f0', background:'#f8fafc', color:'#64748b', fontSize:11, fontWeight:700, cursor:'pointer' }}>
@@ -129,6 +148,10 @@ function ConsultantMultiSelect({ consultants, selected, onChange }: { consultant
                         <div style={{ fontSize:13, fontWeight: sel ? 700 : 500, color:'#0f172a' }}>{c.name}</div>
                         <div style={{ fontSize:10, color:'#94a3b8' }}>{c.consultant_code}</div>
                       </div>
+                      {c.association_status === 'associated'
+                        ? <span style={{ fontSize:9, fontWeight:700, background:'#d1fae5', color:'#065f46', borderRadius:20, padding:'1px 7px' }}>🟢</span>
+                        : <span style={{ fontSize:9, fontWeight:700, background:'#f1f5f9', color:'#475569', borderRadius:20, padding:'1px 7px' }}>⚪</span>
+                      }
                     </label>
                   );
                 })
@@ -186,7 +209,7 @@ export function ConsultantLetterGeneratorPanel({ showToast }: { showToast: (msg:
 
   const loadConsultants = useCallback(() => {
     authFetch(`${BACKEND}/api/admin/consultants`).then(r => r.ok ? r.json() : null).then(d => {
-      setConsultants((d?.consultants ?? []).map((c: any) => ({ id: c.id, name: c.name || c.email, consultant_code: c.consultant_code || '—', email: c.email })));
+      setConsultants((d?.consultants ?? []).map((c: any) => ({ id: c.id, name: c.name || c.email, consultant_code: c.consultant_code || '—', email: c.email, association_status: c.association_status || 'not_associated' })));
     }).catch(() => {});
   }, []);
 

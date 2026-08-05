@@ -1036,10 +1036,17 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
   const [tplId,         setTplId]         = useState('');
   const [smtpConfigId,  setSmtpConfigId]  = useState('');
   const [selected,      setSelected]      = useState<Set<string>>(new Set());
+  const [recipientFilter, setRecipientFilter] = useState<'all' | 'associated' | 'not_associated'>('all');
   const [preview,       setPreview]       = useState('');
   const [sending,       setSending]       = useState(false);
   const [sentLog,       setSentLog]       = useState<{ name: string; to: string; ok: boolean; err?: string }[]>([]);
   const [showLog,       setShowLog]       = useState(false);
+
+  const visibleConsultants = useMemo(() => {
+    if (recipientFilter === 'associated')     return consultants.filter(c => c.association_status === 'associated');
+    if (recipientFilter === 'not_associated') return consultants.filter(c => (c.association_status ?? 'not_associated') !== 'associated');
+    return consultants;
+  }, [consultants, recipientFilter]);
 
   // Load config + templates
   useEffect(() => {
@@ -1066,10 +1073,12 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
     setPreview(tpl.body.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => `[${k}]`));
   }, [tpl]);
 
-  // Toggle consultant selection
+  // Toggle consultant selection (respects the current Associated/Not Associated filter)
   function toggleAll() {
-    if (selected.size === consultants.length) setSelected(new Set());
-    else setSelected(new Set(consultants.map(c => c.id)));
+    const ids = visibleConsultants.map(c => c.id);
+    const allSelected = ids.length > 0 && ids.every(id => selected.has(id));
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(ids));
   }
   function toggleOne(id: string) {
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -1274,18 +1283,33 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
       {/* Right: consultant selector */}
       <div>
         <div style={{ border:'1.5px solid var(--bd)', borderRadius:14, overflow:'hidden', background:'var(--card)' }}>
-          <div style={{ padding:'12px 16px', background:'var(--bg)', borderBottom:'1.5px solid var(--bd)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontWeight:700, fontSize:13 }}>Select Recipients</div>
-            <button onClick={toggleAll}
-              style={{ fontSize:12, fontWeight:700, color:'var(--acc)', background:'none', border:'none', cursor:'pointer' }}>
-              {selected.size === consultants.length ? 'Deselect All' : `Select All (${consultants.length})`}
-            </button>
+          <div style={{ padding:'12px 16px', background:'var(--bg)', borderBottom:'1.5px solid var(--bd)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div style={{ fontWeight:700, fontSize:13 }}>Select Recipients</div>
+              <button onClick={toggleAll}
+                style={{ fontSize:12, fontWeight:700, color:'var(--acc)', background:'none', border:'none', cursor:'pointer' }}>
+                {visibleConsultants.length > 0 && visibleConsultants.every(c => selected.has(c.id)) ? 'Deselect All' : `Select All (${visibleConsultants.length})`}
+              </button>
+            </div>
+            {/* Associated / Not Associated / All filter */}
+            <div style={{ display:'flex', gap:6 }}>
+              {(['all','associated','not_associated'] as const).map(f => (
+                <button key={f} onClick={() => setRecipientFilter(f)}
+                  style={{ flex:1, padding:'5px 0', borderRadius:8, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'DM Sans,sans-serif',
+                    border: `1.5px solid ${recipientFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'var(--acc)') : 'var(--bd)'}`,
+                    background: recipientFilter===f ? (f==='associated'?'rgba(5,150,105,.08)':f==='not_associated'?'rgba(100,116,139,.08)':'var(--acc3)') : 'transparent',
+                    color: recipientFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'var(--acc)') : 'var(--m)',
+                  }}>
+                  {f==='all' ? 'All' : f==='associated' ? '🟢 Associated' : '⚪ Not Associated'}
+                </button>
+              ))}
+            </div>
           </div>
-          {consultants.length === 0 ? (
-            <div style={{ padding:'24px', textAlign:'center', fontSize:13, color:'var(--m)' }}>No consultants yet</div>
+          {visibleConsultants.length === 0 ? (
+            <div style={{ padding:'24px', textAlign:'center', fontSize:13, color:'var(--m)' }}>No consultants match this filter</div>
           ) : (
             <div style={{ maxHeight:480, overflowY:'auto' }}>
-              {consultants.map(c => {
+              {visibleConsultants.map(c => {
                 const to = channel === 'email' ? c.email : (c.mobile_number || c.contact_number);
                 const isSelected = selected.has(c.id);
                 return (
@@ -1303,6 +1327,10 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
                         {to || `No ${channel} address`}
                       </div>
                     </div>
+                    {c.association_status === 'associated'
+                      ? <span style={{ fontSize:9, fontWeight:700, background:'#d1fae5', color:'#065f46', borderRadius:20, padding:'1px 7px' }}>🟢</span>
+                      : <span style={{ fontSize:9, fontWeight:700, background:'#f1f5f9', color:'#475569', borderRadius:20, padding:'1px 7px' }}>⚪</span>
+                    }
                     {c.consultant_code && (
                       <code style={{ fontSize:10, background:'rgba(79,70,229,.1)', color:'#4f46e5', padding:'2px 7px', borderRadius:10, fontWeight:700 }}>{c.consultant_code}</code>
                     )}
