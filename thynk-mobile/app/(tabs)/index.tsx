@@ -4,7 +4,7 @@ import {
   RefreshControl, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { authFetch, fmtDate, fmtAmount } from '@/lib/api';
+import { authFetch, fmtDate } from '@/lib/api';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { Badge, Card, RowItem, SectionHeader, EmptyState, PrimaryButton } from '@/components/ui';
 
@@ -19,6 +19,9 @@ function statusVariant(s?: string): BadgeVariant {
 }
 
 function SchoolCard({ school, onPress }: { school: any; onPress: () => void }) {
+  const regOpen = school.is_registration_active !== false;
+  const paid  = school.paid_student_count  ?? 0;
+  const total = school.total_student_count ?? 0;
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
       <View style={styles.cardTop}>
@@ -29,20 +32,23 @@ function SchoolCard({ school, onPress }: { school: any; onPress: () => void }) {
           <Text style={styles.cardName} numberOfLines={1}>{school.name}</Text>
           <Text style={styles.cardSub}  numberOfLines={1}>{school.org_name}</Text>
         </View>
-        <Badge label={school.status ?? (school.is_active ? 'Active' : 'Inactive')} variant={statusVariant(school.status ?? (school.is_active ? 'active' : 'inactive'))} />
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          <Badge label={school.status ?? (school.is_active ? 'Active' : 'Inactive')} variant={statusVariant(school.status ?? (school.is_active ? 'active' : 'inactive'))} />
+          <Badge label={regOpen ? 'Reg: Open' : 'Reg: Closed'} variant={regOpen ? 'success' : 'danger'} />
+        </View>
       </View>
       <View style={styles.metaRow}>
+        {school.program_name && <View style={styles.metaItem}><Ionicons name="book-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{school.program_name}</Text></View>}
+        {school.consultant_name && <View style={styles.metaItem}><Ionicons name="person-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{school.consultant_name}</Text></View>}
         {school.city && <View style={styles.metaItem}><Ionicons name="location-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{school.city}</Text></View>}
         <View style={styles.metaItem}><Ionicons name="code-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{school.school_code}</Text></View>
         <View style={styles.metaItem}><Ionicons name="calendar-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{fmtDate(school.created_at)}</Text></View>
       </View>
-      {school.reg_count != null && (
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}><Text style={styles.statVal}>{school.reg_count ?? 0}</Text><Text style={styles.statLbl}>Registrations</Text></View>
-          <View style={styles.statDiv} />
-          <View style={styles.statItem}><Text style={[styles.statVal, { color: Colors.accent }]}>{school.revenue != null ? fmtAmount(school.revenue) : '—'}</Text><Text style={styles.statLbl}>Revenue</Text></View>
-        </View>
-      )}
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}><Text style={[styles.statVal, { color: Colors.success }]}>{paid}</Text><Text style={styles.statLbl}>Paid Students</Text></View>
+        <View style={styles.statDiv} />
+        <View style={styles.statItem}><Text style={styles.statVal}>{total}</Text><Text style={styles.statLbl}>Total (Paid+Failed)</Text></View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -85,12 +91,20 @@ function SchoolModal({ school, visible, onClose, onAction }: {
           <Card>
             <RowItem label="School Code"  value={school.school_code} mono />
             <RowItem label="Organisation" value={school.org_name} />
+            <RowItem label="Program"      value={school.program_name} />
+            <RowItem label="Consultant"   value={school.consultant_name} />
+            <RowItem label="Registration" value={school.is_registration_active !== false ? 'Open' : 'Closed'} />
             <RowItem label="City"         value={school.city} />
             <RowItem label="Country"      value={school.country ?? 'India'} />
             <RowItem label="Registered"   value={fmtDate(school.created_at)} />
             {primaryContact?.name   && <RowItem label="Contact Person" value={primaryContact.name} />}
             {primaryContact?.mobile && <RowItem label="Contact Mobile" value={primaryContact.mobile} mono />}
             {primaryContact?.email  && <RowItem label="Contact Email"  value={primaryContact.email} />}
+          </Card>
+          <SectionHeader title="Registrations" />
+          <Card>
+            <RowItem label="Paid Students"              value={String(school.paid_student_count ?? 0)} />
+            <RowItem label="Total (Paid + Failed)"       value={String(school.total_student_count ?? 0)} />
           </Card>
           <SectionHeader title="Actions" />
           {school.status === 'pending' && (
@@ -113,6 +127,7 @@ export default function SchoolsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState<FilterType>('all');
+  const [programFilter, setProgramFilter] = useState<string>('all');
   const [selected, setSelected]     = useState<any>(null);
 
   const load = useCallback(async (silent = false) => {
@@ -147,10 +162,15 @@ export default function SchoolsScreen() {
 
   const counts = { all: schools.length, active: schools.filter(s => s.is_active && s.status !== 'pending').length, pending: schools.filter(s => s.status === 'pending').length, inactive: schools.filter(s => !s.is_active).length };
 
+  const programs = Array.from(new Set(schools.map(s => s.program_name).filter(Boolean))) as string[];
+  const programCounts: Record<string, number> = { all: schools.length };
+  programs.forEach(p => { programCounts[p] = schools.filter(s => s.program_name === p).length; });
+
   const filtered = schools.filter(s => {
     const q = search.toLowerCase();
     const ok = !search || s.name?.toLowerCase().includes(q) || s.school_code?.toLowerCase().includes(q) || s.org_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q);
     if (!ok) return false;
+    if (programFilter !== 'all' && s.program_name !== programFilter) return false;
     if (filter === 'active')   return s.is_active && s.status !== 'pending';
     if (filter === 'pending')  return s.status === 'pending';
     if (filter === 'inactive') return !s.is_active;
@@ -163,6 +183,16 @@ export default function SchoolsScreen() {
         <Text style={styles.pageTitle}>Schools</Text>
         <Text style={styles.pageSub}>{counts.all} total · {counts.pending} pending</Text>
       </View>
+      {programs.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
+          {(['all', ...programs]).map(p => (
+            <TouchableOpacity key={p} style={[styles.chip, styles.programChip, programFilter === p && styles.chipOn]} onPress={() => setProgramFilter(p)}>
+              <Ionicons name="book-outline" size={11} color={programFilter === p ? Colors.primary : Colors.textDim} style={{ marginRight: 4 }} />
+              <Text style={[styles.chipTxt, programFilter === p && styles.chipTxtOn]}>{p === 'all' ? 'All Programs' : p} ({programCounts[p] ?? 0})</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
       <View style={styles.searchBox}>
         <Ionicons name="search-outline" size={16} color={Colors.textDim} style={{ marginRight: 8 }} />
         <TextInput style={styles.searchInput} placeholder="Search schools..." placeholderTextColor={Colors.textDim} value={search} onChangeText={setSearch} />
@@ -208,6 +238,7 @@ const styles = StyleSheet.create({
   searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.cardBorder, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },
   searchInput:{ flex: 1, height: 42, color: Colors.text, fontSize: 14 },
   chip:    { paddingHorizontal: 14, paddingVertical: 7, borderRadius: Radius.round, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.cardBorder },
+  programChip: { flexDirection: 'row', alignItems: 'center' },
   chipOn:  { backgroundColor: Colors.primaryBg, borderColor: Colors.primary },
   chipTxt: { fontSize: 12, fontWeight: '600', color: Colors.textMuted },
   chipTxtOn:{ color: Colors.primary },

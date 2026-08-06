@@ -89,8 +89,8 @@ const cardStyles = StyleSheet.create({
 });
 
 // ── Consultant profile modal (view / call / whatsapp / remark / toggle) ──
-function ConsultantProfileModal({ consultant, visible, onClose, onUpdated }: {
-  consultant: any; visible: boolean; onClose: () => void; onUpdated: () => void;
+function ConsultantProfileModal({ consultant, schools, visible, onClose, onUpdated }: {
+  consultant: any; schools: any[]; visible: boolean; onClose: () => void; onUpdated: () => void;
 }) {
   const [remark, setRemark]       = useState('');
   const [savingRemark, setSavingRemark] = useState(false);
@@ -101,6 +101,20 @@ function ConsultantProfileModal({ consultant, visible, onClose, onUpdated }: {
   if (!consultant) return null;
   const associated = consultant.association_status === 'associated';
   const phone = cleanNumber(consultant.mobile_number);
+
+  // Program-wise breakdown of this consultant's schools (same grouping shown on the Schools list)
+  const consultantSchools = schools.filter(s => s.consultant_id === consultant.id);
+  const programGroups: { program: string; schools: any[] }[] = [];
+  const groupIndex: Record<string, number> = {};
+  consultantSchools.forEach(s => {
+    const program = s.program_name || 'No Program';
+    if (!(program in groupIndex)) {
+      groupIndex[program] = programGroups.length;
+      programGroups.push({ program, schools: [] });
+    }
+    programGroups[groupIndex[program]].schools.push(s);
+  });
+  programGroups.sort((a, b) => b.schools.length - a.schools.length);
 
   async function patch(body: Record<string, any>) {
     const res = await authFetch('/api/admin/consultants', { method: 'PATCH', body: JSON.stringify({ id: consultant.id, ...body }) });
@@ -203,6 +217,31 @@ function ConsultantProfileModal({ consultant, visible, onClose, onUpdated }: {
             }
           </TouchableOpacity>
 
+          <SectionHeader title="Program-wise Schools" note={`${consultantSchools.length} total`} />
+          {programGroups.length === 0
+            ? <View style={pStyles.card}><Text style={{ fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingVertical: 8 }}>No schools assigned yet</Text></View>
+            : programGroups.map(g => (
+                <View key={g.program} style={pStyles.programCard}>
+                  <View style={pStyles.programHdr}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                      <Ionicons name="book-outline" size={13} color={Colors.primary} />
+                      <Text style={pStyles.programName} numberOfLines={1}>{g.program}</Text>
+                    </View>
+                    <View style={pStyles.programCountPill}>
+                      <Text style={pStyles.programCountTxt}>{g.schools.length} school{g.schools.length === 1 ? '' : 's'}</Text>
+                    </View>
+                  </View>
+                  {g.schools.map((s: any) => (
+                    <View key={s.id} style={pStyles.schoolRow}>
+                      <Ionicons name="school-outline" size={12} color={Colors.textDim} />
+                      <Text style={pStyles.schoolName} numberOfLines={1}>{s.name}</Text>
+                      {s.is_registration_active === false && <Badge label="Closed" variant="danger" />}
+                    </View>
+                  ))}
+                </View>
+              ))
+          }
+
           <View style={{ height: 30 }} />
         </ScrollView>
       </SafeAreaView>
@@ -223,6 +262,13 @@ const pStyles = StyleSheet.create({
   remarkInput: { backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.cardBorder, color: Colors.text, fontSize: 13, padding: Spacing.md, minHeight: 90, textAlignVertical: 'top', marginBottom: Spacing.sm },
   saveRemarkBtn: { backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: 12, alignItems: 'center' },
   saveRemarkTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  programCard:      { backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.cardBorder, padding: Spacing.md, marginBottom: Spacing.sm },
+  programHdr:        { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
+  programName:       { fontSize: 13, fontWeight: '700', color: Colors.text, flex: 1 },
+  programCountPill:  { backgroundColor: Colors.primaryBg, borderRadius: Radius.round, paddingHorizontal: 8, paddingVertical: 3 },
+  programCountTxt:   { fontSize: 10, fontWeight: '700', color: Colors.primary },
+  schoolRow:          { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, borderTopWidth: 1, borderTopColor: Colors.cardBorder },
+  schoolName:         { fontSize: 12, color: Colors.textMuted, flex: 1 },
 });
 
 // ── List mode ─────────────────────────────────────────────────────
@@ -230,6 +276,7 @@ type AssocFilter = 'all' | 'associated' | 'not_associated';
 
 function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
   const [consultants, setConsultants] = useState<any[]>([]);
+  const [schools, setSchools]     = useState<any[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]       = useState('');
@@ -239,8 +286,15 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await authFetch('/api/admin/consultants');
-      if (res.ok) { const d = await res.json(); setConsultants(d.consultants ?? []); }
+      // Fetch consultants + schools together so the profile modal can show
+      // a program-wise breakdown of each consultant's schools without an
+      // extra round trip when it's opened.
+      const [cRes, sRes] = await Promise.all([
+        authFetch('/api/admin/consultants'),
+        authFetch('/api/admin/schools'),
+      ]);
+      if (cRes.ok) { const d = await cRes.json(); setConsultants(d.consultants ?? []); }
+      if (sRes.ok) { const d = await sRes.json(); setSchools(d.schools ?? d ?? []); }
     } catch {}
     setLoading(false); setRefreshing(false);
   }, []);
@@ -295,7 +349,7 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
         <Ionicons name="add" size={26} color="#fff" />
       </TouchableOpacity>
 
-      <ConsultantProfileModal consultant={selected} visible={!!selected} onClose={() => setSelected(null)} onUpdated={() => { load(true); }} />
+      <ConsultantProfileModal consultant={selected} schools={schools} visible={!!selected} onClose={() => setSelected(null)} onUpdated={() => { load(true); }} />
     </View>
   );
 }
