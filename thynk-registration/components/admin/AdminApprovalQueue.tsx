@@ -14,6 +14,7 @@ interface ApprovalQueueProps {
   authHeaders:    () => HeadersInit;
   onRefresh:      () => void;
   showToast:      (text: string, icon?: string) => void;
+  onEdit?:        (s: Row) => void;
 }
 
 const IS: React.CSSProperties = {
@@ -136,7 +137,7 @@ function BulkBar({ count, onApprove, onReject, onDelete, loading }: {
 
 // ── Main ApprovalQueue ─────────────────────────────────────────────
 export default function AdminApprovalQueue({
-  pendingSchools, programs, BACKEND, authHeaders, onRefresh, showToast,
+  pendingSchools, programs, BACKEND, authHeaders, onRefresh, showToast, onEdit,
 }: ApprovalQueueProps) {
   const [approveTarget, setApproveTarget] = useState<Row | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<Row | null>(null);
@@ -447,6 +448,13 @@ export default function AdminApprovalQueue({
                           style={{ fontSize: 11, padding: '5px 10px', background: 'rgba(79,70,229,0.08)', color: 'var(--acc)', border: '1.5px solid var(--acc)' }}
                           onClick={() => setDetailsTarget(s)}
                         >📋 Details</button>
+                        {onEdit && (
+                          <button
+                            className="btn"
+                            style={{ fontSize: 11, padding: '5px 10px', background: 'rgba(245,158,11,0.1)', color: '#b45309', border: '1.5px solid rgba(245,158,11,0.4)' }}
+                            onClick={() => onEdit(s)}
+                          >✏️ Edit</button>
+                        )}
                         <button
                           className="btn btn-primary"
                           style={{ fontSize: 11, padding: '5px 10px', background: '#10b981', borderColor: '#10b981' }}

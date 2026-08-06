@@ -449,6 +449,100 @@ function buildMetaBodyParams(
   }));
 }
 
+// ── Consultant notification on school approval ─────────────────────────────
+// The regular `fireTriggers('school.approved', ...)` flow only emails the
+// school's own contact person (via notification_triggers / templates). When
+// a consultant created/referred the school, they also want to know their
+// school was approved — this sends a direct notification to the consultant's
+// own registered login email, independent of the admin-configured templates.
+export async function sendSchoolApprovedConsultantEmail(schoolId: string): Promise<void> {
+  const tag = `[sendSchoolApprovedConsultantEmail]`;
+  const supabase = createServiceClient();
+
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('name, org_name, city, country, school_code, project_slug, consultant_id, branding')
+    .eq('id', schoolId)
+    .single();
+
+  if (error || !school) {
+    console.error(`${tag} school not found: ${schoolId}`, error?.message);
+    return;
+  }
+  if (!school.consultant_id) {
+    console.log(`${tag} school ${schoolId} has no consultant_id — skipping.`);
+    return;
+  }
+
+  // Consultant's login email comes from auth.users (not consultant_profiles).
+  let consultantEmail = '';
+  let consultantName  = '';
+  try {
+    const { data: u } = await supabase.auth.admin.getUserById(school.consultant_id);
+    consultantEmail = (u?.user?.email ?? '').toLowerCase().trim();
+    consultantName  = u?.user?.user_metadata?.name ?? '';
+  } catch (e: any) {
+    console.error(`${tag} failed to look up consultant auth user: ${e?.message}`);
+  }
+
+  if (!consultantEmail) {
+    console.error(`${tag} consultant ${school.consultant_id} has no email — skipping.`);
+    return;
+  }
+
+  const regUrl = school.branding?.redirectURL
+    || (school.project_slug && school.school_code
+      ? `https://thynksuccess.com/registration/${school.project_slug}/?school=${school.school_code}`
+      : '');
+
+  const subject = `✅ Your school "${school.name}" has been approved`;
+  const body = `
+    <p>Hi ${consultantName || 'there'},</p>
+    <p>Good news — the school you registered, <strong>${school.name}</strong>${school.org_name ? ` (${school.org_name})` : ''}${school.city ? `, ${school.city}` : ''}, has been <strong>approved</strong> by the admin team.</p>
+    <p><strong>School Code:</strong> ${school.school_code}</p>
+    ${regUrl ? `<p><strong>Registration Link:</strong> <a href="${regUrl}">${regUrl}</a></p>` : ''}
+    <p>You can now share this link with the school to begin registrations.</p>
+  `.trim();
+
+  const logEntry = {
+    registration_id: null as string | null,
+    school_id: schoolId,
+    trigger_id: null as string | null,
+    channel: 'email',
+    provider: '',
+    recipient: consultantEmail,
+    status: 'pending' as 'pending' | 'sent' | 'failed',
+  };
+
+  const { data: logRow } = await supabase.from('notification_logs').insert({
+    ...logEntry,
+    sent_at: null,
+    provider_response: null,
+  }).select('id').single();
+
+  let finalProvider = '';
+  let lastError: string | null = null;
+  let status: 'sent' | 'failed' = 'failed';
+
+  try {
+    finalProvider = await sendEmail({ subject, body }, { contact_email: consultantEmail } as TemplateVars, schoolId);
+    status = 'sent';
+    console.log(`${tag} ✅ email sent via ${finalProvider} to ${consultantEmail}`);
+  } catch (err: any) {
+    lastError = err?.message ?? 'unknown error';
+    console.error(`${tag} ❌ FAILED to ${consultantEmail}: ${lastError}`);
+  }
+
+  if (logRow?.id) {
+    await supabase.from('notification_logs').update({
+      status,
+      provider:          finalProvider || 'unknown',
+      sent_at:           status === 'sent' ? new Date().toISOString() : null,
+      provider_response: status === 'failed' ? { error: lastError } : null,
+    }).eq('id', logRow.id);
+  }
+}
+
 // ── Email sender ──────────────────────────────────────────────────────────────
 async function sendEmail(template: any, vars: TemplateVars, schoolId: string): Promise<string> {
   const supabase = createServiceClient();

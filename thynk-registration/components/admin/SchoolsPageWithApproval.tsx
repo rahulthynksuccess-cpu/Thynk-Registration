@@ -562,6 +562,7 @@ export function SchoolsPageWithApproval({
           pendingSchools={pendingSchools} programs={programs}
           BACKEND={BACKEND} authHeaders={authHeaders}
           onRefresh={onRefresh} showToast={showToast}
+          onEdit={onEdit}
         />
       )}
       {tab === 'approved' && (
