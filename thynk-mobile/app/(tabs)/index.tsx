@@ -129,11 +129,19 @@ export default function SchoolsScreen() {
   async function handleAction(action: 'approve'|'reject'|'toggle') {
     if (!selected) return;
     try {
+      // NOTE: both endpoints expect the school id under the key "id" (not
+      // "school_id"), and /api/admin/schools/approve only implements PATCH
+      // (no POST handler exists) — using the wrong key/method silently
+      // fails with "Missing id" / 405, which surfaced to the user as a
+      // generic "Action failed" error.
       const res = action === 'toggle'
-        ? await authFetch('/api/admin/schools', { method: 'PATCH', body: JSON.stringify({ school_id: selected.id, is_active: !selected.is_active }) })
-        : await authFetch('/api/admin/schools/approve', { method: 'POST', body: JSON.stringify({ school_id: selected.id, action }) });
+        ? await authFetch('/api/admin/schools', { method: 'PATCH', body: JSON.stringify({ id: selected.id, is_active: !selected.is_active }) })
+        : await authFetch('/api/admin/schools/approve', { method: 'PATCH', body: JSON.stringify({ id: selected.id, action }) });
       if (res.ok) { setSelected(null); load(true); }
-      else Alert.alert('Error', 'Action failed.');
+      else {
+        const d = await res.json().catch(() => ({}));
+        Alert.alert('Error', d.error ?? 'Action failed.');
+      }
     } catch (e: any) { Alert.alert('Error', e.message); }
   }
 
