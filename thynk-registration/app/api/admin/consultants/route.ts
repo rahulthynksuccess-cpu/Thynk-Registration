@@ -346,10 +346,37 @@ export async function PATCH(req: NextRequest) {
     }
   }
   if (Object.keys(profileUpdate).length) {
-    const { error: profileErr } = await service
+    // Check whether a profile row already exists for this consultant.
+    // IMPORTANT: we must NOT upsert blindly here — consultant_code is a
+    // NOT NULL column, and an upsert that doesn't include consultant_code
+    // (e.g. only toggling association_status or saving a remark) would
+    // fall through to an INSERT with consultant_code = null whenever a
+    // profile row doesn't already exist, violating the not-null constraint.
+    const { data: existingProfile } = await service
       .from('consultant_profiles')
-      .upsert({ user_id: id, ...profileUpdate }, { onConflict: 'user_id' });
-    if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 400 });
+      .select('user_id')
+      .eq('user_id', id)
+      .maybeSingle();
+
+    if (existingProfile) {
+      const { error: profileErr } = await service
+        .from('consultant_profiles')
+        .update(profileUpdate)
+        .eq('user_id', id);
+      if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 400 });
+    } else {
+      // No profile row yet — creating one requires consultant_code (not-null column).
+      if (!profileUpdate.consultant_code) {
+        return NextResponse.json(
+          { error: 'This consultant has no profile record yet. Please set a Consultant Code first to create one.' },
+          { status: 400 }
+        );
+      }
+      const { error: profileErr } = await service
+        .from('consultant_profiles')
+        .insert({ user_id: id, ...profileUpdate });
+      if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 400 });
+    }
   }
 
   return NextResponse.json({ success: true });

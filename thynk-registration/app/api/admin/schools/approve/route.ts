@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
-import { fireTriggers } from '@/lib/triggers/fire';
+import { fireTriggers, sendSchoolApprovedConsultantEmail } from '@/lib/triggers/fire';
 
 async function requireSuperAdmin(req: NextRequest) {
   const user = await getUserFromRequest(req);
@@ -243,6 +243,11 @@ export async function PATCH(req: NextRequest) {
 
   // Fire school.approved triggers (sends welcome email/WhatsApp to school contact)
   await fireTriggers('school.approved', '', id);
+
+  // Also notify the consultant who created/referred this school, on their
+  // own registered login email — independent of the admin-configured
+  // templates above, since consultants aren't covered by those triggers.
+  await sendSchoolApprovedConsultantEmail(id);
 
   return NextResponse.json({
     success:       true,

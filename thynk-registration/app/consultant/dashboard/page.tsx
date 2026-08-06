@@ -162,7 +162,7 @@ export default function ConsultantDashboard() {
                           <div style={{fontSize:14,fontWeight:800,color:'var(--text)',fontFamily:'Sora,sans-serif'}}>{s.name}</div>
                           <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{[s.city,s.state].filter(Boolean).join(', ')}</div>
                         </div>
-                        <Badge status={s.is_active?'active':'inactive'}/>
+                        {s.status==='approved' ? <Badge status={s.is_active?'active':'inactive'}/> : <Badge status="pending"/>}
                       </div>
                       <div style={{marginBottom:12}}>
                         <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--m)',marginBottom:4}}>
@@ -201,6 +201,11 @@ export default function ConsultantDashboard() {
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:16}}>
                 {schools.map((s:Row)=>{
                   const sc=bySchool[s.id]??{total:0,paid:0,pending:0,revenue:0};
+                  // Self-registered schools get a temporary placeholder school_code
+                  // (e.g. "pending-1699999999999") and no real project_slug link
+                  // until an admin approves them — only build/show the real
+                  // registration link once the school is actually approved.
+                  const isApproved = s.status === 'approved';
                   const lnk=consultantCode?`${BASE_URL}/registration/${s.project_slug}/?consultant=${consultantCode}&school=${s.school_code}`:`${BASE_URL}/registration/${s.project_slug}/?school=${s.school_code}`;
                   return(
                     <div key={s.id} style={{background:'var(--card)',border:'1.5px solid var(--bd)',borderRadius:16,padding:'18px 20px',display:'flex',flexDirection:'column',gap:12}}>
@@ -210,9 +215,9 @@ export default function ConsultantDashboard() {
                           <div style={{fontSize:11,color:'var(--m)',marginTop:2}}>{s.org_name}</div>
                           <div style={{fontSize:11,color:'var(--m)'}}>{[s.city,s.state,s.country].filter(Boolean).join(', ')}</div>
                         </div>
-                        <Badge status={s.is_active?'active':'inactive'}/>
+                        {isApproved ? <Badge status={s.is_active?'active':'inactive'}/> : <Badge status="pending"/>}
                       </div>
-                      <code style={{fontSize:11,background:'var(--bg)',borderRadius:6,padding:'4px 8px',color:'var(--m)',width:'fit-content'}}>{s.school_code}</code>
+                      {isApproved && <code style={{fontSize:11,background:'var(--bg)',borderRadius:6,padding:'4px 8px',color:'var(--m)',width:'fit-content'}}>{s.school_code}</code>}
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
                         {[{l:'PAID',v:sc.paid,c:COLORS.green},{l:'PENDING',v:sc.pending,c:COLORS.amber},{l:'TOTAL',v:sc.total,c:COLORS.indigo}].map(x=>(
                           <div key={x.l} style={{background:'var(--bg)',borderRadius:10,padding:'8px',textAlign:'center'}}>
@@ -222,11 +227,17 @@ export default function ConsultantDashboard() {
                         ))}
                       </div>
                       <div style={{fontSize:13,fontWeight:700,color:COLORS.purple}}>₹{fmt(sc.revenue/100)} revenue</div>
-                      <div style={{borderTop:'1px solid var(--bd)',paddingTop:10,display:'flex',alignItems:'center',gap:6}}>
-                        <span style={{fontSize:10,fontWeight:700,color:COLORS.indigo,background:'rgba(79,70,229,.08)',padding:'2px 7px',borderRadius:10,flexShrink:0}}>{consultantCode?'Curated':'Link'}</span>
-                        <span style={{fontSize:10,fontFamily:'monospace',color:'var(--m)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{lnk}</span>
-                        <button onClick={()=>{navigator.clipboard.writeText(lnk);showToast('📋 Link copied!');}} style={{background:'none',border:'none',cursor:'pointer',color:COLORS.indigo,fontSize:14,flexShrink:0}}>📋</button>
-                      </div>
+                      {isApproved ? (
+                        <div style={{borderTop:'1px solid var(--bd)',paddingTop:10,display:'flex',alignItems:'center',gap:6}}>
+                          <span style={{fontSize:10,fontWeight:700,color:COLORS.indigo,background:'rgba(79,70,229,.08)',padding:'2px 7px',borderRadius:10,flexShrink:0}}>{consultantCode?'Curated':'Link'}</span>
+                          <span style={{fontSize:10,fontFamily:'monospace',color:'var(--m)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{lnk}</span>
+                          <button onClick={()=>{navigator.clipboard.writeText(lnk);showToast('📋 Link copied!');}} style={{background:'none',border:'none',cursor:'pointer',color:COLORS.indigo,fontSize:14,flexShrink:0}}>📋</button>
+                        </div>
+                      ) : (
+                        <div style={{borderTop:'1px solid var(--bd)',paddingTop:10,fontSize:11,color:COLORS.amber,fontWeight:600}}>
+                          ⏳ Awaiting admin approval — registration link will appear here once approved.
+                        </div>
+                      )}
                     </div>
                   );
                 })}
