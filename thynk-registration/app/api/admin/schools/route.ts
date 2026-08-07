@@ -92,7 +92,66 @@ export async function GET(req: NextRequest) {
   }
 
   const { data: schools } = await query;
-  return NextResponse.json({ schools: schools ?? [] });
+  const schoolRows = schools ?? [];
+
+  // ── Enrich with Program Name, Consultant Name, and Paid/Total student counts ──
+  // (kept as a lightweight second pass so the base query above stays untouched)
+  const schoolIds      = schoolRows.map((s: any) => s.id);
+  const consultantIds  = Array.from(new Set(schoolRows.map((s: any) => s.consultant_id).filter(Boolean)));
+
+  // Consultant names — consultant_profiles.user_id is the FK; display name comes from auth user metadata
+  const consultantNameMap: Record<string, string> = {};
+  if (consultantIds.length) {
+    const { data: profiles } = await service
+      .from('consultant_profiles')
+      .select('user_id, consultant_code')
+      .in('user_id', consultantIds);
+    const codeMap: Record<string, string> = {};
+    (profiles ?? []).forEach((p: any) => { if (p.user_id) codeMap[p.user_id] = p.consultant_code; });
+
+    await Promise.all(consultantIds.map(async (uid: string) => {
+      try {
+        const { data: u } = await service.auth.admin.getUserById(uid);
+        consultantNameMap[uid] = u?.user?.user_metadata?.name || codeMap[uid] || u?.user?.email || '—';
+      } catch {
+        consultantNameMap[uid] = codeMap[uid] ?? '—';
+      }
+    }));
+  }
+
+  // Paid / Failed registration counts per school (registrations.status mirrors payment status)
+  const paidCountMap: Record<string, number> = {};
+  const failedCountMap: Record<string, number> = {};
+  if (schoolIds.length) {
+    const { data: regRows } = await service
+      .from('registrations')
+      .select('school_id, status')
+      .in('school_id', schoolIds);
+    (regRows ?? []).forEach((r: any) => {
+      if (r.status === 'paid')   paidCountMap[r.school_id]   = (paidCountMap[r.school_id]   ?? 0) + 1;
+      if (r.status === 'failed') failedCountMap[r.school_id] = (failedCountMap[r.school_id] ?? 0) + 1;
+    });
+  }
+
+  const enriched = schoolRows.map((s: any) => {
+    // A school can end up with more than one pricing row over time (e.g. price
+    // revisions). Prefer the active one so `program_name` doesn't silently
+    // resolve to a stale/inactive row (or the wrong one, since Supabase does
+    // not guarantee array order here).
+    const pricingRows = Array.isArray(s.pricing) ? s.pricing : (s.pricing ? [s.pricing] : []);
+    const pricingRow  = pricingRows.find((p: any) => p.is_active) ?? pricingRows[0];
+    const paid   = paidCountMap[s.id]   ?? 0;
+    const failed = failedCountMap[s.id] ?? 0;
+    return {
+      ...s,
+      program_name:        pricingRow?.program_name ?? null,
+      consultant_name:     s.consultant_id ? (consultantNameMap[s.consultant_id] ?? null) : null,
+      paid_student_count:  paid,
+      total_student_count: paid + failed, // Paid + Failed transactions
+    };
+  });
+
+  return NextResponse.json({ schools: enriched });
 }
 
 export async function POST(req: NextRequest) {

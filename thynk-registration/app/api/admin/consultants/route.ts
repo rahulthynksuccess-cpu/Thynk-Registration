@@ -95,12 +95,40 @@ export async function GET(req: NextRequest) {
   // School counts
   const { data: schools } = await service
     .from('schools')
-    .select('consultant_id')
+    .select('id, consultant_id')
     .in('consultant_id', userIds);
 
   const schoolCounts: Record<string, number> = {};
+  const schoolIdToConsultant: Record<string, string> = {};
   for (const s of schools ?? []) {
-    if (s.consultant_id) schoolCounts[s.consultant_id] = (schoolCounts[s.consultant_id] ?? 0) + 1;
+    if (s.consultant_id) {
+      schoolCounts[s.consultant_id] = (schoolCounts[s.consultant_id] ?? 0) + 1;
+      schoolIdToConsultant[s.id] = s.consultant_id;
+    }
+  }
+
+  // ── Paid / Total (paid + failed) student counts per consultant ──
+  // Aggregated from registrations across every school owned by each consultant,
+  // so the mobile app can show "Total Paid Students" / "Total Students" on the
+  // Consultants list without a separate round trip.
+  const consultantSchoolIds = Object.keys(schoolIdToConsultant);
+  const paidCountMap: Record<string, number> = {};
+  const totalCountMap: Record<string, number> = {};
+  if (consultantSchoolIds.length) {
+    const { data: regRows } = await service
+      .from('registrations')
+      .select('school_id, status')
+      .in('school_id', consultantSchoolIds);
+    (regRows ?? []).forEach((r: any) => {
+      const cid = schoolIdToConsultant[r.school_id];
+      if (!cid) return;
+      if (r.status === 'paid') {
+        paidCountMap[cid] = (paidCountMap[cid] ?? 0) + 1;
+        totalCountMap[cid] = (totalCountMap[cid] ?? 0) + 1;
+      } else if (r.status === 'failed') {
+        totalCountMap[cid] = (totalCountMap[cid] ?? 0) + 1;
+      }
+    });
   }
 
   let consultants = roleRows.map(r => ({
@@ -110,6 +138,8 @@ export async function GET(req: NextRequest) {
     name:                  userDetails[r.user_id]?.user_metadata?.name ?? '',
     created_at:            r.created_at,
     school_count:          schoolCounts[r.user_id] ?? 0,
+    paid_student_count:    paidCountMap[r.user_id] ?? 0,
+    total_student_count:   totalCountMap[r.user_id] ?? 0,
     consultant_code:       profileMap[r.user_id]?.consultant_code       ?? null,
     mobile_number:         profileMap[r.user_id]?.mobile_number         ?? null,
     pan_number:            profileMap[r.user_id]?.pan_number            ?? null,
