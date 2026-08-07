@@ -151,7 +151,7 @@ function ConsultantProfileModal({ consultant, schools, visible, onClose, onUpdat
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }}>
         <View style={pStyles.hdr}>
           <Text style={pStyles.hdrTitle} numberOfLines={1}>{consultant.name || '—'}</Text>

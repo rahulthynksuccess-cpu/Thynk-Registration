@@ -61,7 +61,7 @@ function SchoolModal({ school, visible, onClose, onAction }: {
     ? school.contact_persons[0] : null;
   const phone = (primaryContact?.mobile ?? '').replace(/[^\d+]/g, '');
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: Colors.bg }}>
         <View style={styles.modalHdr}>
           <Text style={styles.modalTitle} numberOfLines={1}>{school.name}</Text>

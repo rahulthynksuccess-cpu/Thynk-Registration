@@ -45,7 +45,7 @@ function StudentCard({ row, onPress }: { row: AdminRow; onPress: () => void }) {
 function StudentModal({ row, visible, onClose }: { row: AdminRow | null; visible: boolean; onClose: () => void }) {
   if (!row) return null;
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: Colors.bg }}>
         <View style={styles.modalHdr}>
           <View style={{ flex: 1 }}>
