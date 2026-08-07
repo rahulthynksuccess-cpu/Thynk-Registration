@@ -128,6 +128,7 @@ export default function SchoolsScreen() {
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState<FilterType>('all');
   const [programFilter, setProgramFilter] = useState<string>('all');
+  const [consultantFilter, setConsultantFilter] = useState<string>('all');
   const [selected, setSelected]     = useState<any>(null);
 
   const load = useCallback(async (silent = false) => {
@@ -166,11 +167,16 @@ export default function SchoolsScreen() {
   const programCounts: Record<string, number> = { all: schools.length };
   programs.forEach(p => { programCounts[p] = schools.filter(s => s.program_name === p).length; });
 
+  const consultants = Array.from(new Set(schools.map(s => s.consultant_name).filter(Boolean))) as string[];
+  const consultantCounts: Record<string, number> = { all: schools.length };
+  consultants.forEach(c => { consultantCounts[c] = schools.filter(s => s.consultant_name === c).length; });
+
   const filtered = schools.filter(s => {
     const q = search.toLowerCase();
     const ok = !search || s.name?.toLowerCase().includes(q) || s.school_code?.toLowerCase().includes(q) || s.org_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q);
     if (!ok) return false;
     if (programFilter !== 'all' && s.program_name !== programFilter) return false;
+    if (consultantFilter !== 'all' && s.consultant_name !== consultantFilter) return false;
     if (filter === 'active')   return s.is_active && s.status !== 'pending';
     if (filter === 'pending')  return s.status === 'pending';
     if (filter === 'inactive') return !s.is_active;
@@ -189,6 +195,16 @@ export default function SchoolsScreen() {
             <TouchableOpacity key={p} style={[styles.chip, styles.programChip, programFilter === p && styles.chipOn]} onPress={() => setProgramFilter(p)}>
               <Ionicons name="book-outline" size={11} color={programFilter === p ? Colors.primary : Colors.textDim} style={{ marginRight: 4 }} />
               <Text style={[styles.chipTxt, programFilter === p && styles.chipTxtOn]}>{p === 'all' ? 'All Programs' : p} ({programCounts[p] ?? 0})</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+      {consultants.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
+          {(['all', ...consultants]).map(c => (
+            <TouchableOpacity key={c} style={[styles.chip, styles.programChip, consultantFilter === c && styles.chipOn]} onPress={() => setConsultantFilter(c)}>
+              <Ionicons name="person-outline" size={11} color={consultantFilter === c ? Colors.primary : Colors.textDim} style={{ marginRight: 4 }} />
+              <Text style={[styles.chipTxt, consultantFilter === c && styles.chipTxtOn]}>{c === 'all' ? 'All Consultants' : c} ({consultantCounts[c] ?? 0})</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>

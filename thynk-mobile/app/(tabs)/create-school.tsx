@@ -13,6 +13,7 @@ import { SectionHeader } from '@/components/ui';
 // ── Types ─────────────────────────────────────────────────────────
 interface Program { id: string; name: string; slug: string; base_amount_inr?: number; base_amount_usd?: number; base_amount?: number; currency?: string; status: string; }
 interface Contact { name: string; designation: string; email: string; mobile: string; }
+interface ConsultantOption { id: string; name: string; email: string; consultant_code?: string | null; }
 
 // ── Input component ───────────────────────────────────────────────
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
@@ -209,6 +210,13 @@ export default function CreateSchoolScreen() {
   const [loadingLoc, setLoadingLoc] = useState(false);
   const [success, setSuccess]   = useState(false);
 
+  // Consultant assignment — only super_admin can pick which consultant a
+  // school is assigned to. Consultants themselves get auto-assigned to
+  // their own id (see handleSave) and never see this field.
+  const [userRole, setUserRole] = useState<string>('');
+  const [consultantOptions, setConsultantOptions] = useState<ConsultantOption[]>([]);
+  const [consultantId, setConsultantId] = useState<string>('');
+
   // Form state
   const [schoolCode,   setSchoolCode]   = useState('');
   const [name,         setName]         = useState('');
@@ -274,6 +282,28 @@ export default function CreateSchoolScreen() {
       .catch(() => {});
   }, [country, state]);
 
+  // Load the current user's role, and — if super_admin — the list of
+  // consultants so a school can be assigned to one at creation time.
+  const loadConsultants = useCallback(async () => {
+    try {
+      const res = await authFetch('/api/admin/consultants');
+      if (res.ok) {
+        const d = await res.json();
+        setConsultantOptions((d.consultants ?? []).map((c: any) => ({
+          id: c.id, name: c.name, email: c.email, consultant_code: c.consultant_code,
+        })));
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    SecureStore.getItemAsync('thynk_user_role').then(r => {
+      const role = r ?? '';
+      setUserRole(role);
+      if (role === 'super_admin') loadConsultants();
+    });
+  }, [loadConsultants]);
+
   useEffect(() => { loadPrograms(); loadCountries(); }, []);
 
   // Auto-set currency based on country
@@ -321,6 +351,7 @@ export default function CreateSchoolScreen() {
     setProjectId(''); setSchoolPrice(''); setDiscountCode('');
     setIsActive(true); setIsRegActive(true); setSaving(false);
     setContacts([{ name: '', designation: '', email: '', mobile: '' }]);
+    setConsultantId('');
   }
 
   // Reset saving spinner every time this tab comes into focus
@@ -350,9 +381,10 @@ export default function CreateSchoolScreen() {
         return;
       }
 
-      // Attach consultant_id if this user is a consultant
-      const userRole   = await SecureStore.getItemAsync('thynk_user_role');
-      const userId     = await SecureStore.getItemAsync('thynk_user_id');
+      // Attach consultant_id: consultants are auto-assigned to themselves;
+      // super_admins may explicitly pick a consultant from the dropdown above.
+      const currentRole = await SecureStore.getItemAsync('thynk_user_role');
+      const userId      = await SecureStore.getItemAsync('thynk_user_id');
 
       const payload = {
         school_code:            schoolCode.trim(),
@@ -376,7 +408,11 @@ export default function CreateSchoolScreen() {
         contact_persons:        contacts,
         // The API will override this with user.id if the caller is a consultant;
         // but sending it makes the intent explicit and works for both roles.
-        ...(userRole === 'consultant' && userId ? { consultant_id: userId } : {}),
+        // For a super_admin, use whichever consultant was picked in the dropdown
+        // (or omit it entirely to leave the school unassigned).
+        ...(currentRole === 'consultant' && userId
+          ? { consultant_id: userId }
+          : (currentRole === 'super_admin' && consultantId ? { consultant_id: consultantId } : {})),
         branding: {
           primaryColor,
           accentColor: '#8b5cf6',
@@ -529,6 +565,22 @@ export default function CreateSchoolScreen() {
             if (prog) setProjectId(prog.id);
           }}
         />
+
+        {userRole === 'super_admin' && (() => {
+          const selectedConsultant = consultantOptions.find(c => c.id === consultantId);
+          return (
+            <PickerField
+              label="Consultant"
+              value={selectedConsultant ? (selectedConsultant.name || selectedConsultant.email) : ''}
+              placeholder={consultantOptions.length ? 'Select a consultant (optional)' : 'No consultants available'}
+              options={consultantOptions.map(c => c.name || c.email)}
+              onSelect={label => {
+                const match = consultantOptions.find(c => (c.name || c.email) === label);
+                setConsultantId(match?.id ?? '');
+              }}
+            />
+          );
+        })()}
 
         {selectedProgram && (
           <View style={styles.priceHint}>

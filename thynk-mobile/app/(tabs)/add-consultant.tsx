@@ -73,6 +73,11 @@ function ConsultantCard({ c, onPress }: { c: any; onPress: () => void }) {
         <View style={cardStyles.metaItem}><Ionicons name="school-outline" size={11} color={Colors.textDim} /><Text style={cardStyles.metaTxt}>{c.school_count ?? 0} schools</Text></View>
         {c.mobile_number && <View style={cardStyles.metaItem}><Ionicons name="call-outline" size={11} color={Colors.textDim} /><Text style={cardStyles.metaTxt}>{c.mobile_number}</Text></View>}
       </View>
+      <View style={cardStyles.statsRow}>
+        <View style={cardStyles.statItem}><Text style={[cardStyles.statVal, { color: Colors.success }]}>{c.paid_student_count ?? 0}</Text><Text style={cardStyles.statLbl}>Total Paid Students</Text></View>
+        <View style={cardStyles.statDiv} />
+        <View style={cardStyles.statItem}><Text style={cardStyles.statVal}>{c.total_student_count ?? 0}</Text><Text style={cardStyles.statLbl}>Total (Paid+Unpaid)</Text></View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -83,9 +88,14 @@ const cardStyles = StyleSheet.create({
   avatarTxt: { fontSize: 18, fontWeight: '800', color: Colors.primary },
   name:      { fontSize: 14, fontWeight: '700', color: Colors.text },
   sub:       { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  metaRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  metaRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: Spacing.md },
   metaItem:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
   metaTxt:   { fontSize: 11, color: Colors.textDim },
+  statsRow:  { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: Colors.cardBorder, paddingTop: Spacing.sm },
+  statItem:  { flex: 1, alignItems: 'center' },
+  statVal:   { fontSize: 15, fontWeight: '800', color: Colors.text },
+  statLbl:   { fontSize: 10, color: Colors.textDim, marginTop: 2, textAlign: 'center' },
+  statDiv:   { width: 1, height: 26, backgroundColor: Colors.cardBorder },
 });
 
 // ── Consultant profile modal (view / call / whatsapp / remark / toggle) ──
@@ -185,6 +195,13 @@ function ConsultantProfileModal({ consultant, schools, visible, onClose, onUpdat
             ))}
           </View>
 
+          <SectionHeader title="Registrations" note="Across all schools" />
+          <View style={pStyles.statsRow}>
+            <View style={pStyles.statItem}><Text style={[pStyles.statVal, { color: Colors.success }]}>{consultant.paid_student_count ?? 0}</Text><Text style={pStyles.statLbl}>Total Paid Students</Text></View>
+            <View style={pStyles.statDiv} />
+            <View style={pStyles.statItem}><Text style={pStyles.statVal}>{consultant.total_student_count ?? 0}</Text><Text style={pStyles.statLbl}>Total (Paid+Unpaid)</Text></View>
+          </View>
+
           <SectionHeader title="Association Status" />
           <TouchableOpacity
             onPress={handleToggleAssociation}
@@ -235,6 +252,9 @@ function ConsultantProfileModal({ consultant, schools, visible, onClose, onUpdat
                     <View key={s.id} style={pStyles.schoolRow}>
                       <Ionicons name="school-outline" size={12} color={Colors.textDim} />
                       <Text style={pStyles.schoolName} numberOfLines={1}>{s.name}</Text>
+                      <Text style={pStyles.schoolStats} numberOfLines={1}>
+                        {s.paid_student_count ?? 0} paid · {s.total_student_count ?? 0} total
+                      </Text>
                       {s.is_registration_active === false && <Badge label="Closed" variant="danger" />}
                     </View>
                   ))}
@@ -269,10 +289,17 @@ const pStyles = StyleSheet.create({
   programCountTxt:   { fontSize: 10, fontWeight: '700', color: Colors.primary },
   schoolRow:          { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, borderTopWidth: 1, borderTopColor: Colors.cardBorder },
   schoolName:         { fontSize: 12, color: Colors.textMuted, flex: 1 },
+  schoolStats:        { fontSize: 10, color: Colors.textDim, fontWeight: '600' },
+  statsRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.cardBorder, padding: Spacing.md, marginBottom: Spacing.md },
+  statItem:  { flex: 1, alignItems: 'center' },
+  statVal:   { fontSize: 18, fontWeight: '800', color: Colors.text },
+  statLbl:   { fontSize: 10, color: Colors.textDim, marginTop: 2, textAlign: 'center' },
+  statDiv:   { width: 1, height: 30, backgroundColor: Colors.cardBorder },
 });
 
 // ── List mode ─────────────────────────────────────────────────────
-type AssocFilter = 'all' | 'associated' | 'not_associated';
+type AssocFilter  = 'all' | 'associated' | 'not_associated';
+type RemarkFilter = 'all' | 'updated' | 'not_updated';
 
 function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
   const [consultants, setConsultants] = useState<any[]>([]);
@@ -281,6 +308,7 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]       = useState('');
   const [filter, setFilter]       = useState<AssocFilter>('all');
+  const [remarkFilter, setRemarkFilter] = useState<RemarkFilter>('all');
   const [selected, setSelected]   = useState<any>(null);
 
   const load = useCallback(async (silent = false) => {
@@ -307,12 +335,21 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
     not_associated: consultants.filter(c => c.association_status !== 'associated').length,
   };
 
+  const hasRemark = (c: any) => !!(c.internal_remark && String(c.internal_remark).trim());
+  const remarkCounts = {
+    all: consultants.length,
+    updated: consultants.filter(hasRemark).length,
+    not_updated: consultants.filter(c => !hasRemark(c)).length,
+  };
+
   const filtered = consultants.filter(c => {
     const q = search.toLowerCase();
     const ok = !search || c.name?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q) || c.consultant_code?.toLowerCase().includes(q);
     if (!ok) return false;
     if (filter === 'associated')     return c.association_status === 'associated';
     if (filter === 'not_associated') return c.association_status !== 'associated';
+    if (remarkFilter === 'updated')     return hasRemark(c);
+    if (remarkFilter === 'not_updated') return !hasRemark(c);
     return true;
   });
 
@@ -324,10 +361,18 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
           <TextInput style={lStyles.searchInput} placeholder="Search consultants..." placeholderTextColor={Colors.textDim} value={search} onChangeText={setSearch} />
           {search.length > 0 && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color={Colors.textDim} /></TouchableOpacity>}
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 12 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
           {([['all','All'],['associated','Associated'],['not_associated','Not Associated']] as [AssocFilter,string][]).map(([f,label]) => (
             <TouchableOpacity key={f} style={[lStyles.chip, filter === f && lStyles.chipOn]} onPress={() => setFilter(f)}>
               <Text style={[lStyles.chipTxt, filter === f && lStyles.chipTxtOn]}>{label} ({counts[f]})</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 12 }}>
+          {([['all','All Remarks'],['updated','Remark Updated'],['not_updated','Remark Not Updated']] as [RemarkFilter,string][]).map(([f,label]) => (
+            <TouchableOpacity key={f} style={[lStyles.chip, { flexDirection: 'row', alignItems: 'center' }, remarkFilter === f && lStyles.chipOn]} onPress={() => setRemarkFilter(f)}>
+              <Ionicons name="chatbox-ellipses-outline" size={11} color={remarkFilter === f ? Colors.primary : Colors.textDim} style={{ marginRight: 4 }} />
+              <Text style={[lStyles.chipTxt, remarkFilter === f && lStyles.chipTxtOn]}>{label} ({remarkCounts[f]})</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
