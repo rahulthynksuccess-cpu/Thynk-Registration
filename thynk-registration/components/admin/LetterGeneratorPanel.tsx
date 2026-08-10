@@ -27,7 +27,7 @@ interface Template {
   download_url: string | null;
   projects: { name: string };
 }
-interface School  { id: string; name: string; school_code: string; city?: string; }
+interface School  { id: string; name: string; school_code: string; city?: string; project_id?: string; }
 interface LetterLog {
   id: string; school_id: string; project_id: string;
   status: 'pending'|'processing'|'done'|'error';
@@ -229,7 +229,10 @@ export function LetterGeneratorPanel({ showToast }: { showToast: (msg: string, i
   };
 
   // ── Generate handler ────────────────────────────────────────────────────────
-  const selectedTmpl = templates.find(t => t.project_id === genProgram);
+  const selectedTmpl   = templates.find(t => t.project_id === genProgram);
+  // Only offer schools that actually belong to the selected program — otherwise
+  // "Select All" (and the list itself) pulls in schools from every program.
+  const programSchools = genProgram ? schools.filter(s => s.project_id === genProgram) : [];
 
   const handleGenerate = async () => {
     if (!genProgram)       { showToast('Select a program', '⚠️'); return; }
@@ -501,7 +504,10 @@ export function LetterGeneratorPanel({ showToast }: { showToast: (msg: string, i
                 <div style={{ fontSize:12, fontWeight:700, color:'#475569', marginBottom:8, textTransform:'uppercase', letterSpacing:'.05em' }}>
                   Step 2 — Select Schools {genSchools.length > 0 && <span style={{ color:'#6366f1', marginLeft:8 }}>({genSchools.length} selected)</span>}
                 </div>
-                <SchoolMultiSelect schools={schools} selected={genSchools} onChange={setGenSchools} />
+                <SchoolMultiSelect schools={programSchools} selected={genSchools} onChange={setGenSchools} />
+                {programSchools.length === 0 && (
+                  <div style={{ fontSize:12, color:'#94a3b8', marginTop:6 }}>No approved schools found for this program yet.</div>
+                )}
               </div>
             )}
 
