@@ -356,6 +356,7 @@ export async function PATCH(req: NextRequest) {
   const service = createServiceClient();
   const {
     id,
+    school_code: bodySchoolCode,
     school_price,
     currency: bodyCurrency,
     primary_color, accent_color,
@@ -388,6 +389,13 @@ export async function PATCH(req: NextRequest) {
   const resolvedCountry  = country || existing?.country || 'India';
   const resolvedCurrency = bodyCurrency || currencyForCountry(resolvedCountry);
 
+  // Normalise the school code the same way it's normalised on creation
+  // (lowercase, spaces → hyphens) so edits stay consistent with new schools.
+  const resolvedSchoolCode = bodySchoolCode !== undefined
+    ? String(bodySchoolCode).trim().toLowerCase().replace(/\s+/g, '-')
+    : undefined;
+  const schoolCodeChanged = resolvedSchoolCode !== undefined && resolvedSchoolCode !== existing?.school_code;
+
   const updatePayload: Record<string, any> = {
     ...rest,
     branding,
@@ -396,12 +404,17 @@ export async function PATCH(req: NextRequest) {
 
   delete updatePayload.status;
 
+  if (resolvedSchoolCode !== undefined)     updatePayload.school_code            = resolvedSchoolCode;
   if (patchConsultantId !== undefined)      updatePayload.consultant_id          = patchConsultantId || null;
   if (discount_code)                        updatePayload.discount_code          = discount_code.toUpperCase();
   if (address !== undefined)                updatePayload.address                = address || null;
   if (pin_code !== undefined)               updatePayload.pin_code               = pin_code || null;
   if (contact_persons !== undefined)        updatePayload.contact_persons        = contact_persons ?? [];
   if (is_registration_active !== undefined) updatePayload.is_registration_active = !!is_registration_active;
+
+  // Keep the registration redirect URL in sync whenever the program and/or
+  // school code changes (the URL is built from both).
+  const effectiveSchoolCode = resolvedSchoolCode ?? existing?.school_code;
 
   if (project_id) {
     const { data: program } = await service
@@ -412,11 +425,14 @@ export async function PATCH(req: NextRequest) {
     if (program) {
       updatePayload.project_id   = project_id;
       updatePayload.project_slug = program.slug;
-      branding.redirectURL = existing?.school_code
-        ? `https://thynksuccess.com/registration/${program.slug}/?school=${existing.school_code}`
+      branding.redirectURL = effectiveSchoolCode
+        ? `https://thynksuccess.com/registration/${program.slug}/?school=${effectiveSchoolCode}`
         : `https://thynksuccess.com/registration/${program.slug}`;
       updatePayload.branding = branding;
     }
+  } else if (schoolCodeChanged && existing?.project_slug) {
+    branding.redirectURL = `https://thynksuccess.com/registration/${existing.project_slug}/?school=${effectiveSchoolCode}`;
+    updatePayload.branding = branding;
   }
 
   const { data, error } = await service
@@ -426,7 +442,10 @@ export async function PATCH(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    const message = error.code === '23505' ? 'School code already exists' : error.message;
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   if (school_price !== undefined) {
     await service.from('pricing')

@@ -1307,7 +1307,7 @@ export default function AdminDashboard() {
   const loadSchools      = useCallback(async () => { const d = await api('/api/admin/schools');      setSchools(d.schools??[]); }, [api]);
   const loadDiscounts    = useCallback(async () => { const d = await api('/api/admin/discounts');    setDiscounts(d.discounts??[]); }, [api]);
   const loadUsers        = useCallback(async () => { const d = await api('/api/admin/users'); if (d?.users) setAdminUsers(d.users); }, [api]);
-  const loadConsultants  = useCallback(async () => { try { const d = await api('/api/admin/consultants'); setConsultants(d.consultants??[]); } catch {} }, [api]);
+  const loadConsultants  = useCallback(async () => { try { const d = await api('/api/admin/consultants'); const sorted = (d.consultants??[]).slice().sort((a:Row,b:Row)=>(a.name??'').localeCompare(b.name??'',undefined,{sensitivity:'base'})); setConsultants(sorted); } catch {} }, [api]);
   const loadIntegrations = useCallback(async () => { const d = await api('/api/admin/integrations'); setIntegrations(d.integrations??[]); }, [api]);
   const loadTriggers     = useCallback(async () => { const d = await api('/api/admin/triggers');     setTriggers(d.triggers??[]); }, [api]);
   const loadTemplates    = useCallback(async () => { const d = await api('/api/admin/templates');    setTemplates(d.templates??[]); }, [api]);
@@ -2915,7 +2915,10 @@ function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ i
   return (
     <ModalShell title={f.id?'Edit School':'Add New School'} onClose={onClose}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-        <Field label="School Code *"><input style={{...IS,fontFamily:'monospace'}} value={f.school_code} onChange={set('school_code')} placeholder="e.g. delhi-dps" disabled={!!f.id}/></Field>
+        <Field label="School Code *">
+          <input style={{...IS,fontFamily:'monospace'}} value={f.school_code} onChange={set('school_code')} placeholder="e.g. delhi-dps"/>
+          {!!f.id && <div style={{fontSize:11,color:'var(--m)',marginTop:4}}>⚠️ Changing this updates the school's registration link — make sure any shared links are updated too.</div>}
+        </Field>
         <Field label="School Name *"><input style={IS} value={f.name} onChange={set('name')} placeholder="Delhi Public School"/></Field>
         <Field label="Organisation Name *"><input style={IS} value={f.org_name} onChange={set('org_name')} placeholder="Thynk Success"/></Field>
       </div>
