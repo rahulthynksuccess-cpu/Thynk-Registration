@@ -4,6 +4,9 @@
 //   /registration/brishark?school=SCHOOLCODE
 // NEW route (consultant curated link):
 //   /registration/brishark?consultant=cons001
+// NEW route (ThynkFlow lead curated link — pre-filled, jumps straight to
+// the school form):
+//   /registration/brishark?consultant=cons001&name=ABC+School&city=Pune&contactName=Jane&contactEmail=jane@x.com&contactMobile=9999999999
 
 import OpenRegistrationPage from '@/components/registration/OpenRegistrationPage';
 import LockedSchoolPage from '@/components/registration/LockedSchoolPage';
@@ -13,7 +16,10 @@ export default function ProjectRegistrationPage({
   searchParams,
 }: {
   params: { projectSlug: string };
-  searchParams: { school?: string; paymentError?: string; consultant?: string };
+  searchParams: {
+    school?: string; paymentError?: string; consultant?: string;
+    name?: string; city?: string; contactName?: string; contactEmail?: string; contactMobile?: string;
+  };
 }) {
   if (searchParams.school) {
     return (
@@ -33,6 +39,11 @@ export default function ProjectRegistrationPage({
         projectSlug={params.projectSlug}
         paymentError={searchParams.paymentError === '1'}
         consultantCode={searchParams.consultant}
+        prefillName={searchParams.name}
+        prefillCity={searchParams.city}
+        prefillContactName={searchParams.contactName}
+        prefillContactEmail={searchParams.contactEmail}
+        prefillContactMobile={searchParams.contactMobile}
       />
     </main>
   );

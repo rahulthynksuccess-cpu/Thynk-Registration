@@ -108,12 +108,26 @@ export default function OpenRegistrationPage({
   projectSlug,
   paymentError,
   consultantCode,
+  prefillName,
+  prefillCity,
+  prefillContactName,
+  prefillContactEmail,
+  prefillContactMobile,
 }: {
   projectSlug: string;
   paymentError?: boolean;
   consultantCode?: string;
+  prefillName?: string;
+  prefillCity?: string;
+  prefillContactName?: string;
+  prefillContactEmail?: string;
+  prefillContactMobile?: string;
 }) {
-  const [mode, setMode] = useState<Mode>('choose');
+  // A ThynkFlow curated link always carries at least a school/contact name —
+  // skip the "School or Student?" chooser and go straight to the school
+  // form in that case, since that's always what these links are for.
+  const hasPrefill = !!(prefillName || prefillContactName);
+  const [mode, setMode] = useState<Mode>(hasPrefill ? 'school' : 'choose');
   const [programName, setProgramName] = useState('');
   const [isIndia, setIsIndia] = useState(true);
 
@@ -131,6 +145,11 @@ export default function OpenRegistrationPage({
       <SchoolRegistrationForm
         projectSlug={projectSlug}
         consultantCode={consultantCode}
+        prefillName={prefillName}
+        prefillCity={prefillCity}
+        prefillContactName={prefillContactName}
+        prefillContactEmail={prefillContactEmail}
+        prefillContactMobile={prefillContactMobile}
         onBack={() => setMode('choose')}
       />
     );

@@ -22,16 +22,27 @@ interface Props {
   onBack: () => void;
   branding?: { primaryColor?: string; accentColor?: string };
   consultantCode?: string;
+  // Pre-fill from a ThynkFlow lead's curated link — the person can still
+  // edit any of these before submitting.
+  prefillName?: string;
+  prefillCity?: string;
+  prefillContactName?: string;
+  prefillContactEmail?: string;
+  prefillContactMobile?: string;
 }
 
-export default function SchoolRegistrationForm({ projectSlug, projectId, onBack, branding, consultantCode }: Props) {
+export default function SchoolRegistrationForm({
+  projectSlug, projectId, onBack, branding, consultantCode,
+  prefillName, prefillCity, prefillContactName, prefillContactEmail, prefillContactMobile,
+}: Props) {
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [errorMsg, setErrorMsg]       = useState('');
   const [formErrors, setFormErrors]   = useState<Record<string, string>>({});
 
   const [f, setF] = useState({
-    name: '', address: '', country: 'India', state: '', city: '', customCity: '',
-    pin_code: '', designation: '', contactName: '', contactEmail: '', contactMobile: '',
+    name: prefillName || '', address: '', country: 'India', state: '', city: prefillCity || '', customCity: '',
+    pin_code: '', designation: '', contactName: prefillContactName || '',
+    contactEmail: prefillContactEmail || '', contactMobile: prefillContactMobile || '',
   });
 
   // ── Dynamic location data fetched from the DB ──────────────────
