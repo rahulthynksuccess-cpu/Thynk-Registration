@@ -7,6 +7,10 @@ export const maxDuration = 60;
 //   2. CASHFREE_MODE env var support added (no need to change code for test/live switch)
 //   3. All gateways redirect to https://www.thynksuccess.com/registration/success on success
 //   4. Payment status re-check endpoint added (GET /api/register?paymentId=xxx)
+//   5. NEW: gateway === 'none' branch for free-registration programs (no payment
+//      collected). Server independently recomputes finalAmount from the school's
+//      pricing row and refuses this path if an amount is actually due, so a paid
+//      program can never be registered for free by sending gateway:'none'.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { fireTriggers } from '@/lib/triggers/fire';
@@ -381,6 +385,78 @@ export async function POST(req: NextRequest) {
       payment_id:      payment?.id,
       registration_id: registration.id,
       status:          'paid',
+    });
+  }
+
+  // ── Handle no-payment registration (free programs only) ──────────────────────
+  // Frontend sends gateway:'none' only from registration.html embeds that are
+  // dedicated to a free program. We NEVER trust that label alone — finalAmount
+  // above was already computed independently from this school's own pricing
+  // row (effectiveBaseAmount - discountAmount). If that resolves to anything
+  // above zero, this is not actually a free registration and we reject it,
+  // forcing the client back onto a real payment gateway. This means a paid
+  // program can never be completed for free even if gateway:'none' were sent
+  // to it by mistake or by a tampered request.
+  if (gateway === 'none') {
+    if (finalAmount > 0) {
+      return NextResponse.json(
+        { error: 'This program requires payment. Please select a payment method.' },
+        { status: 400 }
+      );
+    }
+
+    const { data: registration, error: regErr } = await supabase
+      .from('registrations')
+      .insert({
+        school_id:     schoolId,
+        pricing_id:    pricingId,
+        student_name:  studentName,
+        class_grade:   classGrade,
+        gender,
+        parent_school: parentSchool,
+        country:       country || null,
+        state:         state   || null,
+        city,
+        parent_name:   parentName,
+        contact_phone: contactPhone,
+        contact_email: contactEmail.toLowerCase().trim(),
+        status:        'registered',
+      })
+      .select()
+      .single();
+
+    if (regErr || !registration) {
+      return NextResponse.json({ error: 'Failed to save registration' }, { status: 500 });
+    }
+
+    const { data: payment } = await supabase
+      .from('payments')
+      .insert({
+        registration_id: registration.id,
+        school_id:       schoolId,
+        gateway:         'none',
+        base_amount:     effectiveBaseAmount,
+        discount_amount: discountAmount,
+        final_amount:    0,
+        discount_code:   discountCode?.toUpperCase() ?? null,
+        currency,
+        status:          'paid', // no charge due — mark settled so admin/reporting isn't stuck "pending"
+        paid_at:         new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    // Fire triggers same as the other successful paths (PayPal above, or the
+    // async verify endpoints for Razorpay/Cashfree/Easebuzz) so downstream
+    // automations (confirmation emails, WhatsApp, etc.) behave consistently.
+    await fireTriggers('registration.created', registration.id, schoolId);
+    await fireTriggers('payment.paid',         registration.id, schoolId);
+
+    return NextResponse.json({
+      gateway:         'none',
+      payment_id:      payment?.id,
+      registration_id: registration.id,
+      status:          'registered',
     });
   }
 
