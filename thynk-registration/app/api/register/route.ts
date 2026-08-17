@@ -420,7 +420,7 @@ export async function POST(req: NextRequest) {
         parent_name:   parentName,
         contact_phone: contactPhone,
         contact_email: contactEmail.toLowerCase().trim(),
-        status:        'registered',
+        status:        'paid', // no amount due — 'registered' is not an allowed value per registrations_status_check
       })
       .select()
       .single();
@@ -456,7 +456,7 @@ export async function POST(req: NextRequest) {
       gateway:         'none',
       payment_id:      payment?.id,
       registration_id: registration.id,
-      status:          'registered',
+      status:          'paid',
     });
   }
 
