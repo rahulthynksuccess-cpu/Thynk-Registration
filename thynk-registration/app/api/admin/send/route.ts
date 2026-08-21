@@ -26,16 +26,19 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await req.json();
-  const { channel, template_id, school_id, registration_id, to_phone, to_email, vars = {}, smtp_config_id } = body;
+  const { channel, template_id, school_id, consultant_id, registration_id, to_phone, to_email, vars = {}, smtp_config_id } = body;
 
-  if (!channel || !template_id || !school_id)
-    return NextResponse.json({ error: 'channel, template_id and school_id are required' }, { status: 400 });
+  if (!channel || !template_id || (!school_id && !consultant_id))
+    return NextResponse.json({ error: 'channel, template_id and (school_id or consultant_id) are required' }, { status: 400 });
   if (channel === 'whatsapp' && !to_phone)
     return NextResponse.json({ error: 'to_phone required for whatsapp' }, { status: 400 });
   if (channel === 'email' && !to_email)
     return NextResponse.json({ error: 'to_email required for email' }, { status: 400 });
 
   const service = createServiceClient();
+
+  // Name of the admin sending this, for the communication log's accountability trail.
+  const sentByName = (auth.user.user_metadata as any)?.name || auth.user.email || 'Admin';
 
   const { data: template, error: tErr } = await service
     .from('notification_templates')
@@ -55,31 +58,37 @@ export async function POST(req: NextRequest) {
     let provider = '';
 
     if (channel === 'whatsapp') {
-      provider = await dispatchWhatsApp(service, school_id, to_phone, renderedBody, template, vars);
+      provider = await dispatchWhatsApp(service, school_id ?? null, to_phone, renderedBody, template, vars);
     } else {
-      provider = await dispatchEmail(service, school_id, to_email, renderedSubject, renderedBody, smtp_config_id);
+      provider = await dispatchEmail(service, school_id ?? null, to_email, renderedSubject, renderedBody, smtp_config_id);
     }
 
     await service.from('notification_logs').insert({
-      school_id,
+      school_id:     school_id ?? null,
+      consultant_id: consultant_id ?? null,
       registration_id: registration_id ?? null,
       channel,
       provider,
       recipient: channel === 'whatsapp' ? to_phone : to_email,
       status: 'sent',
       sent_at: new Date().toISOString(),
+      sent_by_name: sentByName,
+      template_name: template.name ?? null,
     });
 
     return NextResponse.json({ success: true, provider });
 
   } catch (err: any) {
     await service.from('notification_logs').insert({
-      school_id,
+      school_id:     school_id ?? null,
+      consultant_id: consultant_id ?? null,
       registration_id: registration_id ?? null,
       channel,
       provider: 'unknown',
       recipient: channel === 'whatsapp' ? (to_phone ?? '') : (to_email ?? ''),
       status: 'failed',
+      sent_by_name: sentByName,
+      template_name: template.name ?? null,
     });
     return NextResponse.json({ error: err.message ?? 'Send failed' }, { status: 500 });
   }
@@ -88,7 +97,7 @@ export async function POST(req: NextRequest) {
 // ── Email — mirrors fire.ts sendEmail exactly ────────────────────────────────
 async function dispatchEmail(
   service: any,
-  schoolId: string,
+  schoolId: string | null,
   to: string,
   subject: string,
   body: string,
@@ -149,7 +158,7 @@ async function dispatchEmail(
   // integration_configs table fallback
   const { data: configs } = await service
     .from('integration_configs').select('provider, config')
-    .or(`school_id.eq.${schoolId},school_id.is.null`)
+    .or(schoolId ? `school_id.eq.${schoolId},school_id.is.null` : 'school_id.is.null')
     .in('provider', ['smtp', 'sendgrid', 'aws_ses'])
     .eq('is_active', true)
     .order('school_id', { nullsFirst: false })
@@ -174,7 +183,7 @@ async function dispatchEmail(
 // ── WhatsApp — mirrors fire.ts sendWhatsApp exactly ─────────────────────────
 async function dispatchWhatsApp(
   service: any,
-  schoolId: string,
+  schoolId: string | null,
   phone: string,
   renderedBody: string,
   template: any,
@@ -233,7 +242,7 @@ async function dispatchWhatsApp(
 
   const { data: configs } = await service
     .from('integration_configs').select('provider, config')
-    .or(`school_id.eq.${schoolId},school_id.is.null`)
+    .or(schoolId ? `school_id.eq.${schoolId},school_id.is.null` : 'school_id.is.null')
     .in('provider', ['whatsapp_cloud', 'twilio'])
     .eq('is_active', true)
     .order('school_id', { nullsFirst: false })

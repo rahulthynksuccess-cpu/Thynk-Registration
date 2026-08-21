@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
   // Extra profile fields from consultant_profiles
   const { data: profiles } = await service
     .from('consultant_profiles')
-    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status')
+    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status, updated_at, updated_by_name')
     .in('user_id', userIds);
 
   const profileMap: Record<string, any> = {};
@@ -147,6 +147,8 @@ export async function GET(req: NextRequest) {
     internal_remark:       profileMap[r.user_id]?.internal_remark       ?? null,
     // Defaults to 'not_associated' for every consultant until explicitly set.
     association_status:    profileMap[r.user_id]?.association_status    ?? 'not_associated',
+    profile_updated_at:    profileMap[r.user_id]?.updated_at            ?? null,
+    profile_updated_by:    profileMap[r.user_id]?.updated_by_name       ?? null,
   }));
 
   if (associatedParam === 'true') {
@@ -314,6 +316,10 @@ export async function PATCH(req: NextRequest) {
   const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
+  // Name of the admin making this change, for the "last updated by" trail —
+  // falls back to email if no display name is set on the account.
+  const actorName = (user.user_metadata as any)?.name || user.email || 'Admin';
+
   // Sub-admins may only update internal_remark + association_status —
   // use update (not upsert) to avoid the INSERT path.
   if (!isSuperAdmin) {
@@ -326,6 +332,9 @@ export async function PATCH(req: NextRequest) {
       subUpdate.association_status = association_status;
     }
     if (Object.keys(subUpdate).length === 0) return NextResponse.json({ success: true });
+
+    subUpdate.updated_at      = new Date().toISOString();
+    subUpdate.updated_by_name = actorName;
 
     const { error: remarkErr } = await service
       .from('consultant_profiles')
@@ -376,6 +385,9 @@ export async function PATCH(req: NextRequest) {
     }
   }
   if (Object.keys(profileUpdate).length) {
+    profileUpdate.updated_at      = new Date().toISOString();
+    profileUpdate.updated_by_name = actorName;
+
     // Check whether a profile row already exists for this consultant.
     // IMPORTANT: we must NOT upsert blindly here — consultant_code is a
     // NOT NULL column, and an upsert that doesn't include consultant_code
