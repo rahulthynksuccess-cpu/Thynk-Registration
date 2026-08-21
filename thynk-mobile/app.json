@@ -24,7 +24,7 @@
       "package": "com.thynk.registration",
       "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"]
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": ["expo-router", "expo-secure-store", "expo-font"],
     "experiments": { "typedRoutes": true },
     "extra": {
       "eas": { "projectId": "9291fb4e-58ad-466f-b6f2-2b1a53591822" }

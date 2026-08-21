@@ -297,12 +297,206 @@ const pStyles = StyleSheet.create({
   statDiv:   { width: 1, height: 30, backgroundColor: Colors.cardBorder },
 });
 
+// ── Pending registration card (list mode) ───────────────────────────
+function PendingCard({ reg, onPress }: { reg: any; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={cardStyles.card} onPress={onPress} activeOpacity={0.75}>
+      <View style={cardStyles.top}>
+        <View style={[cardStyles.avatar, { backgroundColor: 'rgba(245,158,11,0.12)' }]}>
+          <Text style={[cardStyles.avatarTxt, { color: '#b45309' }]}>{(reg.full_name || reg.contact_email || '?')[0].toUpperCase()}</Text>
+        </View>
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={cardStyles.name} numberOfLines={1}>{reg.full_name || '—'}</Text>
+          <Text style={cardStyles.sub} numberOfLines={1}>{reg.contact_email}</Text>
+        </View>
+        <Badge label="Pending" variant="warning" />
+      </View>
+      <View style={cardStyles.metaRow}>
+        {reg.location && <View style={cardStyles.metaItem}><Ionicons name="location-outline" size={11} color={Colors.textDim} /><Text style={cardStyles.metaTxt}>{reg.location}</Text></View>}
+        {reg.contact_number && <View style={cardStyles.metaItem}><Ionicons name="call-outline" size={11} color={Colors.textDim} /><Text style={cardStyles.metaTxt}>{reg.contact_number}</Text></View>}
+        <View style={cardStyles.metaItem}><Ionicons name="calendar-outline" size={11} color={Colors.textDim} /><Text style={cardStyles.metaTxt}>{fmtDate(reg.created_at)}</Text></View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ── Pending registration detail modal — approve / reject ────────────
+function PendingProfileModal({ reg, visible, onClose, onDone }: {
+  reg: any; visible: boolean; onClose: () => void; onDone: () => void;
+}) {
+  const [busy, setBusy]           = useState<'approve' | 'reject' | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason]       = useState('');
+
+  useEffect(() => { setRejecting(false); setReason(''); }, [reg?.id]);
+
+  if (!reg) return null;
+  const phone = cleanNumber(reg.contact_number);
+  const domains: string[] = Array.isArray(reg.domain_expertise) ? reg.domain_expertise : [];
+
+  async function approve() {
+    setBusy('approve');
+    try {
+      const res = await authFetch('/api/admin/consultant-registrations', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: reg.id, action: 'approve' }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        Alert.alert('Approved', `Consultant code: ${d.consultant_code ?? '—'}\nDefault password: Thynk@1234`);
+        onDone();
+      } else {
+        Alert.alert('Error', d.error ?? 'Approval failed');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Approval failed');
+    } finally { setBusy(null); }
+  }
+
+  async function reject() {
+    setBusy('reject');
+    try {
+      const res = await authFetch('/api/admin/consultant-registrations', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: reg.id, action: 'reject', reject_reason: reason.trim() || null }),
+      });
+      if (res.ok) { onDone(); }
+      else { const d = await res.json().catch(() => ({})); Alert.alert('Error', d.error ?? 'Reject failed'); }
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Reject failed');
+    } finally { setBusy(null); setRejecting(false); }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }}>
+        <View style={pStyles.hdr}>
+          <Text style={pStyles.hdrTitle} numberOfLines={1}>{reg.full_name || '—'}</Text>
+          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={Colors.textMuted} /></TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: Spacing.xl }}>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: Spacing.lg }}>
+            <TouchableOpacity
+              disabled={!phone}
+              onPress={() => Linking.openURL(`tel:${phone}`)}
+              style={[pStyles.actionBtn, { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)' }, !phone && { opacity: 0.4 }]}>
+              <Ionicons name="call" size={16} color={Colors.danger} />
+              <Text style={[pStyles.actionTxt, { color: Colors.danger }]}>Call</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              disabled={!phone}
+              onPress={() => Linking.openURL(`https://wa.me/${phone.replace(/^\+/, '')}`)}
+              style={[pStyles.actionBtn, { backgroundColor: 'rgba(26,184,168,0.1)', borderColor: 'rgba(26,184,168,0.3)' }, !phone && { opacity: 0.4 }]}>
+              <Ionicons name="logo-whatsapp" size={16} color="#1ab8a8" />
+              <Text style={[pStyles.actionTxt, { color: '#1ab8a8' }]}>WhatsApp</Text>
+            </TouchableOpacity>
+          </View>
+
+          <SectionHeader title="Registration Details" />
+          <View style={pStyles.card}>
+            {[
+              ['Email',              reg.contact_email],
+              ['Mobile',             reg.contact_number],
+              ['Location',           reg.location],
+              ['Total Experience',   reg.total_exp_years ? `${reg.total_exp_years} years` : '—'],
+              ['Locations Worked',   reg.locations_worked],
+              ['Edu Connections',    reg.has_edu_connections == null ? '—' : reg.has_edu_connections ? 'Yes' : 'No'],
+              ['B2B Experience',     reg.has_b2b_exp == null ? '—' : reg.has_b2b_exp ? 'Yes' : 'No'],
+              ['B2C Experience',     reg.has_b2c_exp == null ? '—' : reg.has_b2c_exp ? 'Yes' : 'No'],
+              ['Submitted',          fmtDate(reg.created_at)],
+            ].map(([l, v]) => (
+              <View key={String(l)} style={pStyles.row}>
+                <Text style={pStyles.rowLabel}>{l}</Text>
+                <Text style={pStyles.rowValue} numberOfLines={2}>{v || '—'}</Text>
+              </View>
+            ))}
+          </View>
+
+          {domains.length > 0 && (
+            <>
+              <SectionHeader title="Domain Expertise" />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: Spacing.md }}>
+                {domains.map(d => (
+                  <View key={d} style={{ backgroundColor: Colors.primaryBg, borderRadius: Radius.round, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>{d}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {reg.detailed_intro && (
+            <>
+              <SectionHeader title="Detailed Introduction" />
+              <View style={pStyles.card}><Text style={{ fontSize: 13, color: Colors.text, lineHeight: 19 }}>{reg.detailed_intro}</Text></View>
+            </>
+          )}
+          {reg.experience_summary && (
+            <>
+              <SectionHeader title="Experience Summary" />
+              <View style={pStyles.card}><Text style={{ fontSize: 13, color: Colors.text, lineHeight: 19 }}>{reg.experience_summary}</Text></View>
+            </>
+          )}
+
+          <SectionHeader title="Actions" />
+          {!rejecting ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={approve}
+                disabled={!!busy}
+                style={[pStyles.statusBtn, { flex: 1, backgroundColor: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.35)' }]}>
+                {busy === 'approve'
+                  ? <ActivityIndicator color={Colors.success} size="small" />
+                  : <Text style={[pStyles.statusTxt, { color: Colors.success }]}>✓ Approve</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setRejecting(true)}
+                disabled={!!busy}
+                style={[pStyles.statusBtn, { flex: 1, backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.35)' }]}>
+                <Text style={[pStyles.statusTxt, { color: Colors.danger }]}>✕ Reject</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View>
+              <TextInput
+                style={pStyles.remarkInput}
+                value={reason}
+                onChangeText={setReason}
+                placeholder="Rejection reason (optional)…"
+                placeholderTextColor={Colors.textDim}
+                multiline
+              />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity onPress={() => setRejecting(false)} disabled={!!busy} style={[pStyles.statusBtn, { flex: 1 }]}>
+                  <Text style={[pStyles.statusTxt, { color: Colors.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={reject}
+                  disabled={!!busy}
+                  style={[pStyles.statusBtn, { flex: 1, backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.35)' }]}>
+                  {busy === 'reject'
+                    ? <ActivityIndicator color={Colors.danger} size="small" />
+                    : <Text style={[pStyles.statusTxt, { color: Colors.danger }]}>Confirm Reject</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <View style={{ height: 30 }} />
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ── List mode ─────────────────────────────────────────────────────
 type AssocFilter  = 'all' | 'associated' | 'not_associated';
 type RemarkFilter = 'all' | 'updated' | 'not_updated';
 
 function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
+  const [subTab, setSubTab] = useState<'approved' | 'pending'>('approved');
   const [consultants, setConsultants] = useState<any[]>([]);
+  const [pending, setPending]     = useState<any[]>([]);
   const [schools, setSchools]     = useState<any[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -310,19 +504,22 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
   const [filter, setFilter]       = useState<AssocFilter>('all');
   const [remarkFilter, setRemarkFilter] = useState<RemarkFilter>('all');
   const [selected, setSelected]   = useState<any>(null);
+  const [selectedPending, setSelectedPending] = useState<any>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      // Fetch consultants + schools together so the profile modal can show
-      // a program-wise breakdown of each consultant's schools without an
-      // extra round trip when it's opened.
-      const [cRes, sRes] = await Promise.all([
+      // Fetch consultants + schools + pending registrations together so the
+      // profile modal can show a program-wise breakdown of each consultant's
+      // schools without an extra round trip when it's opened.
+      const [cRes, sRes, pRes] = await Promise.all([
         authFetch('/api/admin/consultants'),
         authFetch('/api/admin/schools'),
+        authFetch('/api/admin/consultant-registrations?status=pending'),
       ]);
       if (cRes.ok) { const d = await cRes.json(); setConsultants(d.consultants ?? []); }
       if (sRes.ok) { const d = await sRes.json(); setSchools(d.schools ?? d ?? []); }
+      if (pRes.ok) { const d = await pRes.json(); setPending(d.registrations ?? []); }
     } catch {}
     setLoading(false); setRefreshing(false);
   }, []);
@@ -353,41 +550,68 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
     return true;
   });
 
+  const filteredPending = pending.filter(r => {
+    const q = search.toLowerCase();
+    return !search || r.full_name?.toLowerCase().includes(q) || r.contact_email?.toLowerCase().includes(q) || r.location?.toLowerCase().includes(q);
+  });
+
   return (
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm }}>
+        {/* Approved / Pending sub-tabs */}
+        <View style={lStyles.subTabWrap}>
+          <TouchableOpacity style={[lStyles.subTab, subTab === 'approved' && lStyles.subTabOn]} onPress={() => setSubTab('approved')}>
+            <Text style={[lStyles.subTabTxt, subTab === 'approved' && lStyles.subTabTxtOn]}>👥 Approved ({consultants.length})</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[lStyles.subTab, subTab === 'pending' && lStyles.subTabOn]} onPress={() => setSubTab('pending')}>
+            <Text style={[lStyles.subTabTxt, subTab === 'pending' && lStyles.subTabTxtOn]}>📥 Pending ({pending.length})</Text>
+            {pending.length > 0 && subTab !== 'pending' && <View style={lStyles.subTabDot} />}
+          </TouchableOpacity>
+        </View>
+
         <View style={lStyles.searchBox}>
           <Ionicons name="search-outline" size={16} color={Colors.textDim} style={{ marginRight: 8 }} />
-          <TextInput style={lStyles.searchInput} placeholder="Search consultants..." placeholderTextColor={Colors.textDim} value={search} onChangeText={setSearch} />
+          <TextInput style={lStyles.searchInput} placeholder={subTab === 'approved' ? 'Search consultants...' : 'Search pending registrations...'} placeholderTextColor={Colors.textDim} value={search} onChangeText={setSearch} />
           {search.length > 0 && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color={Colors.textDim} /></TouchableOpacity>}
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
-          {([['all','All'],['associated','Associated'],['not_associated','Not Associated']] as [AssocFilter,string][]).map(([f,label]) => (
-            <TouchableOpacity key={f} style={[lStyles.chip, filter === f && lStyles.chipOn]} onPress={() => setFilter(f)}>
-              <Text style={[lStyles.chipTxt, filter === f && lStyles.chipTxtOn]}>{label} ({counts[f]})</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 12 }}>
-          {([['all','All Remarks'],['updated','Remark Updated'],['not_updated','Remark Not Updated']] as [RemarkFilter,string][]).map(([f,label]) => (
-            <TouchableOpacity key={f} style={[lStyles.chip, { flexDirection: 'row', alignItems: 'center' }, remarkFilter === f && lStyles.chipOn]} onPress={() => setRemarkFilter(f)}>
-              <Ionicons name="chatbox-ellipses-outline" size={11} color={remarkFilter === f ? Colors.primary : Colors.textDim} style={{ marginRight: 4 }} />
-              <Text style={[lStyles.chipTxt, remarkFilter === f && lStyles.chipTxtOn]}>{label} ({remarkCounts[f]})</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {subTab === 'approved' && <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
+            {([['all','All'],['associated','Associated'],['not_associated','Not Associated']] as [AssocFilter,string][]).map(([f,label]) => (
+              <TouchableOpacity key={f} style={[lStyles.chip, filter === f && lStyles.chipOn]} onPress={() => setFilter(f)}>
+                <Text style={[lStyles.chipTxt, filter === f && lStyles.chipTxtOn]}>{label} ({counts[f]})</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 12 }}>
+            {([['all','All Remarks'],['updated','Remark Updated'],['not_updated','Remark Not Updated']] as [RemarkFilter,string][]).map(([f,label]) => (
+              <TouchableOpacity key={f} style={[lStyles.chip, { flexDirection: 'row', alignItems: 'center' }, remarkFilter === f && lStyles.chipOn]} onPress={() => setRemarkFilter(f)}>
+                <Ionicons name="chatbox-ellipses-outline" size={11} color={remarkFilter === f ? Colors.primary : Colors.textDim} style={{ marginRight: 4 }} />
+                <Text style={[lStyles.chipTxt, remarkFilter === f && lStyles.chipTxtOn]}>{label} ({remarkCounts[f]})</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>}
       </View>
 
       {loading
         ? <ActivityIndicator color={Colors.primary} size="large" style={{ marginTop: 40 }} />
-        : <FlatList
-            data={filtered}
-            keyExtractor={c => c.id}
-            contentContainerStyle={{ padding: Spacing.lg, paddingTop: Spacing.sm }}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={Colors.primary} />}
-            ListEmptyComponent={<EmptyState icon="🤝" message="No consultants found" />}
-            renderItem={({ item }) => <ConsultantCard c={item} onPress={() => setSelected(item)} />}
-          />
+        : subTab === 'approved'
+          ? <FlatList
+              data={filtered}
+              keyExtractor={c => c.id}
+              contentContainerStyle={{ padding: Spacing.lg, paddingTop: Spacing.sm }}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={Colors.primary} />}
+              ListEmptyComponent={<EmptyState icon="🤝" message="No consultants found" />}
+              renderItem={({ item }) => <ConsultantCard c={item} onPress={() => setSelected(item)} />}
+            />
+          : <FlatList
+              data={filteredPending}
+              keyExtractor={r => r.id}
+              contentContainerStyle={{ padding: Spacing.lg, paddingTop: Spacing.sm }}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={Colors.primary} />}
+              ListEmptyComponent={<EmptyState icon="📥" message="No pending registrations" />}
+              renderItem={({ item }) => <PendingCard reg={item} onPress={() => setSelectedPending(item)} />}
+            />
       }
 
       <TouchableOpacity style={lStyles.fab} onPress={onAddNew}>
@@ -395,10 +619,17 @@ function ConsultantListView({ onAddNew }: { onAddNew: () => void }) {
       </TouchableOpacity>
 
       <ConsultantProfileModal consultant={selected} schools={schools} visible={!!selected} onClose={() => setSelected(null)} onUpdated={() => { load(true); }} />
+      <PendingProfileModal reg={selectedPending} visible={!!selectedPending} onClose={() => setSelectedPending(null)} onDone={() => { setSelectedPending(null); load(true); }} />
     </View>
   );
 }
 const lStyles = StyleSheet.create({
+  subTabWrap: { flexDirection: 'row', gap: 8, marginBottom: Spacing.sm },
+  subTab:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: Radius.md, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.cardBorder },
+  subTabOn:   { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  subTabTxt:  { fontSize: 12.5, fontWeight: '700', color: Colors.textMuted },
+  subTabTxtOn:{ color: '#fff' },
+  subTabDot:  { position: 'absolute', top: 6, right: 10, width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.warning },
   searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.cardBorder, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },
   searchInput:{ flex: 1, height: 42, color: Colors.text, fontSize: 14 },
   chip:    { paddingHorizontal: 14, paddingVertical: 7, borderRadius: Radius.round, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.cardBorder },

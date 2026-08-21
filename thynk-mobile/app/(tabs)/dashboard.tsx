@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView,
-  RefreshControl, ActivityIndicator, Modal, Alert,
+  RefreshControl, ActivityIndicator, Modal, Alert, TextInput,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,8 +10,9 @@ import { authFetch, AdminRow, fmtAmount } from '@/lib/api';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { KpiCard, SectionHeader, Card, RowItem, InlineBar } from '@/components/ui';
 
-type TimelineDays = 0 | 5 | 10 | 30 | -1 | -2;
+type TimelineDays = 0 | 5 | 10 | 30 | -1 | -2 | -3;
 type Section = 'overview' | 'schools' | 'classes' | 'payment' | 'trends';
+type DateRange = { from: string | null; to: string | null }; // YYYY-MM-DD
 
 const TIMELINES = [
   { label: 'Today', days: 0  },
@@ -29,6 +30,168 @@ function filterByDays(rows: AdminRow[], days: TimelineDays): AdminRow[] {
   const cut = new Date(Date.now() - days * 86400000);
   return rows.filter(r => new Date(r.created_at) >= cut);
 }
+
+function filterRows(rows: AdminRow[], timeline: TimelineDays, range: DateRange): AdminRow[] {
+  if (timeline === -3) {
+    if (!range.from) return rows;
+    const from = range.from;
+    const to   = range.to ?? range.from;
+    return rows.filter(r => {
+      const d = r.created_at?.slice(0, 10);
+      return !!d && d >= from && d <= to;
+    });
+  }
+  return filterByDays(rows, timeline);
+}
+
+function fmtRangeLabel(range: DateRange): string {
+  if (!range.from) return 'Custom';
+  const opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short' };
+  const fromLbl = new Date(range.from).toLocaleDateString('en-IN', opts);
+  if (!range.to || range.to === range.from) return fromLbl;
+  const toLbl = new Date(range.to).toLocaleDateString('en-IN', opts);
+  return `${fromLbl} – ${toLbl}`;
+}
+
+// ── Calendar date-range picker modal ────────────────────────────────────────
+const WEEKDAYS = ['S','M','T','W','T','F','S'];
+function CalendarModal({ visible, initialRange, onClose, onApply }: {
+  visible: boolean; initialRange: DateRange; onClose: () => void; onApply: (r: DateRange) => void;
+}) {
+  const [cursor, setCursor] = useState(() => {
+    const base = initialRange.from ? new Date(initialRange.from) : new Date();
+    return new Date(base.getFullYear(), base.getMonth(), 1);
+  });
+  const [from, setFrom] = useState<string | null>(initialRange.from);
+  const [to,   setTo]   = useState<string | null>(initialRange.to);
+
+  useEffect(() => {
+    if (visible) {
+      setFrom(initialRange.from);
+      setTo(initialRange.to);
+      const base = initialRange.from ? new Date(initialRange.from) : new Date();
+      setCursor(new Date(base.getFullYear(), base.getMonth(), 1));
+    }
+  }, [visible]);
+
+  function onDayPress(dateStr: string) {
+    if (!from || (from && to)) {
+      // Start a fresh selection
+      setFrom(dateStr); setTo(null);
+    } else if (dateStr < from) {
+      setFrom(dateStr); setTo(null);
+    } else {
+      setTo(dateStr);
+    }
+  }
+
+  const year  = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const firstDow   = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+
+  function inRange(d: string) {
+    if (!from) return false;
+    const end = to ?? from;
+    const lo = from < end ? from : end;
+    const hi = from < end ? end : from;
+    return d >= lo && d <= hi;
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }}>
+        <View style={cal.header}>
+          <Text style={cal.title}>Select Date Range</Text>
+          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={Colors.textMuted} /></TouchableOpacity>
+        </View>
+        <View style={{ padding: Spacing.xl }}>
+          <Text style={cal.hint}>{from ? (to ? 'Tap "Apply" or select a new range' : 'Now tap an end date, or Apply for a single day') : 'Tap a start date'}</Text>
+
+          <View style={cal.monthNav}>
+            <TouchableOpacity onPress={() => setCursor(new Date(year, month - 1, 1))} style={cal.navBtn}>
+              <Ionicons name="chevron-back" size={20} color={Colors.text} />
+            </TouchableOpacity>
+            <Text style={cal.monthLabel}>{cursor.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</Text>
+            <TouchableOpacity onPress={() => setCursor(new Date(year, month + 1, 1))} style={cal.navBtn}>
+              <Ionicons name="chevron-forward" size={20} color={Colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={cal.weekRow}>
+            {WEEKDAYS.map((w, i) => <Text key={i} style={cal.weekTxt}>{w}</Text>)}
+          </View>
+
+          <View style={cal.grid}>
+            {cells.map((d, i) => {
+              if (!d) return <View key={i} style={cal.cell} />;
+              const selected = d === from || d === to;
+              const within   = inRange(d) && !selected;
+              const isToday  = d === todayStr;
+              const isFuture = d > todayStr;
+              return (
+                <TouchableOpacity
+                  key={i}
+                  disabled={isFuture}
+                  style={[cal.cell, within && cal.cellInRange, selected && cal.cellSelected]}
+                  onPress={() => onDayPress(d)}
+                >
+                  <Text style={[
+                    cal.cellTxt,
+                    isFuture && { color: Colors.textDim, opacity: 0.4 },
+                    isToday && !selected && { color: Colors.primary, fontWeight: '800' },
+                    selected && { color: '#fff', fontWeight: '800' },
+                  ]}>
+                    {Number(d.slice(-2))}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: Spacing.xl }}>
+            <TouchableOpacity style={cal.clearBtn} onPress={() => { setFrom(null); setTo(null); }}>
+              <Text style={cal.clearBtnTxt}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[cal.applyBtn, !from && { opacity: 0.5 }]}
+              disabled={!from}
+              onPress={() => onApply({ from, to: to ?? from })}
+            >
+              <Text style={cal.applyBtnTxt}>Apply{from ? ` (${fmtRangeLabel({ from, to: to ?? from })})` : ''}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+const cal = StyleSheet.create({
+  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.xl, borderBottomWidth: 1, borderBottomColor: Colors.cardBorder },
+  title:      { fontSize: 18, fontWeight: '800', color: Colors.text },
+  hint:       { fontSize: 12, color: Colors.textMuted, marginBottom: Spacing.md, textAlign: 'center' },
+  monthNav:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
+  navBtn:     { padding: 8 },
+  monthLabel: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  weekRow:    { flexDirection: 'row', marginBottom: 6 },
+  weekTxt:    { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: Colors.textDim },
+  grid:       { flexDirection: 'row', flexWrap: 'wrap' },
+  cell:       { width: `${100/7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 8, marginBottom: 2 },
+  cellInRange:{ backgroundColor: Colors.primaryBg },
+  cellSelected:{ backgroundColor: Colors.primary },
+  cellTxt:    { fontSize: 13, color: Colors.text, fontWeight: '600' },
+  clearBtn:   { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.cardBorder },
+  clearBtnTxt:{ color: Colors.textMuted, fontSize: 14, fontWeight: '700' },
+  applyBtn:   { flex: 2, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: Radius.md, backgroundColor: Colors.primary },
+  applyBtnTxt:{ color: '#fff', fontSize: 14, fontWeight: '700' },
+});
 
 // ── Mini bar chart ─────────────────────────────────────────────────────────────
 function BarChart({ data, color = Colors.primary }: { data: { label: string; value: number }[] }) {
@@ -102,15 +265,120 @@ function PieLegend({ entries }: { entries: { label: string; value: number; color
   );
 }
 
+// ── Manage Account: change display name / email / password ──────────────────
+function ManageAccountSection({ email: currentEmail, name: currentName, onUpdated }: {
+  email: string; name: string; onUpdated: (email: string, name: string) => void;
+}) {
+  const [editing,  setEditing]  = useState(false);
+  const [name,     setName]     = useState(currentName);
+  const [email,    setEmail]    = useState(currentEmail);
+  const [password, setPassword] = useState('');
+  const [showPw,   setShowPw]   = useState(false);
+  const [saving,   setSaving]   = useState(false);
+
+  useEffect(() => { setName(currentName); setEmail(currentEmail); }, [currentName, currentEmail, editing]);
+
+  async function handleSave() {
+    if (!name.trim() && !email.trim() && !password.trim()) {
+      Alert.alert('Nothing to save', 'Change your name, email, or password first.');
+      return;
+    }
+    if (password && password.trim().length < 8) {
+      Alert.alert('Weak password', 'Password must be at least 8 characters.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const body: Record<string, any> = {};
+      if (name.trim()  && name.trim()  !== currentName)  body.name     = name.trim();
+      if (email.trim() && email.trim() !== currentEmail) body.email    = email.trim();
+      if (password.trim())                               body.password = password.trim();
+
+      if (Object.keys(body).length === 0) { setSaving(false); setEditing(false); return; }
+
+      const res = await authFetch('/api/admin/me', { method: 'PATCH', body: JSON.stringify(body) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { Alert.alert('Update failed', d.error ?? 'Could not save changes'); setSaving(false); return; }
+
+      if (body.email) await SecureStore.setItemAsync('thynk_admin_email', body.email);
+      onUpdated(body.email ?? currentEmail, body.name ?? currentName);
+      setPassword('');
+      setEditing(false);
+      Alert.alert('Saved', 'Your account has been updated.');
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Update failed');
+    } finally { setSaving(false); }
+  }
+
+  if (!editing) {
+    return (
+      <TouchableOpacity style={ma.editBtn} onPress={() => setEditing(true)}>
+        <Ionicons name="create-outline" size={16} color={Colors.primary} />
+        <Text style={ma.editBtnTxt}>Manage Username &amp; Password</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <View style={ma.wrap}>
+      <Text style={ma.label}>Display Name</Text>
+      <TextInput style={ma.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={Colors.textDim} autoCapitalize="words" />
+
+      <Text style={ma.label}>Email (Username)</Text>
+      <TextInput style={ma.input} value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={Colors.textDim} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+
+      <Text style={ma.label}>New Password</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <TextInput
+          style={[ma.input, { flex: 1, marginBottom: 0 }]}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Leave blank to keep current password"
+          placeholderTextColor={Colors.textDim}
+          secureTextEntry={!showPw}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TouchableOpacity onPress={() => setShowPw(p => !p)} style={{ marginLeft: -36, padding: 8 }}>
+          <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={Colors.textDim} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: Spacing.md }}>
+        <TouchableOpacity style={ma.cancelBtn} onPress={() => { setEditing(false); setPassword(''); }} disabled={saving}>
+          <Text style={ma.cancelBtnTxt}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[ma.saveBtn, saving && { opacity: 0.7 }]} onPress={handleSave} disabled={saving}>
+          {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={ma.saveBtnTxt}>Save Changes</Text>}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+const ma = StyleSheet.create({
+  editBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.primaryBg, borderRadius: Radius.md, paddingVertical: 12, marginBottom: Spacing.md },
+  editBtnTxt: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
+  wrap:       { backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.cardBorder, padding: Spacing.lg, marginBottom: Spacing.md },
+  label:      { fontSize: 11, fontWeight: '700', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 5, marginTop: 10 },
+  input:      { backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.cardBorder, color: Colors.text, fontSize: 14, paddingHorizontal: Spacing.md, paddingVertical: 11, marginBottom: 4 },
+  cancelBtn:  { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.cardBorder },
+  cancelBtnTxt:{ color: Colors.textMuted, fontSize: 13, fontWeight: '700' },
+  saveBtn:    { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: Radius.md, backgroundColor: Colors.primary },
+  saveBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
+});
+
 // ── Profile modal ──────────────────────────────────────────────────────────────
 function ProfileModal({ visible, onClose, onLogout }: { visible: boolean; onClose: () => void; onLogout: () => void }) {
   const [email, setEmail] = useState('');
+  const [name,  setName]  = useState('');
   const [url, setUrl]     = useState('');
 
   useEffect(() => {
     if (visible) {
       SecureStore.getItemAsync('thynk_admin_email').then(v => setEmail(v ?? 'Admin'));
       SecureStore.getItemAsync('thynk_backend_url').then(v => setUrl(v ?? ''));
+      // Pull the display name from the backend since it isn't cached locally.
+      authFetch('/api/admin/me').then(r => r.json()).then(d => { if (d.name) setName(d.name); }).catch(() => {});
     }
   }, [visible]);
 
@@ -123,16 +391,19 @@ function ProfileModal({ visible, onClose, onLogout }: { visible: boolean; onClos
         </View>
         <ScrollView contentContainerStyle={{ padding: Spacing.xl }}>
           <View style={pm.avatarWrap}>
-            <View style={pm.avatar}><Text style={pm.avatarTxt}>{(email?.[0] ?? 'A').toUpperCase()}</Text></View>
-            <Text style={pm.emailTxt}>{email}</Text>
+            <View style={pm.avatar}><Text style={pm.avatarTxt}>{(name?.[0] ?? email?.[0] ?? 'A').toUpperCase()}</Text></View>
+            <Text style={pm.emailTxt}>{name || email}</Text>
             <Text style={pm.roleTxt}>Administrator</Text>
           </View>
           <SectionHeader title="Account" />
           <Card>
+            <RowItem label="Name"        value={name || '—'} />
             <RowItem label="Email"       value={email} />
             <RowItem label="Backend URL" value={url} />
             <RowItem label="Role"        value="Admin" />
           </Card>
+          <SectionHeader title="Manage Account" note="Change username / password" />
+          <ManageAccountSection email={email} name={name} onUpdated={(e, n) => { setEmail(e); setName(n); }} />
           <SectionHeader title="App" />
           <Card>
             <RowItem label="Version"  value="1.0.0" />
@@ -167,6 +438,8 @@ export default function DashboardScreen() {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [timeline, setTimeline]     = useState<TimelineDays>(-2);
+  const [customRange, setCustomRange] = useState<DateRange>({ from: null, to: null });
+  const [showCalendar, setShowCalendar] = useState(false);
   const [section, setSection]       = useState<Section>('overview');
   const [showProfile, setShowProfile] = useState(false);
 
@@ -196,7 +469,7 @@ export default function DashboardScreen() {
   useEffect(() => { load(); }, []);
 
   // Derived
-  const rows     = useMemo(() => filterByDays(allRows, timeline), [allRows, timeline]);
+  const rows     = useMemo(() => filterRows(allRows, timeline, customRange), [allRows, timeline, customRange]);
   const paidRows = useMemo(() => rows.filter(r => r.payment_status === 'paid'), [rows]);
   const totalRev  = useMemo(() => paidRows.reduce((a, r) => a + (r.final_amount ?? 0), 0), [paidRows]);
   const totalDisc = useMemo(() => rows.reduce((a, r)  => a + (r.discount_amount ?? 0), 0), [rows]);
@@ -311,7 +584,23 @@ export default function DashboardScreen() {
                 <Text style={[styles.chipTxt, timeline === t.days && styles.chipTxtOn]}>{t.label}</Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.chip, { flexDirection: 'row', alignItems: 'center', gap: 5 }, timeline === -3 && styles.chipOn]}
+              onPress={() => { setShowCalendar(true); }}
+            >
+              <Ionicons name="calendar-outline" size={12} color={timeline === -3 ? Colors.primary : Colors.textMuted} />
+              <Text style={[styles.chipTxt, timeline === -3 && styles.chipTxtOn]}>
+                {timeline === -3 && customRange.from ? fmtRangeLabel(customRange) : 'Custom'}
+              </Text>
+            </TouchableOpacity>
           </ScrollView>
+
+          <CalendarModal
+            visible={showCalendar}
+            initialRange={customRange}
+            onClose={() => setShowCalendar(false)}
+            onApply={(r) => { setCustomRange(r); setTimeline(-3); setShowCalendar(false); }}
+          />
 
           {/* Section tabs */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: Spacing.lg }}>

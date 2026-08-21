@@ -18,10 +18,19 @@ function statusVariant(s?: string): BadgeVariant {
   return 'muted';
 }
 
+function fmtSchoolPrice(school: any): string | null {
+  const rows = Array.isArray(school.pricing) ? school.pricing : (school.pricing ? [school.pricing] : []);
+  const row = rows.find((p: any) => p.is_active) ?? rows[0];
+  if (!row || row.base_amount == null) return null;
+  const sym = row.currency === 'USD' ? '$' : '₹';
+  return `${sym}${(row.base_amount / 100).toLocaleString('en-IN')}`;
+}
+
 function SchoolCard({ school, onPress }: { school: any; onPress: () => void }) {
   const regOpen = school.is_registration_active !== false;
   const paid  = school.paid_student_count  ?? 0;
   const total = school.total_student_count ?? 0;
+  const price = fmtSchoolPrice(school);
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
       <View style={styles.cardTop}>
@@ -43,6 +52,7 @@ function SchoolCard({ school, onPress }: { school: any; onPress: () => void }) {
         {school.city && <View style={styles.metaItem}><Ionicons name="location-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{school.city}</Text></View>}
         <View style={styles.metaItem}><Ionicons name="code-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{school.school_code}</Text></View>
         <View style={styles.metaItem}><Ionicons name="calendar-outline" size={11} color={Colors.textDim} /><Text style={styles.metaTxt}>{fmtDate(school.created_at)}</Text></View>
+        {price && <View style={styles.metaItem}><Ionicons name="pricetag-outline" size={11} color={Colors.success} /><Text style={[styles.metaTxt, { color: Colors.success, fontWeight: '700' }]}>{price}</Text></View>}
       </View>
       <View style={styles.statsRow}>
         <View style={styles.statItem}><Text style={[styles.statVal, { color: Colors.success }]}>{paid}</Text><Text style={styles.statLbl}>Paid Students</Text></View>
@@ -92,6 +102,7 @@ function SchoolModal({ school, visible, onClose, onAction }: {
             <RowItem label="School Code"  value={school.school_code} mono />
             <RowItem label="Organisation" value={school.org_name} />
             <RowItem label="Program"      value={school.program_name} />
+            <RowItem label="Price"        value={fmtSchoolPrice(school) ?? '—'} />
             <RowItem label="Consultant"   value={school.consultant_name} />
             <RowItem label="Registration" value={school.is_registration_active !== false ? 'Open' : 'Closed'} />
             <RowItem label="City"         value={school.city} />
