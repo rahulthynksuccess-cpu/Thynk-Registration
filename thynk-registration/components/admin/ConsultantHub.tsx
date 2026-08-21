@@ -1419,7 +1419,7 @@ type CommLogRow = {
 };
 
 function CommunicationLogTab({ consultants, authHeaders }: {
-  consultants: Row[]; authHeaders: () => Record<string, string>;
+  consultants: Row[]; authHeaders: () => HeadersInit;
 }) {
   const [logs, setLogs]           = useState<CommLogRow[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -1804,7 +1804,7 @@ function InfoBlock({ label, value, mono }: { label: string; value: string; mono?
 // expanded profile — pulls from the same log the Communication Log tab uses,
 // scoped to just this consultant, capped to the 5 most recent messages.
 function RecentCommunications({ consultantId, authHeaders }: {
-  consultantId: string; authHeaders: () => Record<string, string>;
+  consultantId: string; authHeaders: () => HeadersInit;
 }) {
   const [logs, setLogs]       = useState<any[] | null>(null);
   const [loading, setLoading] = useState(false);
