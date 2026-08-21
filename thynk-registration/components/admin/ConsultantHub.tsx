@@ -93,7 +93,7 @@ export function ConsultantHub({
   const canSeeApproved = isSuperAdmin || subAdminPages === null || subAdminPages.includes('consultants');
 
   const defaultTab = canSeePending ? 'pending' : 'approved';
-  const [tab, setTab] = useState<'pending'|'approved'|'analytics'|'communicate'|'documents'|'letters'>(defaultTab);
+  const [tab, setTab] = useState<'pending'|'approved'|'analytics'|'communicate'|'comm_log'|'documents'|'letters'>(defaultTab);
   const [pendingRegs, setPendingRegs] = useState<Row[]>([]);
   const [approvedRegs, setApprovedRegs] = useState<Row[]>([]);
   const [regsLoading, setRegsLoading] = useState(false);
@@ -128,6 +128,7 @@ export function ConsultantHub({
     ...(canSeeApproved ? [{ id: 'approved'    as const, label: '👥 Approved Consultants' }] : []),
     ...(canSeeApproved ? [{ id: 'analytics'   as const, label: '📊 Analytics' }] : []),
     ...(canSeeApproved ? [{ id: 'communicate' as const, label: '💬 Communicate' }] : []),
+    ...(canSeeApproved ? [{ id: 'comm_log'    as const, label: '📜 Communication Log' }] : []),
     ...(canSeeApproved ? [{ id: 'documents'   as const, label: '📁 Documents' }] : []),
     ...(canSeeApproved ? [{ id: 'letters'     as const, label: '📨 Letters' }] : []),
   ];
@@ -217,6 +218,14 @@ export function ConsultantHub({
           consultants={consultants}
           authHeaders={authHeaders}
           showToast={showToast}
+        />
+      )}
+
+      {/* ── Communication Log Tab ── */}
+      {tab === 'comm_log' && (
+        <CommunicationLogTab
+          consultants={consultants}
+          authHeaders={authHeaders}
         />
       )}
 
@@ -676,6 +685,7 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
   const [remarkFilter,       setRemarkFilter]        = useState<'all' | 'updated' | 'not_updated'>('all');
   const [associationFilter,  setAssociationFilter]   = useState<'all' | 'associated' | 'not_associated'>('all');
   const [domainFilter, setDomainFilter] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<'date_reg_desc' | 'date_reg_asc' | 'last_activity_desc' | 'alpha_asc' | 'alpha_desc'>('date_reg_desc');
   const [expandedId,   setExpandedId]  = useState<string | null>(null);
   const [deleting,     setDeleting]    = useState<string | null>(null);
   const [regLinksFor,  setRegLinksFor] = useState<Row | null>(null);
@@ -718,8 +728,36 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
     } else if (associationFilter === 'not_associated') {
       list = list.filter(c => (c.association_status ?? 'not_associated') !== 'associated');
     }
-    return list;
-  }, [enriched, search, domainFilter, remarkFilter, associationFilter]);
+
+    // Last activity = most recent registration/school row created by this consultant,
+    // falling back to their own joined date if they have none yet.
+    const lastActivityOf = (c: Row): number => {
+      const own = enrichedRows.filter(r => r.consultant_id === c.id);
+      const latest = own.reduce((max, r) => {
+        const t = r.created_at ? new Date(r.created_at).getTime() : 0;
+        return t > max ? t : max;
+      }, 0);
+      return latest || (c.created_at ? new Date(c.created_at).getTime() : 0);
+    };
+
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      switch (sortBy) {
+        case 'date_reg_asc':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'last_activity_desc':
+          return lastActivityOf(b) - lastActivityOf(a);
+        case 'alpha_asc':
+          return (a.name || a.email || '').localeCompare(b.name || b.email || '');
+        case 'alpha_desc':
+          return (b.name || b.email || '').localeCompare(a.name || a.email || '');
+        case 'date_reg_desc':
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+    return sorted;
+  }, [enriched, search, domainFilter, remarkFilter, associationFilter, sortBy, enrichedRows]);
 
   async function handleToggleAssociation(c: Row) {
     const next = c.association_status === 'associated' ? 'not_associated' : 'associated';
@@ -759,9 +797,23 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
         <div style={{ fontSize:13, color:'var(--m)', fontWeight:600 }}>
           {filtered.length}/{consultants.length} consultant{consultants.length !== 1 ? 's' : ''}
         </div>
-        <input style={{ ...IS, maxWidth:240, padding:'8px 12px', fontSize:13 }}
-          placeholder="Search name, email, code…"
-          value={search} onChange={e => setSearch(e.target.value)} />
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as typeof sortBy)}
+            style={{ ...SS, maxWidth:210, padding:'8px 30px 8px 12px', fontSize:13 }}
+            title="Sort consultants"
+          >
+            <option value="date_reg_desc">📅 Newest Registered</option>
+            <option value="date_reg_asc">📅 Oldest Registered</option>
+            <option value="last_activity_desc">🕒 Last Activity</option>
+            <option value="alpha_asc">🔤 Name A → Z</option>
+            <option value="alpha_desc">🔤 Name Z → A</option>
+          </select>
+          <input style={{ ...IS, maxWidth:240, padding:'8px 12px', fontSize:13 }}
+            placeholder="Search name, email, code…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
       </div>
 
       {/* ── Quick filter: Internal Remark Updated / Not Updated ── */}
@@ -933,6 +985,19 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
                     })()}
                     {c.location && <span>📍 {c.location}</span>}
                   </div>
+                  {/* Internal remark — always visible, not just in expanded profile */}
+                  {c.internal_remark && c.internal_remark.trim() !== '' && (
+                    <div style={{ marginTop:6, fontSize:12, color:'#b45309', background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', borderRadius:8, padding:'5px 10px', display:'flex', gap:6, alignItems:'flex-start' }}>
+                      <span style={{ flexShrink:0 }}>🔒</span>
+                      <span style={{ lineHeight:1.4 }}>{c.internal_remark}</span>
+                    </div>
+                  )}
+                  {/* Last updated by / when */}
+                  {c.profile_updated_at && (
+                    <div style={{ marginTop:5, fontSize:10.5, color:'var(--m)', display:'flex', alignItems:'center', gap:4 }}>
+                      <span>🕒 Last updated by <strong>{c.profile_updated_by || 'Admin'}</strong> on {new Date(c.profile_updated_at).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+                    </div>
+                  )}
                 </div>
                 {/* KPIs */}
                 <div style={{ display:'flex', gap:16, flexShrink:0, flexWrap:'wrap' }}>
@@ -1002,11 +1067,12 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
                     </div>
                   )}
                   {c.experience_summary && (
-                    <div>
+                    <div style={{ marginBottom:14 }}>
                       <div style={LB}>Experience Summary</div>
                       <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.7, background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:10, padding:'12px 14px' }}>{c.experience_summary}</div>
                     </div>
                   )}
+                  <RecentCommunications consultantId={c.id} authHeaders={authHeaders} />
                 </div>
               )}
             </div>
@@ -1037,16 +1103,26 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
   const [smtpConfigId,  setSmtpConfigId]  = useState('');
   const [selected,      setSelected]      = useState<Set<string>>(new Set());
   const [recipientFilter, setRecipientFilter] = useState<'all' | 'associated' | 'not_associated'>('all');
+  const [recipientSearch, setRecipientSearch] = useState('');
   const [preview,       setPreview]       = useState('');
   const [sending,       setSending]       = useState(false);
   const [sentLog,       setSentLog]       = useState<{ name: string; to: string; ok: boolean; err?: string }[]>([]);
   const [showLog,       setShowLog]       = useState(false);
 
   const visibleConsultants = useMemo(() => {
-    if (recipientFilter === 'associated')     return consultants.filter(c => c.association_status === 'associated');
-    if (recipientFilter === 'not_associated') return consultants.filter(c => (c.association_status ?? 'not_associated') !== 'associated');
-    return consultants;
-  }, [consultants, recipientFilter]);
+    let list = consultants;
+    if (recipientFilter === 'associated')     list = list.filter(c => c.association_status === 'associated');
+    else if (recipientFilter === 'not_associated') list = list.filter(c => (c.association_status ?? 'not_associated') !== 'associated');
+    if (recipientSearch.trim()) {
+      const q = recipientSearch.toLowerCase();
+      list = list.filter(c =>
+        c.name?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.consultant_code?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [consultants, recipientFilter, recipientSearch]);
 
   // Load config + templates
   useEffect(() => {
@@ -1110,44 +1186,21 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
       };
 
       try {
-        // Use a dummy school_id — send API requires it but consultant comms don't need school context
-        // We pass the consultant user_id as a marker
         const res = await authFetch(`${BACKEND}/api/admin/send`, {
           method: 'POST',
           headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
           body: JSON.stringify({
             channel,
             template_id:    tplId,
-            school_id:      '__consultant__',   // handled below — see note
+            consultant_id:  c.id,   // consultant-scoped send — no school context needed
             to_phone:       channel === 'whatsapp' ? to : undefined,
             to_email:       channel === 'email'    ? to : undefined,
             smtp_config_id: channel === 'email' ? smtpConfigId || undefined : undefined,
             vars,
           }),
         });
-        // If backend rejects __consultant__ school_id, fall back to direct SMTP logic
-        if (res.status === 400 || res.status === 404) {
-          // Fallback: call a lightweight direct-send with rendered body
-          const rendered = tpl!.body.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => (vars as any)[k] ?? '');
-          const res2 = await authFetch(`${BACKEND}/api/admin/send`, {
-            method: 'POST',
-            headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              channel,
-              template_id:    tplId,
-              school_id:      consultants[0]?.school_id || (await getAnySchoolId()),
-              to_phone:       channel === 'whatsapp' ? to : undefined,
-              to_email:       channel === 'email'    ? to : undefined,
-              smtp_config_id: channel === 'email' ? smtpConfigId || undefined : undefined,
-              vars,
-            }),
-          });
-          const d2 = await res2.json();
-          log.push({ name: c.name || c.email, to, ok: res2.ok, err: res2.ok ? undefined : d2.error });
-        } else {
-          const d = await res.json();
-          log.push({ name: c.name || c.email, to, ok: res.ok, err: res.ok ? undefined : d.error });
-        }
+        const d = await res.json();
+        log.push({ name: c.name || c.email, to, ok: res.ok, err: res.ok ? undefined : d.error });
       } catch (err: any) {
         log.push({ name: c.name || c.email, to, ok: false, err: err.message });
       }
@@ -1162,14 +1215,6 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
 
     const okCount = log.filter(l => l.ok).length;
     showToast(`Sent ${okCount}/${log.length} messages`, okCount === log.length ? '✅' : '⚠️');
-  }
-
-  async function getAnySchoolId(): Promise<string> {
-    try {
-      const r = await authFetch(`${BACKEND}/api/admin/schools`);
-      const d = await r.json();
-      return d.schools?.[0]?.id ?? '';
-    } catch { return ''; }
   }
 
   return (
@@ -1304,6 +1349,13 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
                 </button>
               ))}
             </div>
+            {/* Search box */}
+            <input
+              style={{ ...IS, marginTop:8, padding:'7px 12px', fontSize:12 }}
+              placeholder="Search name, email, code…"
+              value={recipientSearch}
+              onChange={e => setRecipientSearch(e.target.value)}
+            />
           </div>
           {visibleConsultants.length === 0 ? (
             <div style={{ padding:'24px', textAlign:'center', fontSize:13, color:'var(--m)' }}>No consultants match this filter</div>
@@ -1349,8 +1401,164 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ANALYTICS (unchanged from original ConsultantAnalytics)
+// COMMUNICATION LOG — history of every message sent to consultants
 // ═════════════════════════════════════════════════════════════════════════════
+type CommLogRow = {
+  id: string;
+  consultant_id: string;
+  consultant_name: string | null;
+  consultant_code: string | null;
+  channel: 'email' | 'whatsapp';
+  provider: string;
+  recipient: string;
+  status: 'sent' | 'failed' | 'pending';
+  sent_at: string | null;
+  created_at: string;
+  sent_by_name: string | null;
+  template_name: string | null;
+};
+
+function CommunicationLogTab({ consultants, authHeaders }: {
+  consultants: Row[]; authHeaders: () => Record<string, string>;
+}) {
+  const [logs, setLogs]           = useState<CommLogRow[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState('');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'email' | 'whatsapp'>('all');
+  const [statusFilter, setStatusFilter]   = useState<'all' | 'sent' | 'failed'>('all');
+  const [dateFrom, setDateFrom]   = useState('');
+  const [dateTo, setDateTo]       = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (channelFilter !== 'all') params.set('channel', channelFilter);
+      if (statusFilter  !== 'all') params.set('status', statusFilter);
+      if (dateFrom) params.set('from', dateFrom);
+      if (dateTo)   params.set('to', dateTo);
+      const res = await authFetch(`${BACKEND}/api/admin/consultant-communication-logs?${params.toString()}`, {
+        headers: authHeaders() as any,
+      });
+      const d = await res.json();
+      setLogs(res.ok ? (d.logs ?? []) : []);
+    } catch {
+      setLogs([]);
+    }
+    setLoading(false);
+  }, [channelFilter, statusFilter, dateFrom, dateTo]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return logs;
+    const q = search.toLowerCase();
+    return logs.filter(l =>
+      l.consultant_name?.toLowerCase().includes(q) ||
+      l.consultant_code?.toLowerCase().includes(q) ||
+      l.recipient?.toLowerCase().includes(q) ||
+      l.template_name?.toLowerCase().includes(q)
+    );
+  }, [logs, search]);
+
+  const sentCount   = filtered.filter(l => l.status === 'sent').length;
+  const failedCount = filtered.filter(l => l.status === 'failed').length;
+
+  return (
+    <div>
+      {/* Summary strip */}
+      <div style={{ display:'flex', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+        <div style={{ flex:'1 1 140px', background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:12, padding:'12px 16px' }}>
+          <div style={{ fontSize:11, color:'var(--m)', fontWeight:700, textTransform:'uppercase', letterSpacing:.4 }}>Total Messages</div>
+          <div style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>{filtered.length}</div>
+        </div>
+        <div style={{ flex:'1 1 140px', background:'rgba(16,185,129,0.08)', border:'1.5px solid rgba(16,185,129,0.25)', borderRadius:12, padding:'12px 16px' }}>
+          <div style={{ fontSize:11, color:'#059669', fontWeight:700, textTransform:'uppercase', letterSpacing:.4 }}>Sent</div>
+          <div style={{ fontSize:22, fontWeight:800, color:'#059669' }}>{sentCount}</div>
+        </div>
+        <div style={{ flex:'1 1 140px', background:'rgba(239,68,68,0.08)', border:'1.5px solid rgba(239,68,68,0.25)', borderRadius:12, padding:'12px 16px' }}>
+          <div style={{ fontSize:11, color:'#dc2626', fontWeight:700, textTransform:'uppercase', letterSpacing:.4 }}>Failed</div>
+          <div style={{ fontSize:22, fontWeight:800, color:'#dc2626' }}>{failedCount}</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
+        <input
+          style={{ ...IS, maxWidth:240, padding:'8px 12px', fontSize:13 }}
+          placeholder="Search consultant, email, template…"
+          value={search} onChange={e => setSearch(e.target.value)}
+        />
+        <select style={{ ...SS, padding:'8px 26px 8px 12px', fontSize:13 }} value={channelFilter} onChange={e => setChannelFilter(e.target.value as any)}>
+          <option value="all">All Channels</option>
+          <option value="email">📧 Email</option>
+          <option value="whatsapp">💬 WhatsApp</option>
+        </select>
+        <select style={{ ...SS, padding:'8px 26px 8px 12px', fontSize:13 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)}>
+          <option value="all">All Statuses</option>
+          <option value="sent">✅ Sent</option>
+          <option value="failed">❌ Failed</option>
+        </select>
+        <input type="date" style={{ ...IS, maxWidth:150, padding:'8px 10px', fontSize:13 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="From date" />
+        <span style={{ color:'var(--m)', fontSize:12 }}>to</span>
+        <input type="date" style={{ ...IS, maxWidth:150, padding:'8px 10px', fontSize:13 }} value={dateTo} onChange={e => setDateTo(e.target.value)} title="To date" />
+        {(search || channelFilter !== 'all' || statusFilter !== 'all' || dateFrom || dateTo) && (
+          <button
+            onClick={() => { setSearch(''); setChannelFilter('all'); setStatusFilter('all'); setDateFrom(''); setDateTo(''); }}
+            style={{ padding:'8px 14px', fontSize:12, fontWeight:700, borderRadius:8, border:'1.5px solid var(--bd)', background:'var(--card)', color:'var(--m)', cursor:'pointer' }}
+          >
+            Clear filters
+          </button>
+        )}
+        <button
+          onClick={load}
+          style={{ marginLeft:'auto', padding:'8px 14px', fontSize:12, fontWeight:700, borderRadius:8, border:'1.5px solid var(--bd)', background:'var(--card)', color:'var(--text)', cursor:'pointer' }}
+        >
+          🔄 Refresh
+        </button>
+      </div>
+
+      {/* Log list */}
+      {loading ? (
+        <div style={{ padding:40, textAlign:'center', color:'var(--m)' }}>Loading communication log…</div>
+      ) : filtered.length === 0 ? (
+        <EmptyState icon="📜" title="No messages found" sub="Sent/failed consultant communications will show up here." />
+      ) : (
+        <div style={{ border:'1.5px solid var(--bd)', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1.4fr 0.8fr 1.3fr 1fr 0.9fr 1fr 0.9fr', gap:8, padding:'10px 16px', background:'var(--bg)', borderBottom:'1.5px solid var(--bd)', fontSize:11, fontWeight:800, color:'var(--m)', textTransform:'uppercase', letterSpacing:.4 }}>
+            <div>Consultant</div><div>Channel</div><div>Recipient</div><div>Template</div><div>Status</div><div>Sent By</div><div>When</div>
+          </div>
+          {filtered.map(l => (
+            <div key={l.id} style={{ display:'grid', gridTemplateColumns:'1.4fr 0.8fr 1.3fr 1fr 0.9fr 1fr 0.9fr', gap:8, padding:'10px 16px', borderBottom:'1px solid var(--bd)', fontSize:12.5, alignItems:'center' }}>
+              <div style={{ fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {l.consultant_name || '—'}
+                {l.consultant_code && <span style={{ color:'var(--m)', fontWeight:500 }}> · {l.consultant_code}</span>}
+              </div>
+              <div>{l.channel === 'email' ? '📧 Email' : '💬 WhatsApp'}</div>
+              <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--m)' }}>{l.recipient}</div>
+              <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--m)' }}>{l.template_name || '—'}</div>
+              <div>
+                <span style={{
+                  padding:'2px 8px', borderRadius:999, fontSize:11, fontWeight:700,
+                  background: l.status === 'sent' ? 'rgba(16,185,129,0.12)' : l.status === 'failed' ? 'rgba(239,68,68,0.12)' : 'rgba(148,163,184,0.15)',
+                  color: l.status === 'sent' ? '#059669' : l.status === 'failed' ? '#dc2626' : 'var(--m)',
+                }}>
+                  {l.status === 'sent' ? '✅ Sent' : l.status === 'failed' ? '❌ Failed' : '⏳ Pending'}
+                </span>
+              </div>
+              <div style={{ color:'var(--m)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.sent_by_name || '—'}</div>
+              <div style={{ color:'var(--m)', fontSize:11.5 }}>
+                {new Date(l.sent_at || l.created_at).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ConsultantAnalytics({ consultants, enrichedRows, schools, colors }: {
   consultants: Row[]; enrichedRows: Row[]; schools: Row[]; colors: string[];
 }) {
@@ -1588,6 +1796,59 @@ function InfoBlock({ label, value, mono }: { label: string; value: string; mono?
     <div>
       <div style={{ fontSize:10, fontWeight:700, color:'var(--m)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:4 }}>{label}</div>
       <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', fontFamily: mono ? 'monospace' : 'DM Sans,sans-serif' }}>{value}</div>
+    </div>
+  );
+}
+
+// Compact, lazy-loaded communication history shown inside a consultant's
+// expanded profile — pulls from the same log the Communication Log tab uses,
+// scoped to just this consultant, capped to the 5 most recent messages.
+function RecentCommunications({ consultantId, authHeaders }: {
+  consultantId: string; authHeaders: () => Record<string, string>;
+}) {
+  const [logs, setLogs]       = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    authFetch(`${BACKEND}/api/admin/consultant-communication-logs?consultant_id=${consultantId}&limit=5`, {
+      headers: authHeaders() as any,
+    })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setLogs(d.logs ?? []); })
+      .catch(() => { if (!cancelled) setLogs([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [consultantId]);
+
+  return (
+    <div style={{ marginTop:14 }}>
+      <div style={LB}>Recent Communications</div>
+      {loading ? (
+        <div style={{ fontSize:12, color:'var(--m)' }}>Loading…</div>
+      ) : !logs || logs.length === 0 ? (
+        <div style={{ fontSize:12, color:'var(--m)' }}>No messages sent to this consultant yet.</div>
+      ) : (
+        <div style={{ background:'var(--card)', border:'1.5px solid var(--bd)', borderRadius:10, overflow:'hidden' }}>
+          {logs.map((l: any, i: number) => (
+            <div key={l.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 14px', borderBottom: i < logs.length - 1 ? '1px solid var(--bd)' : 'none', fontSize:12 }}>
+              <span>{l.channel === 'email' ? '📧' : '💬'}</span>
+              <span style={{ flex:1, color:'var(--text)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.template_name || l.recipient}</span>
+              <span style={{
+                fontSize:10.5, fontWeight:700, padding:'2px 7px', borderRadius:999,
+                background: l.status === 'sent' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                color: l.status === 'sent' ? '#059669' : '#dc2626',
+              }}>
+                {l.status === 'sent' ? 'Sent' : 'Failed'}
+              </span>
+              <span style={{ color:'var(--m)', fontSize:11, whiteSpace:'nowrap' }}>
+                {new Date(l.sent_at || l.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
