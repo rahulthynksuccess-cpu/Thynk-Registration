@@ -1,0 +1,312 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromRequest, createServiceClient } from '@/lib/supabase/server';
+import { deduplicateRegistrations } from '@/lib/dedup';
+
+export async function GET(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const service = createServiceClient();
+  const { searchParams } = new URL(req.url);
+  const schoolCode = searchParams.get('schoolCode');
+  const status     = searchParams.get('status');
+  const search     = searchParams.get('q');
+  const page       = parseInt(searchParams.get('page') ?? '1');
+  const limit      = Math.min(parseInt(searchParams.get('limit') ?? '500'), 1000);
+  const offset     = (page - 1) * limit;
+
+  // Determine which school IDs this user can access
+  const { data: roleRows } = await service
+    .from('admin_roles')
+    .select('role, school_id')
+    .eq('user_id', user.id);
+
+  const isSuperAdmin     = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
+  const allowedSchoolIds = roleRows?.map(r => r.school_id).filter(Boolean) ?? [];
+
+  // Resolve schoolCode → school_id (FIX: dot notation doesn't work in Supabase filters)
+  let schoolIdFromCode: string | null = null;
+  if (schoolCode) {
+    const { data: schoolData } = await service
+      .from('schools')
+      .select('id')
+      .eq('school_code', schoolCode)
+      .single();
+    schoolIdFromCode = schoolData?.id ?? null;
+  }
+
+  // Build query — FIX: removed !inner so rows without a school are not silently dropped
+  let query = service
+    .from('registrations')
+    .select(`
+      id,
+      created_at,
+      student_name,
+      class_grade,
+      gender,
+      parent_school,
+      city,
+      parent_name,
+      contact_phone,
+      contact_email,
+      status,
+      schools(
+        id,
+        school_code,
+        name,
+        org_name,
+        country,
+        state,
+        project_slug,
+        project_id,
+        branding,
+        pricing(program_name, base_amount, currency),
+        projects:project_id(slug, base_url)
+      ),
+      payments(
+        gateway,
+        gateway_txn_id,
+        base_amount,
+        discount_amount,
+        final_amount,
+        discount_code,
+        status,
+        paid_at
+      )
+    `, { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (!isSuperAdmin) {
+    if (!allowedSchoolIds.length) return NextResponse.json({ rows: [], count: 0 });
+    query = query.in('school_id', allowedSchoolIds);
+  }
+
+  if (schoolIdFromCode) {
+    query = query.eq('school_id', schoolIdFromCode);
+  }
+
+  if (status) {
+    // status can refer to payment status — filter after flattening
+    // (registration status and payment status are different columns)
+  }
+
+  const { data: rows, count, error } = await query;
+
+  if (error) {
+    console.error('[registrations] Supabase error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Flatten for dashboard consumption
+  // FIX: pricing is nested under schools, not directly on registrations
+  const flat = (rows ?? []).map((r: any) => {
+    // Pick the BEST payment record for this registration:
+    // paid > pending/initiated > failed/cancelled > anything else
+    // This prevents a failed-payment record shadowing a later paid one.
+    const allPayments: any[] = Array.isArray(r.payments) ? r.payments : r.payments ? [r.payments] : [];
+    const PAY_RANK: Record<string, number> = { paid: 0, pending: 1, initiated: 1, failed: 2, cancelled: 2 };
+    // [...spread] before sort — never mutate the original Supabase response object
+    const payment = [...allPayments].sort((a, b) =>
+      (PAY_RANK[a.status] ?? 9) - (PAY_RANK[b.status] ?? 9)
+    )[0] ?? {};
+    const school  = r.schools ?? {};
+    // FIX: pricing lives under schools
+    const pricing = Array.isArray(school.pricing) ? (school.pricing[0] ?? {}) : (school.pricing ?? {});
+
+    return {
+      id:              r.id,
+      created_at:      r.created_at,
+      student_name:    r.student_name,
+      class_grade:     r.class_grade,
+      gender:          r.gender,
+      parent_school:   r.parent_school,
+      city:            r.city,
+      parent_name:     r.parent_name,
+      contact_phone:   r.contact_phone,
+      contact_email:   r.contact_email,
+      reg_status:      r.status,
+      school_id:       school.id        ?? null,
+      school_code:     school.school_code ?? null,
+      school_name:     school.name       ?? null,
+      org_name:        school.org_name   ?? null,
+      project_slug:    school.project_slug ?? null,
+      // Build registration URL — always use ?school= query param format
+      // which works for ALL schools on thynksuccess.com (no www).
+      // Priority: branding.redirectURL base → projects.slug → school.project_slug
+      registration_url: (() => {
+        const prog    = school.projects ?? {};
+        const slug    = prog.slug ?? school.project_slug;
+        const code    = school.school_code;
+        if (!slug || !code) return null;
+        // If branding.redirectURL is stored, extract the base path slug from it
+        // (it may be path-format /slug/code — we only need the slug part)
+        if (school.branding?.redirectURL) {
+          try {
+            const u = new URL(school.branding.redirectURL);
+            // URL path is /registration/{slug}/... — extract slug
+            const parts = u.pathname.split('/').filter(Boolean);
+            const regIdx = parts.findIndex((p: string) => p === 'registration');
+            const urlSlug = regIdx >= 0 ? parts[regIdx + 1] : null;
+            if (urlSlug) {
+              const base = `${u.protocol}//${u.host}`;
+              return `${base}/registration/${urlSlug}/?school=${code}`;
+            }
+          } catch {}
+        }
+        // Fallback: build from projects.base_url or default domain
+        const baseUrl = prog.base_url ?? 'https://thynksuccess.com';
+        return `${baseUrl}/registration/${slug}/?school=${code}`;
+      })(),
+      country:         school.country    ?? 'India',
+      state:           school.state      ?? null,
+      // FIX: program_name and currency now come from school.pricing
+      program_name:    pricing.program_name ?? null,
+      currency:        pricing.currency     ?? 'INR',
+      gateway:         payment.gateway           ?? null,
+      gateway_txn_id:  payment.gateway_txn_id    ?? null,
+      base_amount:     payment.base_amount        ?? pricing.base_amount ?? 0,
+      discount_amount: payment.discount_amount    ?? 0,
+      final_amount:    payment.final_amount       ?? 0,
+      discount_code:   payment.discount_code      ?? null,
+      // FIX: explicitly map payment.status so dashboard filters work correctly
+      payment_status:  payment.status             ?? null,
+      paid_at:         payment.paid_at            ?? null,
+    };
+  });
+
+  // ── Deduplication ────────────────────────────────────────────────────────
+  // If the same student (matched by school + name + phone + email) has both a
+  // paid and non-paid registration, suppress the non-paid duplicate.
+  const deduped = deduplicateRegistrations(flat);
+
+  // Apply payment status filter after flattening
+  let filtered = deduped;
+  if (status) {
+    filtered = deduped.filter((r: any) => r.payment_status === status);
+  }
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(r => {
+      const hay = [
+        r.student_name,
+        r.parent_name,
+        r.contact_phone,
+        r.contact_email,
+        r.parent_school,
+        r.city,
+        r.gateway_txn_id,
+        r.school_name,
+        r.school_code,
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  return NextResponse.json({ rows: filtered, count: filtered.length });
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const service = createServiceClient();
+
+  // Only super_admins can delete registrations
+  const { data: roleRows } = await service
+    .from('admin_roles')
+    .select('role, school_id')
+    .eq('user_id', user.id);
+
+  const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
+  if (!isSuperAdmin) {
+    return NextResponse.json({ error: 'Forbidden: only super admins can delete registrations' }, { status: 403 });
+  }
+
+  let body: Record<string, any>;
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+  const { id } = body;
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+
+  // Delete associated payments first (FK constraint)
+  const { error: payErr } = await service
+    .from('payments')
+    .delete()
+    .eq('registration_id', id);
+
+  if (payErr) {
+    console.error('[registrations DELETE] payment delete error', payErr);
+    return NextResponse.json({ error: payErr.message }, { status: 500 });
+  }
+
+  // Delete the registration
+  const { error: regErr } = await service
+    .from('registrations')
+    .delete()
+    .eq('id', id);
+
+  if (regErr) {
+    console.error('[registrations DELETE] registration delete error', regErr);
+    return NextResponse.json({ error: regErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true, deleted_id: id });
+}
+
+export async function PATCH(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const service = createServiceClient();
+
+  // Only super_admins and school admins can edit registrations
+  const { data: roleRows } = await service
+    .from('admin_roles')
+    .select('role, school_id')
+    .eq('user_id', user.id);
+
+  const isSuperAdmin = roleRows?.some(r => r.role === 'super_admin' && !r.school_id);
+  const allowedSchoolIds = roleRows?.map(r => r.school_id).filter(Boolean) ?? [];
+
+  let body: Record<string, any>;
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+  const { id, student_name, parent_name, class_grade, gender, city, parent_school, contact_phone, contact_email } = body;
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+
+  // Check the registration belongs to an allowed school (if not super_admin)
+  if (!isSuperAdmin) {
+    const { data: reg } = await service
+      .from('registrations')
+      .select('school_id')
+      .eq('id', id)
+      .single();
+    if (!reg || !allowedSchoolIds.includes(reg.school_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
+  const updateFields: Record<string, any> = {};
+  if (student_name  !== undefined) updateFields.student_name  = student_name;
+  if (parent_name   !== undefined) updateFields.parent_name   = parent_name;
+  if (class_grade   !== undefined) updateFields.class_grade   = class_grade;
+  if (gender        !== undefined) updateFields.gender        = gender;
+  if (city          !== undefined) updateFields.city          = city;
+  if (parent_school !== undefined) updateFields.parent_school = parent_school;
+  if (contact_phone !== undefined) updateFields.contact_phone = contact_phone;
+  if (contact_email !== undefined) updateFields.contact_email = contact_email;
+
+  if (!Object.keys(updateFields).length)
+    return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+
+  const { error } = await service
+    .from('registrations')
+    .update(updateFields)
+    .eq('id', id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
+}
