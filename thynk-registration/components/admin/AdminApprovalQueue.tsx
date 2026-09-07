@@ -312,7 +312,7 @@ export default function AdminApprovalQueue({
           onClose={() => setApproveTarget(null)} onApprove={handleApprove} />
       )}
       {detailsTarget && (
-        <SchoolFormDetailsModal school={detailsTarget} programs={programs} onClose={() => setDetailsTarget(null)} />
+        <SchoolFormDetailsModal school={detailsTarget} programs={programs} onClose={() => setDetailsTarget(null)} showToast={showToast} />
       )}
 
       {/* Stats */}

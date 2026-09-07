@@ -17,6 +17,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { authFetch } from '@/lib/supabase/client';
 import { ConsultantDocumentUploadPanel } from './ConsultantDocumentUploadPanel';
 import { ConsultantLetterGeneratorPanel } from './ConsultantLetterGeneratorPanel';
+import FollowupModal from './FollowupModal';
 
 type Row = Record<string, any>;
 
@@ -684,12 +685,16 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
   const [search,             setSearch]             = useState('');
   const [remarkFilter,       setRemarkFilter]        = useState<'all' | 'updated' | 'not_updated'>('all');
   const [associationFilter,  setAssociationFilter]   = useState<'all' | 'associated' | 'not_associated'>('all');
+  const [statusFilter,       setStatusFilter]        = useState<'all' | 'approved' | 'rejected'>('all');
   const [domainFilter, setDomainFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'date_reg_desc' | 'date_reg_asc' | 'last_activity_desc' | 'alpha_asc' | 'alpha_desc'>('date_reg_desc');
   const [expandedId,   setExpandedId]  = useState<string | null>(null);
   const [deleting,     setDeleting]    = useState<string | null>(null);
   const [regLinksFor,  setRegLinksFor] = useState<Row | null>(null);
   const [togglingAssoc, setTogglingAssoc] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Row | null>(null);
+  const [restoring,    setRestoring]    = useState<string | null>(null);
+  const [followupFor,  setFollowupFor]  = useState<Row | null>(null);
 
   // Merge auth-based consultants with extra profile fields from registrations
   const regByEmail: Record<string, Row> = {};
@@ -728,6 +733,11 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
     } else if (associationFilter === 'not_associated') {
       list = list.filter(c => (c.association_status ?? 'not_associated') !== 'associated');
     }
+    if (statusFilter === 'approved') {
+      list = list.filter(c => (c.status ?? 'approved') !== 'rejected');
+    } else if (statusFilter === 'rejected') {
+      list = list.filter(c => c.status === 'rejected');
+    }
 
     // Last activity = most recent registration/school row created by this consultant,
     // falling back to their own joined date if they have none yet.
@@ -757,7 +767,32 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
       }
     });
     return sorted;
-  }, [enriched, search, domainFilter, remarkFilter, associationFilter, sortBy, enrichedRows]);
+  }, [enriched, search, domainFilter, remarkFilter, associationFilter, statusFilter, sortBy, enrichedRows]);
+
+  async function handleReject(c: Row, reason: string) {
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/consultants`, {
+        method: 'PATCH',
+        headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, status: 'rejected', reject_reason: reason }),
+      });
+      if (res.ok) { showToast('Consultant rejected', '✕'); setRejectTarget(null); onReload(); }
+      else { const d = await res.json(); showToast(d.error ?? 'Failed to reject', '❌'); }
+    } catch (e: any) { showToast(e.message ?? 'Failed', '❌'); }
+  }
+
+  async function handleRestore(c: Row) {
+    setRestoring(c.id);
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/consultants`, {
+        method: 'PATCH',
+        headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, status: 'approved' }),
+      });
+      if (res.ok) { showToast('Consultant restored to Approved', '✅'); onReload(); }
+      else { const d = await res.json(); showToast(d.error ?? 'Failed to restore', '❌'); }
+    } finally { setRestoring(null); }
+  }
 
   async function handleToggleAssociation(c: Row) {
     const next = c.association_status === 'associated' ? 'not_associated' : 'associated';
@@ -906,6 +941,41 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
         )}
       </div>
 
+      {/* ── Quick filter: Approved / Rejected ── */}
+      <div style={{ marginBottom:10, display:'flex', alignItems:'center', flexWrap:'wrap', gap:0 }}>
+        <button
+          onClick={() => setStatusFilter(prev => prev === 'approved' ? 'all' : 'approved')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', transition: 'all .15s', fontFamily: 'DM Sans,sans-serif',
+            border: `1.5px solid ${statusFilter === 'approved' ? '#4f46e5' : 'var(--bd)'}`,
+            background: statusFilter === 'approved' ? 'rgba(79,70,229,0.08)' : 'transparent',
+            color: statusFilter === 'approved' ? '#4f46e5' : 'var(--m)',
+            marginRight: 8,
+          }}>
+          ✅ Approved
+        </button>
+        <button
+          onClick={() => setStatusFilter(prev => prev === 'rejected' ? 'all' : 'rejected')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', transition: 'all .15s', fontFamily: 'DM Sans,sans-serif',
+            border: `1.5px solid ${statusFilter === 'rejected' ? '#ef4444' : 'var(--bd)'}`,
+            background: statusFilter === 'rejected' ? 'rgba(239,68,68,0.08)' : 'transparent',
+            color: statusFilter === 'rejected' ? '#ef4444' : 'var(--m)',
+          }}>
+          ❌ Rejected
+        </button>
+        {statusFilter !== 'all' && (
+          <button onClick={() => setStatusFilter('all')}
+            style={{ marginLeft:8, padding:'4px 10px', borderRadius:20, border:'1.5px solid var(--bd)', fontSize:11, color:'var(--m)', background:'transparent', cursor:'pointer' }}>
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
       {/* ── Domain filter pills ── */}
       <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:14 }}>
         <span style={{ fontSize:11, fontWeight:700, color:'var(--m)', textTransform:'uppercase', letterSpacing:'.05em' }}>Domain:</span>
@@ -953,6 +1023,11 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
                       <code style={{ fontSize:10, background:'rgba(79,70,229,.1)', color:'#4f46e5', padding:'2px 8px', borderRadius:20, fontWeight:800 }}>{c.consultant_code}</code>
                     )}
                     {c.is_default_consultant && <span title="Default consultant" style={{ fontSize:14 }}>⭐</span>}
+                    {c.status === 'rejected' && (
+                      <span title={c.reject_reason || undefined} style={{ fontSize:10, borderRadius:20, padding:'2px 8px', fontWeight:800, background:'#fee2e2', color:'#991b1b' }}>
+                        ❌ Rejected
+                      </span>
+                    )}
                     <button
                       onClick={() => canManage && handleToggleAssociation(c)}
                       disabled={!canManage || togglingAssoc === c.id}
@@ -998,6 +1073,13 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
                       <span>🕒 Last updated by <strong>{c.profile_updated_by || 'Admin'}</strong> on {new Date(c.profile_updated_at).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
                     </div>
                   )}
+                  {/* Follow-up snapshot */}
+                  {(c.next_followup_date || c.last_followup_comment) && (
+                    <div style={{ marginTop:5, fontSize:11, color:'#b45309', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                      {c.next_followup_date && <span>📅 Next follow-up: <strong>{new Date(c.next_followup_date + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</strong></span>}
+                      {c.last_followup_comment && <span style={{ color:'var(--m)' }}>· "{c.last_followup_comment}"</span>}
+                    </div>
+                  )}
                 </div>
                 {/* KPIs */}
                 <div style={{ display:'flex', gap:16, flexShrink:0, flexWrap:'wrap' }}>
@@ -1017,10 +1099,25 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
                         style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(79,70,229,.3)', background:'rgba(79,70,229,.06)', color:'#4f46e5', fontSize:12, fontWeight:700, cursor:'pointer' }}>
                         ✏️ Edit
                       </button>
+                      <button onClick={() => setFollowupFor(c)}
+                        style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(245,158,11,.35)', background:'rgba(245,158,11,.06)', color:'#b45309', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                        📅 Follow-up
+                      </button>
                       <button onClick={() => setRegLinksFor(c)}
                         style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(79,70,229,.3)', background:'transparent', color:'#4f46e5', fontSize:12, fontWeight:700, cursor:'pointer' }}>
                         🔗 Links
                       </button>
+                      {c.status === 'rejected' ? (
+                        <button onClick={() => handleRestore(c)} disabled={restoring === c.id}
+                          style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(16,185,129,.35)', background:'rgba(16,185,129,.06)', color:'#059669', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                          {restoring === c.id ? '⏳' : '↩️ Restore'}
+                        </button>
+                      ) : (
+                        <button onClick={() => setRejectTarget(c)}
+                          style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid rgba(239,68,68,.3)', background:'rgba(239,68,68,.06)', color:'#ef4444', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                          ✕ Reject
+                        </button>
+                      )}
                       <button onClick={() => handleDelete(c.id)} disabled={deleting === c.id}
                         style={{ padding:'6px 10px', borderRadius:8, border:'1.5px solid rgba(239,68,68,.3)', background:'rgba(239,68,68,.06)', color:'#ef4444', fontSize:12, cursor:'pointer' }}>
                         {deleting === c.id ? '⏳' : '🗑️'}
@@ -1083,6 +1180,23 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
       {regLinksFor && (
         <RegistrationLinksModal consultant={regLinksFor} programs={programs} BACKEND={BACKEND} onClose={() => setRegLinksFor(null)} showToast={showToast} />
       )}
+      {rejectTarget && (
+        <RejectModal
+          reg={{ full_name: rejectTarget.name || rejectTarget.full_name, contact_email: rejectTarget.email || rejectTarget.contact_email }}
+          onReject={(reason) => handleReject(rejectTarget, reason)}
+          onClose={() => setRejectTarget(null)}
+        />
+      )}
+      {followupFor && (
+        <FollowupModal
+          entityType="consultant"
+          entityId={followupFor.id}
+          entityName={followupFor.name || followupFor.email}
+          onClose={() => setFollowupFor(null)}
+          showToast={showToast}
+          onSaved={() => onReload()}
+        />
+      )}
     </div>
   );
 }
@@ -1102,7 +1216,7 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
   const [tplId,         setTplId]         = useState('');
   const [smtpConfigId,  setSmtpConfigId]  = useState('');
   const [selected,      setSelected]      = useState<Set<string>>(new Set());
-  const [recipientFilter, setRecipientFilter] = useState<'all' | 'associated' | 'not_associated'>('all');
+  const [recipientFilter, setRecipientFilter] = useState<'all' | 'associated' | 'not_associated' | 'approved' | 'rejected'>('all');
   const [recipientSearch, setRecipientSearch] = useState('');
   const [preview,       setPreview]       = useState('');
   const [sending,       setSending]       = useState(false);
@@ -1111,8 +1225,16 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
 
   const visibleConsultants = useMemo(() => {
     let list = consultants;
-    if (recipientFilter === 'associated')     list = list.filter(c => c.association_status === 'associated');
+    // By default, keep rejected consultants out of the sendable list —
+    // an admin has to explicitly choose the "Rejected" filter to message them
+    // (e.g. to notify them of the rejection).
+    if (recipientFilter !== 'rejected' && recipientFilter !== 'all') {
+      list = list.filter(c => (c.status ?? 'approved') !== 'rejected');
+    }
+    if (recipientFilter === 'associated')          list = list.filter(c => c.association_status === 'associated');
     else if (recipientFilter === 'not_associated') list = list.filter(c => (c.association_status ?? 'not_associated') !== 'associated');
+    else if (recipientFilter === 'approved')       list = list.filter(c => (c.status ?? 'approved') !== 'rejected');
+    else if (recipientFilter === 'rejected')       list = list.filter(c => c.status === 'rejected');
     if (recipientSearch.trim()) {
       const q = recipientSearch.toLowerCase();
       list = list.filter(c =>
@@ -1336,19 +1458,26 @@ function CommunicateTab({ consultants, authHeaders, showToast }: {
                 {visibleConsultants.length > 0 && visibleConsultants.every(c => selected.has(c.id)) ? 'Deselect All' : `Select All (${visibleConsultants.length})`}
               </button>
             </div>
-            {/* Associated / Not Associated / All filter */}
-            <div style={{ display:'flex', gap:6 }}>
-              {(['all','associated','not_associated'] as const).map(f => (
-                <button key={f} onClick={() => setRecipientFilter(f)}
-                  style={{ flex:1, padding:'5px 0', borderRadius:8, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'DM Sans,sans-serif',
-                    border: `1.5px solid ${recipientFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'var(--acc)') : 'var(--bd)'}`,
-                    background: recipientFilter===f ? (f==='associated'?'rgba(5,150,105,.08)':f==='not_associated'?'rgba(100,116,139,.08)':'var(--acc3)') : 'transparent',
-                    color: recipientFilter===f ? (f==='associated'?'#059669':f==='not_associated'?'#64748b':'var(--acc)') : 'var(--m)',
-                  }}>
-                  {f==='all' ? 'All' : f==='associated' ? '🟢 Associated' : '⚪ Not Associated'}
-                </button>
-              ))}
+            {/* Associated / Not Associated / Approved / Rejected / All filter */}
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {(['all','associated','not_associated','approved','rejected'] as const).map(f => {
+                const color = f==='associated' ? '#059669' : f==='not_associated' ? '#64748b' : f==='rejected' ? '#ef4444' : f==='approved' ? '#4f46e5' : 'var(--acc)';
+                const label = f==='all' ? 'All' : f==='associated' ? '🟢 Associated' : f==='not_associated' ? '⚪ Not Associated' : f==='approved' ? '✅ Approved' : '❌ Rejected';
+                return (
+                  <button key={f} onClick={() => setRecipientFilter(f)}
+                    style={{ flex:'1 1 auto', padding:'5px 10px', borderRadius:8, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'DM Sans,sans-serif', whiteSpace:'nowrap',
+                      border: `1.5px solid ${recipientFilter===f ? color : 'var(--bd)'}`,
+                      background: recipientFilter===f ? `${color}18` : 'transparent',
+                      color: recipientFilter===f ? color : 'var(--m)',
+                    }}>
+                    {label}
+                  </button>
+                );
+              })}
             </div>
+            {recipientFilter === 'rejected' && (
+              <div style={{ marginTop:6, fontSize:10.5, color:'#b45309' }}>⚠️ You're messaging rejected consultants — double-check before sending.</div>
+            )}
             {/* Search box */}
             <input
               style={{ ...IS, marginTop:8, padding:'7px 12px', fontSize:12 }}

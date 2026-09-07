@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AdminApprovalQueue from '@/components/admin/AdminApprovalQueue';
 import SchoolFormDetailsModal from '@/components/admin/SchoolFormDetailsModal';
+import FollowupModal from '@/components/admin/FollowupModal';
 import { authFetch } from '@/lib/supabase/client';
 
 type Row = Record<string, any>;
@@ -501,15 +502,22 @@ function SchoolDetailModal({ school, onClose, showToast }: {
 
 // ── Schools Page With Approval ───────────────────────────────────────────────
 export function SchoolsPageWithApproval({
-  schools, programs, isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast,
+  schools, programs, isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast, searchQuery,
 }: {
   schools: Row[]; programs: Row[]; isSuperAdmin: boolean; BACKEND: string;
   authHeaders: () => HeadersInit; onEdit: (s: Row) => void;
   onRefresh: () => void; showToast: (t: string, i?: string) => void;
+  /** When non-empty, shows a single combined results table (pending + approved)
+   *  instead of splitting schools across the Approval Queue / School List tabs —
+   *  so a search always finds a school regardless of its status. */
+  searchQuery?: string;
 }) {
   const [tab, setTab] = useState<'analytics' | 'queue' | 'approved'>('approved');
   const [schoolModal, setSchoolModal] = useState<Row | null>(null);
   const [detailsSchool, setDetailsSchool] = useState<Row | null>(null);
+  const [followupSchool, setFollowupSchool] = useState<Row | null>(null);
+
+  const isSearching = !!searchQuery && searchQuery.trim() !== '';
 
   const pendingSchools  = schools.filter(s => s.status && s.status !== 'approved');
   const approvedSchools = schools.filter(s => s.status === 'approved' || !s.status);
@@ -538,8 +546,8 @@ export function SchoolsPageWithApproval({
         </div>
         <div className="topbar-right">
           <div style={{ display:'flex', gap:6 }}>
-            <button style={TAB(tab === 'analytics', '#8b5cf6')} onClick={() => setTab('analytics')}>📊 Analytics</button>
-            <button style={TAB(tab === 'queue')} onClick={() => setTab('queue')}>
+            <button style={TAB(tab === 'analytics', '#8b5cf6')} onClick={() => setTab('analytics')} disabled={isSearching}>📊 Analytics</button>
+            <button style={TAB(tab === 'queue')} onClick={() => setTab('queue')} disabled={isSearching}>
               {pendingSchools.length > 0 && (
                 <span style={{ background:'#ef4444', color:'#fff', borderRadius:20, fontSize:10, fontWeight:800, padding:'1px 6px', marginRight:6, display:'inline-block' }}>
                   {pendingSchools.length}
@@ -547,7 +555,7 @@ export function SchoolsPageWithApproval({
               )}
               Approval Queue
             </button>
-            <button style={TAB(tab === 'approved')} onClick={() => setTab('approved')}>School List</button>
+            <button style={TAB(tab === 'approved')} onClick={() => setTab('approved')} disabled={isSearching}>School List</button>
           </div>
           {isSuperAdmin && (
             <button className="btn btn-primary" onClick={() => onEdit({})}>+ Add School</button>
@@ -556,32 +564,64 @@ export function SchoolsPageWithApproval({
         </div>
       </div>
 
-      {tab === 'analytics' && <SchoolAnalytics schools={schools} programs={programs} />}
-      {tab === 'queue' && (
-        <AdminApprovalQueue
-          pendingSchools={pendingSchools} programs={programs}
-          BACKEND={BACKEND} authHeaders={authHeaders}
-          onRefresh={onRefresh} showToast={showToast}
-          onEdit={onEdit}
-        />
-      )}
-      {tab === 'approved' && (
-        <SchoolsTableWithStatus
-          schools={approvedSchools} programs={programs}
-          isSuperAdmin={isSuperAdmin} onEdit={onEdit}
-          onShowDetails={s => setDetailsSchool(s)}
-          onRowClick={s => {
-            const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
-            setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
-          }}
-        />
+      {isSearching ? (
+        <>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+            <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>🔍 Search Results</span>
+            <span style={{ fontSize:12, color:'var(--m)' }}>— showing matches across both Pending &amp; Approved schools</span>
+          </div>
+          <SchoolsTableWithStatus
+            schools={schools} programs={programs}
+            isSuperAdmin={isSuperAdmin} onEdit={onEdit}
+            onShowDetails={s => setDetailsSchool(s)}
+            onShowFollowup={s => setFollowupSchool(s)}
+            onRowClick={s => {
+              const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
+              setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
+            }}
+          />
+        </>
+      ) : (
+        <>
+          {tab === 'analytics' && <SchoolAnalytics schools={schools} programs={programs} />}
+          {tab === 'queue' && (
+            <AdminApprovalQueue
+              pendingSchools={pendingSchools} programs={programs}
+              BACKEND={BACKEND} authHeaders={authHeaders}
+              onRefresh={onRefresh} showToast={showToast}
+              onEdit={onEdit}
+            />
+          )}
+          {tab === 'approved' && (
+            <SchoolsTableWithStatus
+              schools={approvedSchools} programs={programs}
+              isSuperAdmin={isSuperAdmin} onEdit={onEdit}
+              onShowDetails={s => setDetailsSchool(s)}
+              onShowFollowup={s => setFollowupSchool(s)}
+              onRowClick={s => {
+                const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
+                setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
+              }}
+            />
+          )}
+        </>
       )}
 
       {schoolModal && (
         <SchoolDetailModal school={schoolModal} onClose={() => setSchoolModal(null)} showToast={showToast} />
       )}
       {detailsSchool && (
-        <SchoolFormDetailsModal school={detailsSchool} programs={programs} onClose={() => setDetailsSchool(null)} />
+        <SchoolFormDetailsModal school={detailsSchool} programs={programs} onClose={() => setDetailsSchool(null)} showToast={showToast} />
+      )}
+      {followupSchool && (
+        <FollowupModal
+          entityType="school"
+          entityId={followupSchool.id}
+          entityName={followupSchool.name}
+          onClose={() => setFollowupSchool(null)}
+          showToast={showToast}
+          onSaved={() => onRefresh()}
+        />
       )}
     </>
   );
@@ -589,10 +629,10 @@ export function SchoolsPageWithApproval({
 
 // ── Schools Table With Status ────────────────────────────────────────────────
 export function SchoolsTableWithStatus({
-  schools, programs, isSuperAdmin, onEdit, onRowClick, onShowDetails,
+  schools, programs, isSuperAdmin, onEdit, onRowClick, onShowDetails, onShowFollowup,
 }: {
   schools: Row[]; programs: Row[]; isSuperAdmin: boolean;
-  onEdit: (s: Row) => void; onRowClick?: (s: Row) => void; onShowDetails?: (s: Row) => void;
+  onEdit: (s: Row) => void; onRowClick?: (s: Row) => void; onShowDetails?: (s: Row) => void; onShowFollowup?: (s: Row) => void;
 }) {
   const [filterPrograms,  setFilterPrograms]  = useState<string[]>([]);
   const [filterCountries, setFilterCountries] = useState<string[]>([]);
@@ -680,13 +720,13 @@ export function SchoolsTableWithStatus({
               <th>Code</th><th>School Name</th><th>Location</th><th>Program</th>
               <th>Price</th><th>Discount Code</th><th>Registration URL</th>
               <th>Created</th>
-              <th>Reg Active</th><th>Status</th><th>Dashboard</th><th>Details</th>
+              <th>Reg Active</th><th>Status</th><th>Next Follow-up</th><th>Dashboard</th><th>Details</th>
               {isSuperAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0
-              ? <tr><td colSpan={13} className="table-empty">No schools match the selected filters.</td></tr>
+              ? <tr><td colSpan={14} className="table-empty">No schools match the selected filters.</td></tr>
               : filtered.map(s => {
                   const prog = programs.find(p => p.id === s.project_id) ?? programs.find(p => p.slug === s.project_slug);
                   // Always use ?school= format — works for all schools on WordPress
@@ -718,6 +758,22 @@ export function SchoolsTableWithStatus({
                       </td>
                       <td><span className={`badge ${s.is_registration_active ? 'badge-paid' : 'badge-cancelled'}`}>{s.is_registration_active ? 'Open' : 'Closed'}</span></td>
                       <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => onShowFollowup?.(s)}
+                          title={s.last_followup_comment ? `Last: ${s.last_followup_comment}` : undefined}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '5px 10px', borderRadius: 7,
+                            background: s.next_followup_date ? 'rgba(245,158,11,.1)' : 'transparent',
+                            border: `1.5px solid ${s.next_followup_date ? '#f59e0b' : 'var(--bd)'}`,
+                            color: s.next_followup_date ? '#b45309' : 'var(--m)',
+                            fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          📅 {s.next_followup_date ? new Date(s.next_followup_date + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short' }) : 'Set'}
+                        </button>
+                      </td>
                       <td onClick={e => e.stopPropagation()}>
                         <DashboardLinkButton schoolId={s.id} />
                       </td>

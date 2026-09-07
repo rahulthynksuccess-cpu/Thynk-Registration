@@ -5,13 +5,19 @@
 // (web or mobile "Add School" form). Used from both the Approved
 // school list and the Pending Approval queue via a "📋 School Details" button.
 
-import React from 'react';
+import React, { useState } from 'react';
+import FollowupModal from './FollowupModal';
 
 type Row = Record<string, any>;
 
 const fmtDate = (iso?: string | null) => {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+};
+
+const fmtDateOnly = (d?: string | null) => {
+  if (!d) return '—';
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const fmtAmount = (paise?: number | null, currency?: string) => {
@@ -44,11 +50,13 @@ function Row_({ label, value, mono }: { label: string; value: React.ReactNode; m
   );
 }
 
-export default function SchoolFormDetailsModal({ school, programs, onClose }: {
+export default function SchoolFormDetailsModal({ school, programs, onClose, showToast }: {
   school: Row;
   programs: Row[];
   onClose: () => void;
+  showToast?: (t: string, i?: string) => void;
 }) {
+  const [showFollowup, setShowFollowup] = useState(false);
   const program = programs.find(p => p.id === school.project_id) ?? programs.find(p => p.slug === school.project_slug);
   const status  = school.status || 'approved';
   const statusLabel = status === 'approved' ? '✅ Approved' : status === 'pending_approval' ? '⏳ Pending Approval' : '🆕 Registered';
@@ -170,10 +178,35 @@ export default function SchoolFormDetailsModal({ school, programs, onClose }: {
           <Section title="⚙️ Settings">
             <Row_ label="School Active" value={school.is_active ? '✅ Yes' : '❌ No'} />
             <Row_ label="Registration Open" value={school.is_registration_active ? '🔓 Open' : '🔒 Closed'} />
-            {school.consultant_id && <Row_ label="Consultant ID" value={school.consultant_id} mono />}
+            {school.consultant_id && <Row_ label="Consultant" value={school.consultant_name || school.consultant_id} />}
+          </Section>
+
+          {/* Follow-up */}
+          <Section title="📅 Follow-up">
+            <Row_ label="Next Follow-up" value={fmtDateOnly(school.next_followup_date)} />
+            <Row_ label="Last Comment" value={school.last_followup_comment || '—'} />
+            {school.last_followup_at && (
+              <Row_ label="Logged By" value={`${school.last_followup_by || 'Admin'} · ${fmtDate(school.last_followup_at)}`} />
+            )}
+            <div style={{ padding: '10px 0 4px' }}>
+              <button onClick={() => setShowFollowup(true)}
+                style={{ padding: '7px 16px', borderRadius: 9, border: '1.5px solid var(--acc)', background: 'var(--acc3)', color: 'var(--acc)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                📅 View / Add Follow-up
+              </button>
+            </div>
           </Section>
         </div>
       </div>
+
+      {showFollowup && (
+        <FollowupModal
+          entityType="school"
+          entityId={school.id}
+          entityName={school.name}
+          onClose={() => setShowFollowup(false)}
+          showToast={showToast ?? (() => {})}
+        />
+      )}
     </div>
   );
 }
