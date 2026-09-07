@@ -1966,6 +1966,7 @@ export default function AdminDashboard() {
                     onEdit={s => { loadPrograms(); setSchoolForm(s); }}
                     onRefresh={loadSchools}
                     showToast={(t, i) => showToast(t, i ?? '')}
+                    searchQuery={schoolSearch}
                   />
                 </>
               )}
@@ -2828,7 +2829,7 @@ const EMPTY_CONTACT = { name:'', designation:'', email:'', mobile:'' };
 
 function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ initial:Row; programs:Row[]; consultants?:Row[]; onClose:()=>void; onSave:(d:Row)=>void }) {
   const initContacts = (() => { if (Array.isArray(initial.contact_persons) && initial.contact_persons.length) return initial.contact_persons; return [{ ...EMPTY_CONTACT }]; })();
-  const [f,setF] = useState({ id:initial.id??'', school_code:initial.school_code??'', name:initial.name??'', org_name:initial.org_name??'', consultant_id:initial.consultant_id??'', address:initial.address??'', pin_code:initial.pin_code??'', country:initial.country||'India', state:initial.state??'', city:initial.city??'', project_id:initial.project_id??'', school_price:initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '', currency:initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'), discount_code:initial.discount_code ?? initial.school_code?.toUpperCase() ?? '', primary_color:initial.branding?.primaryColor??'#4f46e5', accent_color:initial.branding?.accentColor??'#8b5cf6', is_active:initial.is_active!==false, is_registration_active:initial.is_registration_active!==false });
+  const [f,setF] = useState({ id:initial.id??'', school_code:initial.school_code??'', name:initial.name??'', org_name:initial.org_name??'', consultant_id:initial.consultant_id??'', address:initial.address??'', pin_code:initial.pin_code??'', country:initial.country||'India', state:initial.state??'', city:initial.city??'', project_id:initial.project_id??'', school_price:initial.pricing?.[0]?.base_amount ? String(initial.pricing[0].base_amount/100) : '', currency:initial.pricing?.[0]?.currency ?? (isIndianCountry(initial.country||'India') ? 'INR' : 'USD'), discount_code:initial.discount_code ?? initial.school_code?.toUpperCase() ?? '', primary_color:initial.branding?.primaryColor??'#4f46e5', accent_color:initial.branding?.accentColor??'#8b5cf6', is_active:initial.is_active!==false, is_registration_active:initial.is_registration_active!==false, next_followup_date:initial.next_followup_date??'' });
   const [contacts, setContacts] = useState<{name:string;designation:string;email:string;mobile:string}[]>(initContacts);
   const set = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => { const val = e.target.type==='checkbox' ? (e.target as HTMLInputElement).checked : e.target.value; setF(p => { const updated = {...p, [k]: val}; if (k === 'country') { updated.currency = isIndianCountry(val as string) ? 'INR' : 'USD'; updated.state = ''; updated.city = ''; } if (k === 'state') updated.city = ''; if (k === 'school_code' && !p.id) { updated.discount_code = (val as string).toUpperCase(); } return updated; }); };
   const setContact = (idx:number, field:string) => (e:React.ChangeEvent<HTMLInputElement>) => { setContacts(prev => prev.map((c,i) => i===idx ? {...c,[field]:e.target.value} : c)); };
@@ -3010,6 +3011,11 @@ function SchoolFormModal({ initial, programs, consultants, onClose, onSave }:{ i
           </Field>
         </div>
       )}
+      <div style={{background:'rgba(245,158,11,.05)',border:'1.5px solid rgba(245,158,11,.2)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:'#b45309',letterSpacing:'0.5px',textTransform:'uppercase',marginBottom:10}}>📅 Follow-up</div>
+        <Field label="Next Follow-up Date"><input style={IS} type="date" value={f.next_followup_date} onChange={set('next_followup_date')}/></Field>
+        <div style={{fontSize:10,color:'var(--m)',marginTop:4}}>For full follow-up history and comments, use the 📅 Follow-up button on the school row.</div>
+      </div>
       <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:14,padding:'12px 14px',background:'var(--bg)',border:'1.5px solid var(--bd)',borderRadius:10}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_active" checked={f.is_active} onChange={set('is_active')} style={{width:'auto',accentColor:'var(--acc)'}}/><label htmlFor="is_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>School is Active</label></div>
         <div style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" id="is_registration_active" checked={f.is_registration_active} onChange={set('is_registration_active')} style={{width:'auto',accentColor:'#10b981'}}/><label htmlFor="is_registration_active" style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>Registration Active</label></div>
@@ -3433,6 +3439,7 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
   const [isDefault,     setIsDefault]    = React.useState(!!initial.is_default_consultant);
   const [associationStatus, setAssociationStatus] = React.useState<'associated'|'not_associated'>(initial.association_status === 'associated' ? 'associated' : 'not_associated');
   const [internalRemark, setInternalRemark] = React.useState(initial.internal_remark ?? '');
+  const [nextFollowupDate, setNextFollowupDate] = React.useState(initial.next_followup_date ?? '');
   // Extended profile fields (all optional)
   const [location,      setLocation]     = React.useState(initial.location          ?? '');
   const [totalExp,      setTotalExp]     = React.useState(initial.total_exp_years   ? String(initial.total_exp_years) : '');
@@ -3472,7 +3479,7 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
         experience_summary:  expSummary.trim() || null,
       };
       const body = isEdit
-        ? { id:initial.id, name, email:email.trim()||undefined, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, association_status:associationStatus, internal_remark:internalRemark.trim()||null, ...extFields }
+        ? { id:initial.id, name, email:email.trim()||undefined, ...(password?{password}:{}), consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, association_status:associationStatus, internal_remark:internalRemark.trim()||null, next_followup_date:nextFollowupDate||null, ...extFields }
         : { name, email, password, consultant_code:code.trim(), mobile_number:mobile.trim()||null, pan_number:pan.trim()||null, is_default_consultant:isDefault, association_status:associationStatus, ...extFields };
       const res  = await fetch(`${BACKEND}/api/admin/consultants`, { method, headers:{...(authHeaders() as any),'Content-Type':'application/json'}, body:JSON.stringify(body) });
       const data = await res.json();
@@ -3569,6 +3576,14 @@ function ConsultantFormModal({ initial, BACKEND: BACKEND_PROP, authHeaders, onCl
           </div>
           <div style={{fontSize:10,color:'var(--m)',marginTop:4}}>New consultants default to Not Associated until confirmed.</div>
         </div>
+
+        {isEdit && (
+          <div style={{marginBottom:14}}>
+            <label style={LB}>Next Follow-up Date</label>
+            <input style={IS} type="date" value={nextFollowupDate} onChange={e=>setNextFollowupDate(e.target.value)} />
+            <div style={{fontSize:10,color:'var(--m)',marginTop:4}}>For full follow-up history and comments, use the 📅 Follow-up button on the consultant card.</div>
+          </div>
+        )}
 
         {/* ── Extended profile (collapsible) ── */}
         <button type="button" onClick={()=>setShowExtended(p=>!p)}

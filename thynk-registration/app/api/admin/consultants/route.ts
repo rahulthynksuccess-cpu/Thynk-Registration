@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
   // Extra profile fields from consultant_profiles
   const { data: profiles } = await service
     .from('consultant_profiles')
-    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status, updated_at, updated_by_name')
+    .select('user_id, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status, updated_at, updated_by_name, status, rejected_at, rejected_by_name, reject_reason, next_followup_date, last_followup_at, last_followup_comment, last_followup_by')
     .in('user_id', userIds);
 
   const profileMap: Record<string, any> = {};
@@ -149,6 +149,17 @@ export async function GET(req: NextRequest) {
     association_status:    profileMap[r.user_id]?.association_status    ?? 'not_associated',
     profile_updated_at:    profileMap[r.user_id]?.updated_at            ?? null,
     profile_updated_by:    profileMap[r.user_id]?.updated_by_name       ?? null,
+    // Approve/Reject workflow status — every consultant defaults to 'approved'
+    // (they only exist here because they were already approved / manually added).
+    status:                 profileMap[r.user_id]?.status               ?? 'approved',
+    rejected_at:            profileMap[r.user_id]?.rejected_at          ?? null,
+    rejected_by_name:       profileMap[r.user_id]?.rejected_by_name     ?? null,
+    reject_reason:          profileMap[r.user_id]?.reject_reason        ?? null,
+    // Follow-up cache (full history lives in /api/admin/followups)
+    next_followup_date:     profileMap[r.user_id]?.next_followup_date     ?? null,
+    last_followup_at:       profileMap[r.user_id]?.last_followup_at       ?? null,
+    last_followup_comment:  profileMap[r.user_id]?.last_followup_comment  ?? null,
+    last_followup_by:       profileMap[r.user_id]?.last_followup_by       ?? null,
   }));
 
   if (associatedParam === 'true') {
@@ -313,15 +324,20 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status } = body;
+  const { id, name, email, password, consultant_code, mobile_number, pan_number, is_default_consultant, internal_remark, association_status, status, reject_reason, next_followup_date } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
   // Name of the admin making this change, for the "last updated by" trail —
   // falls back to email if no display name is set on the account.
   const actorName = (user.user_metadata as any)?.name || user.email || 'Admin';
 
-  // Sub-admins may only update internal_remark + association_status —
-  // use update (not upsert) to avoid the INSERT path.
+  if (status !== undefined && status !== 'approved' && status !== 'rejected') {
+    return NextResponse.json({ error: 'status must be "approved" or "rejected"' }, { status: 400 });
+  }
+
+  // Sub-admins may only update internal_remark, association_status, the
+  // approve/reject status, and next_followup_date — use update (not upsert)
+  // to avoid the INSERT path.
   if (!isSuperAdmin) {
     const subUpdate: Record<string, any> = {};
     if (internal_remark !== undefined) subUpdate.internal_remark = internal_remark?.trim() || null;
@@ -331,6 +347,19 @@ export async function PATCH(req: NextRequest) {
       }
       subUpdate.association_status = association_status;
     }
+    if (status !== undefined) {
+      subUpdate.status = status;
+      if (status === 'rejected') {
+        subUpdate.rejected_at      = new Date().toISOString();
+        subUpdate.rejected_by_name = actorName;
+        subUpdate.reject_reason    = reject_reason?.trim() || null;
+      } else {
+        subUpdate.rejected_at      = null;
+        subUpdate.rejected_by_name = null;
+        subUpdate.reject_reason    = null;
+      }
+    }
+    if (next_followup_date !== undefined) subUpdate.next_followup_date = next_followup_date || null;
     if (Object.keys(subUpdate).length === 0) return NextResponse.json({ success: true });
 
     subUpdate.updated_at      = new Date().toISOString();
@@ -374,6 +403,19 @@ export async function PATCH(req: NextRequest) {
     }
     profileUpdate.association_status = association_status;
   }
+  if (status !== undefined) {
+    profileUpdate.status = status;
+    if (status === 'rejected') {
+      profileUpdate.rejected_at      = new Date().toISOString();
+      profileUpdate.rejected_by_name = actorName;
+      profileUpdate.reject_reason    = reject_reason?.trim() || null;
+    } else {
+      profileUpdate.rejected_at      = null;
+      profileUpdate.rejected_by_name = null;
+      profileUpdate.reject_reason    = null;
+    }
+  }
+  if (next_followup_date !== undefined) profileUpdate.next_followup_date = next_followup_date || null;
   if (is_default_consultant !== undefined) {
     profileUpdate.is_default_consultant = !!is_default_consultant;
     if (is_default_consultant) {
