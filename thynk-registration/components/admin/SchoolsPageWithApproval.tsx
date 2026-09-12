@@ -502,9 +502,9 @@ function SchoolDetailModal({ school, onClose, showToast }: {
 
 // ── Schools Page With Approval ───────────────────────────────────────────────
 export function SchoolsPageWithApproval({
-  schools, programs, consultants, isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast, searchQuery, onOpenFollowups,
+  schools, programs, consultants = [], isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast, searchQuery, onOpenFollowups,
 }: {
-  schools: Row[]; programs: Row[]; consultants: Row[]; isSuperAdmin: boolean; BACKEND: string;
+  schools: Row[]; programs: Row[]; consultants?: Row[]; isSuperAdmin: boolean; BACKEND: string;
   authHeaders: () => HeadersInit; onEdit: (s: Row) => void;
   onRefresh: () => void; showToast: (t: string, i?: string) => void;
   /** When non-empty, shows a single combined results table (pending + approved)
