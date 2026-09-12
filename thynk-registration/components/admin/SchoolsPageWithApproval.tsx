@@ -502,9 +502,9 @@ function SchoolDetailModal({ school, onClose, showToast }: {
 
 // ── Schools Page With Approval ───────────────────────────────────────────────
 export function SchoolsPageWithApproval({
-  schools, programs, isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast, searchQuery, onOpenFollowups,
+  schools, programs, consultants, isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast, searchQuery, onOpenFollowups,
 }: {
-  schools: Row[]; programs: Row[]; isSuperAdmin: boolean; BACKEND: string;
+  schools: Row[]; programs: Row[]; consultants: Row[]; isSuperAdmin: boolean; BACKEND: string;
   authHeaders: () => HeadersInit; onEdit: (s: Row) => void;
   onRefresh: () => void; showToast: (t: string, i?: string) => void;
   /** When non-empty, shows a single combined results table (pending + approved)
@@ -520,6 +520,25 @@ export function SchoolsPageWithApproval({
   const [followupSchool, setFollowupSchool] = useState<Row | null>(null);
 
   const isSearching = !!searchQuery && searchQuery.trim() !== '';
+
+  async function assignConsultant(school: Row, consultantId: string) {
+    try {
+      const res = await authFetch(`${BACKEND}/api/admin/schools`, {
+        method: 'PATCH',
+        headers: { ...(authHeaders() as any), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: school.id, consultant_id: consultantId || null }),
+      });
+      if (res.ok) {
+        showToast(consultantId ? 'Consultant assigned' : 'Consultant unassigned', '🤝');
+        onRefresh();
+      } else {
+        const d = await res.json();
+        showToast(d.error ?? 'Failed to assign consultant', '❌');
+      }
+    } catch (e: any) {
+      showToast(e.message ?? 'Failed', '❌');
+    }
+  }
 
   const pendingSchools  = schools.filter(s => s.status && s.status !== 'approved');
   const approvedSchools = schools.filter(s => s.status === 'approved' || !s.status);
@@ -582,10 +601,11 @@ export function SchoolsPageWithApproval({
             <span style={{ fontSize:12, color:'var(--m)' }}>— showing matches across both Pending &amp; Approved schools</span>
           </div>
           <SchoolsTableWithStatus
-            schools={schools} programs={programs}
+            schools={schools} programs={programs} consultants={consultants}
             isSuperAdmin={isSuperAdmin} onEdit={onEdit}
             onShowDetails={s => setDetailsSchool(s)}
             onShowFollowup={s => setFollowupSchool(s)}
+            onAssignConsultant={assignConsultant}
             onRowClick={s => {
               const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
               setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
@@ -605,10 +625,11 @@ export function SchoolsPageWithApproval({
           )}
           {tab === 'approved' && (
             <SchoolsTableWithStatus
-              schools={approvedSchools} programs={programs}
+              schools={approvedSchools} programs={programs} consultants={consultants}
               isSuperAdmin={isSuperAdmin} onEdit={onEdit}
               onShowDetails={s => setDetailsSchool(s)}
               onShowFollowup={s => setFollowupSchool(s)}
+              onAssignConsultant={assignConsultant}
               onRowClick={s => {
                 const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
                 setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
@@ -622,10 +643,11 @@ export function SchoolsPageWithApproval({
                 <span style={{ fontSize:12, color:'var(--m)' }}>— every school, pending and approved together (bookmark/share this tab as your open link)</span>
               </div>
               <SchoolsTableWithStatus
-                schools={schools} programs={programs}
+                schools={schools} programs={programs} consultants={consultants}
                 isSuperAdmin={isSuperAdmin} onEdit={onEdit}
                 onShowDetails={s => setDetailsSchool(s)}
                 onShowFollowup={s => setFollowupSchool(s)}
+                onAssignConsultant={assignConsultant}
                 onRowClick={s => {
                   const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
                   setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
@@ -658,10 +680,11 @@ export function SchoolsPageWithApproval({
 
 // ── Schools Table With Status ────────────────────────────────────────────────
 export function SchoolsTableWithStatus({
-  schools, programs, isSuperAdmin, onEdit, onRowClick, onShowDetails, onShowFollowup,
+  schools, programs, consultants = [], isSuperAdmin, onEdit, onRowClick, onShowDetails, onShowFollowup, onAssignConsultant,
 }: {
-  schools: Row[]; programs: Row[]; isSuperAdmin: boolean;
+  schools: Row[]; programs: Row[]; consultants?: Row[]; isSuperAdmin: boolean;
   onEdit: (s: Row) => void; onRowClick?: (s: Row) => void; onShowDetails?: (s: Row) => void; onShowFollowup?: (s: Row) => void;
+  onAssignConsultant?: (school: Row, consultantId: string) => void;
 }) {
   const [filterPrograms,  setFilterPrograms]  = useState<string[]>([]);
   const [filterCountries, setFilterCountries] = useState<string[]>([]);
@@ -749,13 +772,13 @@ export function SchoolsTableWithStatus({
               <th>Code</th><th>School Name</th><th>Location</th><th>Program</th>
               <th>Price</th><th>Discount Code</th><th>Registration URL</th>
               <th>Created</th>
-              <th>Reg Active</th><th>Status</th><th>Next Follow-up</th><th>Dashboard</th><th>Details</th>
+              <th>Reg Active</th><th>Status</th><th>Consultant</th><th>Next Follow-up</th><th>Dashboard</th><th>Details</th>
               {isSuperAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0
-              ? <tr><td colSpan={14} className="table-empty">No schools match the selected filters.</td></tr>
+              ? <tr><td colSpan={15} className="table-empty">No schools match the selected filters.</td></tr>
               : filtered.map(s => {
                   const prog = programs.find(p => p.id === s.project_id) ?? programs.find(p => p.slug === s.project_slug);
                   // Always use ?school= format — works for all schools on WordPress
@@ -787,6 +810,31 @@ export function SchoolsTableWithStatus({
                       </td>
                       <td><span className={`badge ${s.is_registration_active ? 'badge-paid' : 'badge-cancelled'}`}>{s.is_registration_active ? 'Open' : 'Closed'}</span></td>
                       <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>
+                      <td onClick={e => e.stopPropagation()}>
+                        {isSuperAdmin ? (
+                          <select
+                            value={s.consultant_id || ''}
+                            onChange={e => onAssignConsultant?.(s, e.target.value)}
+                            title={s.consultant_name || 'Unassigned'}
+                            style={{
+                              padding: '5px 8px', borderRadius: 7, fontSize: 11, fontWeight: 600,
+                              border: `1.5px solid ${s.consultant_id ? 'rgba(79,70,229,.35)' : 'var(--bd)'}`,
+                              background: s.consultant_id ? 'rgba(79,70,229,.06)' : 'transparent',
+                              color: s.consultant_id ? '#4f46e5' : 'var(--m)',
+                              fontFamily: 'DM Sans,sans-serif', maxWidth: 150, cursor: 'pointer',
+                            }}
+                          >
+                            <option value="">— Unassigned —</option>
+                            {consultants.map(c => (
+                              <option key={c.id} value={c.id}>{c.name || c.email}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span style={{ fontSize: 12, color: s.consultant_name ? 'var(--text)' : 'var(--m)' }}>
+                            {s.consultant_name || 'Unassigned'}
+                          </span>
+                        )}
+                      </td>
                       <td onClick={e => e.stopPropagation()}>
                         <button
                           onClick={() => onShowFollowup?.(s)}

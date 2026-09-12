@@ -1963,6 +1963,7 @@ export default function AdminDashboard() {
                   <SchoolsPageWithApproval
                     schools={searchedSchools}
                     programs={programs}
+                    consultants={consultants}
                     isSuperAdmin={isSuperAdmin}
                     BACKEND={BACKEND}
                     authHeaders={authHeaders}
