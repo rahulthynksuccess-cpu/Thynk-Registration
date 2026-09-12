@@ -12,6 +12,7 @@ import { NotificationControlPanel, NotificationBell, NotificationDropdown } from
 import { LetterGeneratorPanel } from '@/components/admin/LetterGeneratorPanel';
 import { LeadDatabase } from '@/components/admin/LeadDatabase';
 import { ConsultantHub } from '@/components/admin/ConsultantHub';
+import FollowupsDashboardPage from '@/components/admin/FollowupsDashboardPage';
 import { ThemeSwitcher, loadSavedTheme } from '@/components/admin/ThemeSwitcher';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -98,6 +99,7 @@ const NAV = [
   { id:'discounts',     icon:'🏷️', label:'Discount Codes' },
   { id:'users',         icon:'👥', label:'Admin Users'    },
   { id:'consultants',   icon:'🤝', label:'Consultants'    },
+  { id:'followups_crm', icon:'📅', label:'Follow-ups'     },
   { section:'Client Portal' },
   { id:'documents',     icon:'📁', label:'Document Upload' },
   { id:'notifications', icon:'🔔', label:'Notifications',  badge:true },
@@ -1326,6 +1328,7 @@ export default function AdminDashboard() {
     if (activePage === 'discounts')    loadDiscounts();
     if (activePage === 'users')      { loadUsers(); loadSchools(); }
     if (activePage === 'consultants') { loadConsultants(); loadSchools(); loadPrograms(); }
+    if (activePage === 'followups_crm') { loadConsultants(); loadSchools(); }
     if (activePage === 'integrations') loadIntegrations();
     if (activePage === 'triggers')   { loadTriggers(); loadTemplates(); loadSchools(); }
     if (activePage === 'templates')  { loadTemplates(); loadPrograms(); }
@@ -1967,6 +1970,7 @@ export default function AdminDashboard() {
                     onRefresh={loadSchools}
                     showToast={(t, i) => showToast(t, i ?? '')}
                     searchQuery={schoolSearch}
+                    onOpenFollowups={() => setActivePage('followups_crm')}
                   />
                 </>
               )}
@@ -2342,6 +2346,17 @@ export default function AdminDashboard() {
               showToast={showToast}
               consultantForm={consultantForm}
               setConsultantForm={setConsultantForm}
+              onOpenFollowups={() => setActivePage('followups_crm')}
+            />}
+          </div>
+
+          {/* ── FOLLOW-UPS (Consultants & Schools) ──────────────────────── */}
+          <div className={`page${activePage==='followups_crm'?' active':''}`}>
+            {activePage==='followups_crm' && <FollowupsDashboardPage
+              schools={visibleSchools}
+              consultants={consultants}
+              showToast={(t,i)=>showToast(t,i??'')}
+              onRefresh={() => { loadSchools(); loadConsultants(); }}
             />}
           </div>
 

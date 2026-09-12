@@ -73,6 +73,7 @@ export function ConsultantHub({
   showToast,
   consultantForm,
   setConsultantForm,
+  onOpenFollowups,
 }: {
   consultants:      Row[];
   schools:          Row[];
@@ -85,6 +86,9 @@ export function ConsultantHub({
   showToast:        (m: string, i?: string) => void;
   consultantForm:   Row | null;
   setConsultantForm:(r: Row | null) => void;
+  /** Jumps to the standalone Follow-ups dashboard (sidebar page). Optional so
+   *  this component still works if a caller doesn't wire page navigation. */
+  onOpenFollowups?: () => void;
 }) {
   // Determine which tabs this user can see
   // super_admin (subAdminPages===null): all tabs
@@ -126,7 +130,7 @@ export function ConsultantHub({
 
   const TAB_DEFS: { id: typeof tab; label: string; count?: number }[] = [
     ...(canSeePending  ? [{ id: 'pending'     as const, label: `📥 Pending`, count: pendingRegs.length }] : []),
-    ...(canSeeApproved ? [{ id: 'approved'    as const, label: '👥 Approved Consultants' }] : []),
+    ...(canSeeApproved ? [{ id: 'approved'    as const, label: '👥 Approved Consultants', count: consultants.filter(c => c.status === 'rejected').length }] : []),
     ...(canSeeApproved ? [{ id: 'analytics'   as const, label: '📊 Analytics' }] : []),
     ...(canSeeApproved ? [{ id: 'communicate' as const, label: '💬 Communicate' }] : []),
     ...(canSeeApproved ? [{ id: 'comm_log'    as const, label: '📜 Communication Log' }] : []),
@@ -152,6 +156,12 @@ export function ConsultantHub({
             📋 Copy URL
           </button>
           <DownloadReportBtn authHeaders={authHeaders} showToast={showToast} />
+          {onOpenFollowups && (
+            <button onClick={onOpenFollowups}
+              style={{ padding:'8px 14px', borderRadius:9, background:'rgba(245,158,11,.1)', border:'1.5px solid #f59e0b', color:'#b45309', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+              📅 View All Follow-ups
+            </button>
+          )}
           {canSeeApproved && (
             <button onClick={() => setConsultantForm({})}
               style={{ padding:'8px 14px', borderRadius:9, background:'transparent', border:'1.5px solid #4f46e5', color:'#4f46e5', fontSize:12, fontWeight:700, cursor:'pointer' }}>
@@ -165,6 +175,7 @@ export function ConsultantHub({
       <div style={{ display:'flex', gap:4, marginBottom:24, background:'var(--bg)', borderRadius:12, padding:4, width:'fit-content', flexWrap:'wrap' }}>
         {TAB_DEFS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
+            title={t.id === 'approved' && t.count ? `${t.count} rejected` : undefined}
             style={{ padding:'8px 16px', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, borderRadius:9,
               fontFamily:'DM Sans,sans-serif', transition:'all .18s',
               background: tab === t.id ? 'var(--acc)' : 'transparent',
@@ -174,8 +185,8 @@ export function ConsultantHub({
             }}>
             {t.label}
             {t.count !== undefined && t.count > 0 && (
-              <span style={{ background: tab===t.id ? 'rgba(255,255,255,0.3)' : '#ef4444', color:'#fff', borderRadius:20, fontSize:10, padding:'1px 7px', fontWeight:800 }}>
-                {t.count}
+              <span style={{ background: tab===t.id ? 'rgba(255,255,255,0.3)' : (t.id === 'approved' ? '#991b1b' : '#ef4444'), color:'#fff', borderRadius:20, fontSize:10, padding:'1px 7px', fontWeight:800 }}>
+                {t.id === 'approved' ? `${t.count} ❌` : t.count}
               </span>
             )}
           </button>
@@ -696,15 +707,27 @@ function ApprovedTab({ consultants, registrations, enrichedRows, programs, canMa
   const [restoring,    setRestoring]    = useState<string | null>(null);
   const [followupFor,  setFollowupFor]  = useState<Row | null>(null);
 
-  // Merge auth-based consultants with extra profile fields from registrations
+  // Merge auth-based consultants with extra profile fields from registrations.
+  // IMPORTANT: the registration record has its own `status` column (pending/
+  // approved/rejected — describing the *registration*, not the consultant),
+  // and since `registrations` here is always the approved-registrations list,
+  // that field is always 'approved'. Spreading it over `c` would silently
+  // clobber the consultant's real approve/reject status (from
+  // consultant_profiles.status) back to 'approved' every time — which is
+  // exactly why a rejected consultant could never be found/filtered. Strip it
+  // out of the registration side of the merge so `c.status` always wins.
   const regByEmail: Record<string, Row> = {};
   registrations.forEach(r => { regByEmail[r.contact_email] = r; });
 
-  const enriched: Row[] = consultants.map(c => ({
-    ...c,
-    ...(regByEmail[c.email as string] || {}),
-    id: c.id,   // keep user id not reg id
-  }));
+  const enriched: Row[] = consultants.map(c => {
+    const { status: _regStatus, ...regRest } = regByEmail[c.email as string] || {};
+    return {
+      ...c,
+      ...regRest,
+      id: c.id,       // keep user id not reg id
+      status: c.status, // keep the consultant's own approve/reject status
+    };
+  });
 
   const filtered = useMemo(() => {
     let list = enriched;

@@ -502,7 +502,7 @@ function SchoolDetailModal({ school, onClose, showToast }: {
 
 // ── Schools Page With Approval ───────────────────────────────────────────────
 export function SchoolsPageWithApproval({
-  schools, programs, isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast, searchQuery,
+  schools, programs, isSuperAdmin, BACKEND, authHeaders, onEdit, onRefresh, showToast, searchQuery, onOpenFollowups,
 }: {
   schools: Row[]; programs: Row[]; isSuperAdmin: boolean; BACKEND: string;
   authHeaders: () => HeadersInit; onEdit: (s: Row) => void;
@@ -511,8 +511,10 @@ export function SchoolsPageWithApproval({
    *  instead of splitting schools across the Approval Queue / School List tabs —
    *  so a search always finds a school regardless of its status. */
   searchQuery?: string;
+  /** Jumps to the standalone Follow-ups dashboard (sidebar page). */
+  onOpenFollowups?: () => void;
 }) {
-  const [tab, setTab] = useState<'analytics' | 'queue' | 'approved'>('approved');
+  const [tab, setTab] = useState<'analytics' | 'queue' | 'approved' | 'all'>('approved');
   const [schoolModal, setSchoolModal] = useState<Row | null>(null);
   const [detailsSchool, setDetailsSchool] = useState<Row | null>(null);
   const [followupSchool, setFollowupSchool] = useState<Row | null>(null);
@@ -556,9 +558,18 @@ export function SchoolsPageWithApproval({
               Approval Queue
             </button>
             <button style={TAB(tab === 'approved')} onClick={() => setTab('approved')} disabled={isSearching}>School List</button>
+            <button style={TAB(tab === 'all', '#0ea5e9')} onClick={() => setTab('all')} disabled={isSearching} title="Every school regardless of status — pending and approved together">
+              🔗 All Schools
+            </button>
           </div>
           {isSuperAdmin && (
             <button className="btn btn-primary" onClick={() => onEdit({})}>+ Add School</button>
+          )}
+          {onOpenFollowups && (
+            <button onClick={onOpenFollowups}
+              style={{ padding:'8px 14px', borderRadius:9, background:'rgba(245,158,11,.1)', border:'1.5px solid #f59e0b', color:'#b45309', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+              📅 View All Follow-ups
+            </button>
           )}
           <SchoolReportDownloadBtn authHeaders={authHeaders} showToast={showToast} />
         </div>
@@ -603,6 +614,24 @@ export function SchoolsPageWithApproval({
                 setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
               }}
             />
+          )}
+          {tab === 'all' && (
+            <>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>🔗 All Schools</span>
+                <span style={{ fontSize:12, color:'var(--m)' }}>— every school, pending and approved together (bookmark/share this tab as your open link)</span>
+              </div>
+              <SchoolsTableWithStatus
+                schools={schools} programs={programs}
+                isSuperAdmin={isSuperAdmin} onEdit={onEdit}
+                onShowDetails={s => setDetailsSchool(s)}
+                onShowFollowup={s => setFollowupSchool(s)}
+                onRowClick={s => {
+                  const prog = programs.find((p: Row) => p.id === s.project_id) ?? programs.find((p: Row) => p.slug === s.project_slug);
+                  setSchoolModal({ ...s, program_name: prog?.name ?? s.project_slug ?? '' });
+                }}
+              />
+            </>
           )}
         </>
       )}
